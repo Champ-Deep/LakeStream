@@ -1,0 +1,55 @@
+{% if domains %}
+<div class="divide-y divide-stone-100">
+  {% for domain in domains %}
+  <a
+    href="/domains/{{ domain.domain }}"
+    class="block px-6 py-4 hover:bg-stone-50 transition-colors"
+  >
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="font-medium text-charcoal">{{ domain.domain }}</p>
+        <p class="text-sm text-stone-400">
+          Last scraped {{ domain.last_scraped_at | timeago if domain.last_scraped_at else 'never' }}
+        </p>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <!-- Success Rate -->
+        <div class="text-right">
+          {% set rate = (domain.success_rate * 100) | int if domain.success_rate else 0 %}
+          <p class="text-sm font-medium {% if rate >= 80 %}text-success{% elif rate >= 50 %}text-warning{% else %}text-error{% endif %}">
+            {{ rate }}%
+          </p>
+          <p class="text-xs text-stone-400">success</p>
+        </div>
+
+        <!-- Warning indicator for problematic domains -->
+        {% if domain.block_count and domain.block_count > 3 %}
+        <div class="w-6 h-6 bg-warning/10 rounded-full flex items-center justify-center" title="High block count">
+          <svg class="w-4 h-4 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+        </div>
+        {% endif %}
+
+        <svg class="w-4 h-4 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="p-12 text-center">
+  <div class="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
+    <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+    </svg>
+  </div>
+  <p class="text-stone-500 mb-2">No domains tracked yet</p>
+  <p class="text-sm text-stone-400">Domains appear here after you scrape them</p>
+</div>
+{% endif %}

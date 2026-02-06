@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Results - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Page Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-charcoal">Extracted Data</h1>
+      <p class="text-slate mt-1">Browse and export your scraped data</p>
+    </div>
+    <div class="flex items-center gap-2">
+      {% if results %}
+      <a
+        href="/api/export/csv{% if filter_domain %}?domain={{ filter_domain }}{% endif %}"
+        class="py-2.5 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors inline-flex items-center gap-2"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        Export CSV
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white rounded-xl border border-stone-200 p-4">
+    <form
+      hx-get="/results"
+      hx-target="#results-container"
+      hx-swap="innerHTML"
+      hx-push-url="true"
+      class="flex flex-wrap items-center gap-4"
+    >
+      <!-- Domain Filter -->
+      <div class="flex items-center gap-2">
+        <label for="domain" class="text-sm text-slate">Domain:</label>
+        <select
+          name="domain"
+          id="domain"
+          hx-trigger="change"
+          class="px-3 py-2 rounded-lg border border-stone-300 bg-white text-sm focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">All domains</option>
+          {% for d in domains %}
+          <option value="{{ d }}" {% if filter_domain == d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Data Type Filter -->
+      <div class="flex items-center gap-2">
+        <label for="data_type" class="text-sm text-slate">Type:</label>
+        <select
+          name="data_type"
+          id="data_type"
+          hx-trigger="change"
+          class="px-3 py-2 rounded-lg border border-stone-300 bg-white text-sm focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">All types</option>
+          <option value="blog_url" {% if filter_data_type == 'blog_url' %}selected{% endif %}>Blog URLs</option>
+          <option value="article" {% if filter_data_type == 'article' %}selected{% endif %}>Articles</option>
+          <option value="contact" {% if filter_data_type == 'contact' %}selected{% endif %}>Contacts</option>
+          <option value="tech_stack" {% if filter_data_type == 'tech_stack' %}selected{% endif %}>Tech Stack</option>
+          <option value="resource" {% if filter_data_type == 'resource' %}selected{% endif %}>Resources</option>
+          <option value="pricing" {% if filter_data_type == 'pricing' %}selected{% endif %}>Pricing</option>
+        </select>
+      </div>
+
+      <!-- Clear Filters -->
+      {% if filter_domain or filter_data_type %}
+      <a href="/results" class="text-sm text-accent hover:underline">Clear filters</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- Results Container -->
+  <div id="results-container">
+    {% if results %}
+    <!-- Results Table -->
+    <div class="bg-white rounded-xl border border-stone-200 overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-stone-50 border-b border-stone-200">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Type</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Title / URL</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Domain</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Scraped</th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-slate uppercase tracking-wide"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100" x-data="{ expandedId: null }">
+          {% for result in results %}
+          <tr class="table-row-hover">
+            <td class="px-6 py-4">
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
+                {% if result.data_type == 'blog_url' %}bg-blue-50 text-blue-700
+                {% elif result.data_type == 'article' %}bg-purple-50 text-purple-700
+                {% elif result.data_type == 'contact' %}bg-green-50 text-green-700
+                {% elif result.data_type == 'tech_stack' %}bg-orange-50 text-orange-700
+                {% elif result.data_type == 'resource' %}bg-pink-50 text-pink-700
+                {% else %}bg-stone-100 text-stone-600{% endif %}
+              ">
+                {{ result.data_type | replace('_', ' ') | title }}
+              </span>
+            </td>
+            <td class="px-6 py-4">
+              <div class="max-w-md">
+                {% if result.title %}
+                  <p class="font-medium text-charcoal truncate">{{ result.title }}</p>
+                {% endif %}
+                {% if result.url %}
+                  <a href="{{ result.url }}" target="_blank" class="text-sm text-accent hover:underline truncate block">
+                    {{ result.url | truncate(60) }}
+                  </a>
+                {% endif %}
+              </div>
+            </td>
+            <td class="px-6 py-4 text-sm text-charcoal">
+              {{ result.domain }}
+            </td>
+            <td class="px-6 py-4 text-sm text-slate">
+              {{ result.scraped_at | timeago }}
+            </td>
+            <td class="px-6 py-4 text-right">
+              <button
+                @click="expandedId = expandedId === '{{ result.id }}' ? null : '{{ result.id }}'"
+                class="text-accent hover:underline text-sm"
+              >
+                <span x-text="expandedId === '{{ result.id }}' ? 'Hide' : 'Details'"></span>
+              </button>
+            </td>
+          </tr>
+          <!-- Expanded Details Row -->
+          <tr x-show="expandedId === '{{ result.id }}'" x-collapse>
+            <td colspan="5" class="px-6 py-4 bg-stone-50">
+              <div class="max-w-3xl">
+                <p class="text-xs text-slate uppercase tracking-wide mb-2">Metadata</p>
+                <pre class="text-sm text-charcoal bg-white p-4 rounded-lg overflow-x-auto border border-stone-200">{{ result.metadata | tojson(indent=2) }}</pre>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination Info -->
+    <div class="text-sm text-stone-400 text-center mt-4">
+      Showing {{ results | length }} of {{ total }} results
+      {% if results | length < total %}
+        &middot; <a href="?page={{ page + 1 }}{% if filter_domain %}&domain={{ filter_domain }}{% endif %}{% if filter_data_type %}&data_type={{ filter_data_type }}{% endif %}" class="text-accent hover:underline">Load more</a>
+      {% endif %}
+    </div>
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="bg-white rounded-xl border border-stone-200 p-12 text-center">
+      <div class="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <p class="text-stone-500 mb-2">No data found</p>
+      <p class="text-sm text-stone-400 mb-4">
+        {% if filter_domain or filter_data_type %}
+          Try adjusting your filters
+        {% else %}
+          Run a scrape job to start extracting data
+        {% endif %}
+      </p>
+      <a
+        href="/jobs/new"
+        class="inline-flex items-center gap-2 py-2 px-4 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-dark transition-colors"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Scrape Job
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

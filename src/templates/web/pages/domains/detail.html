@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}{{ domain }} - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Back Link -->
+  <a href="/domains" class="text-sm text-accent hover:underline inline-block">&larr; Back to Domains</a>
+
+  <!-- Domain Header -->
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <div class="flex items-start justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-charcoal">{{ domain }}</h1>
+        <p class="text-slate mt-1">
+          {% if metadata %}
+            Last scraped {{ metadata.last_scraped_at | timeago if metadata.last_scraped_at else 'never' }}
+          {% else %}
+            No scraping history yet
+          {% endif %}
+        </p>
+      </div>
+
+      <a
+        href="/jobs/new?domain={{ domain }}"
+        class="py-2.5 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors inline-flex items-center gap-2"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Scrape Again
+      </a>
+    </div>
+  </div>
+
+  {% if metadata %}
+  <!-- Stats Grid -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-white rounded-xl p-5 border border-stone-200">
+      <p class="text-xs text-stone-400 uppercase tracking-wide">Success Rate</p>
+      {% set rate = (metadata.success_rate * 100) | int if metadata.success_rate else 0 %}
+      <p class="text-2xl font-semibold mt-1 {% if rate >= 80 %}text-success{% elif rate >= 50 %}text-warning{% else %}text-error{% endif %}">
+        {{ rate }}%
+      </p>
+    </div>
+    <div class="bg-white rounded-xl p-5 border border-stone-200">
+      <p class="text-xs text-stone-400 uppercase tracking-wide">Avg Cost</p>
+      <p class="text-2xl font-semibold text-charcoal mt-1">${{ "%.4f" | format(metadata.avg_cost_usd or 0) }}</p>
+    </div>
+    <div class="bg-white rounded-xl p-5 border border-stone-200">
+      <p class="text-xs text-stone-400 uppercase tracking-wide">Block Count</p>
+      <p class="text-2xl font-semibold {% if metadata.block_count > 3 %}text-warning{% else %}text-charcoal{% endif %} mt-1">
+        {{ metadata.block_count or 0 }}
+      </p>
+    </div>
+    <div class="bg-white rounded-xl p-5 border border-stone-200">
+      <p class="text-xs text-stone-400 uppercase tracking-wide">Strategy</p>
+      <p class="text-lg font-medium text-charcoal mt-1">
+        {% if metadata.last_successful_strategy == 'basic_http' %}
+          Basic HTTP
+        {% elif metadata.last_successful_strategy == 'headless_browser' %}
+          Headless
+        {% elif metadata.last_successful_strategy == 'headless_proxy' %}
+          Proxy
+        {% else %}
+          -
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Data Breakdown -->
+  {% if breakdown %}
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <h2 class="text-sm font-medium text-slate uppercase tracking-wide mb-4">Data Extracted</h2>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {% for data_type, count in breakdown.items() %}
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <p class="text-2xl font-semibold text-charcoal">{{ count }}</p>
+        <p class="text-sm text-slate">{{ data_type | replace('_', ' ') | title }}</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-4 pt-4 border-t border-stone-100">
+      <a href="/results?domain={{ domain }}" class="text-sm text-accent hover:underline">
+        View all data for this domain &rarr;
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent Jobs -->
+  <div class="bg-white rounded-xl border border-stone-200">
+    <div class="px-6 py-4 border-b border-stone-100">
+      <h2 class="text-sm font-medium text-slate uppercase tracking-wide">Recent Jobs</h2>
+    </div>
+
+    {% if jobs %}
+    <div class="divide-y divide-stone-100">
+      {% for job in jobs %}
+      <a href="/jobs/{{ job.id }}" class="block px-6 py-4 hover:bg-stone-50 transition-colors">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div>
+              {% if job.status == 'running' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-running animate-pulse-gentle inline-block"></span>
+              {% elif job.status == 'completed' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-success inline-block"></span>
+              {% elif job.status == 'failed' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-error inline-block"></span>
+              {% else %}
+                <span class="w-2.5 h-2.5 rounded-full bg-warning inline-block"></span>
+              {% endif %}
+            </div>
+            <div>
+              <p class="font-medium text-charcoal capitalize">{{ job.status }}</p>
+              <p class="text-sm text-stone-400">
+                {{ job.pages_scraped }} pages &middot; ${{ "%.4f" | format(job.cost_usd) }}
+              </p>
+            </div>
+          </div>
+          <span class="text-sm text-stone-400">{{ job.created_at | timeago }}</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-8 text-center">
+      <p class="text-stone-500">No jobs found for this domain</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

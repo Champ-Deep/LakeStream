@@ -1,0 +1,62 @@
+{% if jobs %}
+<div class="divide-y divide-stone-100">
+  {% for job in jobs %}
+  <a
+    href="/jobs/{{ job.id }}"
+    class="block px-6 py-4 hover:bg-stone-50 transition-colors"
+  >
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <!-- Status Indicator -->
+        <div class="flex-shrink-0">
+          {% if job.status == 'running' %}
+            <span class="w-2.5 h-2.5 rounded-full bg-running animate-pulse-gentle inline-block"></span>
+          {% elif job.status == 'completed' %}
+            <span class="w-2.5 h-2.5 rounded-full bg-success inline-block"></span>
+          {% elif job.status == 'failed' %}
+            <span class="w-2.5 h-2.5 rounded-full bg-error inline-block"></span>
+          {% else %}
+            <span class="w-2.5 h-2.5 rounded-full bg-warning inline-block"></span>
+          {% endif %}
+        </div>
+
+        <!-- Domain & Status -->
+        <div>
+          <p class="font-medium text-charcoal">{{ job.domain }}</p>
+          <p class="text-sm text-stone-400">
+            {% if job.status == 'running' %}
+              {{ job.pages_scraped }} pages scraped
+            {% elif job.status == 'completed' %}
+              {{ job.pages_scraped }} pages &middot; ${{ "%.4f" | format(job.cost_usd) }}
+            {% elif job.status == 'failed' %}
+              Failed: {{ job.error_message | truncate(40) if job.error_message else 'Unknown error' }}
+            {% else %}
+              Queued
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <!-- Time & Arrow -->
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-stone-400">{{ job.created_at | timeago }}</span>
+        <svg class="w-4 h-4 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="p-12 text-center">
+  <div class="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
+    <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+  </div>
+  <p class="text-stone-500 mb-2">No jobs yet</p>
+  <p class="text-sm text-stone-400">Start by entering a website URL above</p>
+</div>
+{% endif %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Job: {{ job.domain }} - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+  <!-- Back Link -->
+  <a href="/jobs" class="text-sm text-accent hover:underline inline-block">&larr; Back to Jobs</a>
+
+  <!-- Job Header -->
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <div class="flex items-start justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-charcoal">{{ job.domain }}</h1>
+        <p class="text-slate mt-1">Started {{ job.created_at | timeago }}</p>
+      </div>
+
+      <!-- Status Badge -->
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full
+        {% if job.status == 'running' %}bg-running/10 text-running
+        {% elif job.status == 'completed' %}bg-success/10 text-success
+        {% elif job.status == 'failed' %}bg-error/10 text-error
+        {% else %}bg-warning/10 text-warning{% endif %}
+      ">
+        {% if job.status == 'running' %}
+          <span class="w-2 h-2 rounded-full bg-current animate-pulse-gentle"></span>
+        {% else %}
+          <span class="w-2 h-2 rounded-full bg-current"></span>
+        {% endif %}
+        <span class="text-sm font-medium capitalize">{{ job.status }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Status Panel (polls while running) -->
+  <div
+    id="job-status-panel"
+    hx-get="/partials/job/{{ job.id }}/status"
+    hx-trigger="{% if job.status == 'running' %}every 2s{% endif %}"
+    hx-swap="innerHTML"
+  >
+    {% include "partials/job_status.html" %}
+  </div>
+
+  <!-- Actions -->
+  <div class="flex items-center gap-4">
+    {% if job.status == 'completed' %}
+      <a
+        href="/results?domain={{ job.domain }}"
+        class="flex-1 py-3 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors text-center"
+      >
+        View Results
+      </a>
+      <a
+        href="/api/export/csv/{{ job.id }}"
+        class="py-3 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors"
+      >
+        Export CSV
+      </a>
+    {% elif job.status == 'running' %}
+      <button
+        class="flex-1 py-3 px-4 bg-stone-100 text-stone-400 font-medium rounded-lg cursor-not-allowed"
+        disabled
+      >
+        <span class="flex items-center justify-center gap-2">
+          <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Scraping in progress...
+        </span>
+      </button>
+    {% elif job.status == 'failed' %}
+      <a
+        href="/jobs/new?domain={{ job.domain }}"
+        class="flex-1 py-3 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors text-center"
+      >
+        Try Again
+      </a>
+    {% else %}
+      <button
+        class="flex-1 py-3 px-4 bg-stone-100 text-stone-400 font-medium rounded-lg cursor-not-allowed"
+        disabled
+      >
+        Queued - waiting to start
+      </button>
+    {% endif %}
+  </div>
+
+  <!-- Error Message (if failed) -->
+  {% if job.status == 'failed' and job.error_message %}
+  <div class="bg-error/5 border border-error/20 rounded-xl p-5">
+    <div class="flex items-start gap-3">
+      <svg class="w-5 h-5 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <div>
+        <p class="text-sm font-medium text-error">Error Details</p>
+        <p class="text-sm text-slate mt-1">{{ job.error_message }}</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Job Details -->
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <h2 class="text-sm font-medium text-slate uppercase tracking-wide mb-4">Job Details</h2>
+
+    <dl class="space-y-4">
+      <div class="flex justify-between">
+        <dt class="text-slate">Job ID</dt>
+        <dd class="text-charcoal font-mono text-sm">{{ job.id }}</dd>
+      </div>
+      <div class="flex justify-between">
+        <dt class="text-slate">Template</dt>
+        <dd class="text-charcoal">{{ job.template_id | title }}</dd>
+      </div>
+      {% if job.strategy_used %}
+      <div class="flex justify-between">
+        <dt class="text-slate">Strategy</dt>
+        <dd class="text-charcoal">
+          {% if job.strategy_used == 'basic_http' %}
+            Basic HTTP
+          {% elif job.strategy_used == 'headless_browser' %}
+            Headless Browser
+          {% elif job.strategy_used == 'headless_proxy' %}
+            Headless + Proxy
+          {% else %}
+            {{ job.strategy_used }}
+          {% endif %}
+        </dd>
+      </div>
+      {% endif %}
+      <div class="flex justify-between">
+        <dt class="text-slate">Created</dt>
+        <dd class="text-charcoal">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') if job.created_at else '-' }}</dd>
+      </div>
+      {% if job.completed_at %}
+      <div class="flex justify-between">
+        <dt class="text-slate">Completed</dt>
+        <dd class="text-charcoal">{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+  </div>
+
+</div>
+{% endblock %}

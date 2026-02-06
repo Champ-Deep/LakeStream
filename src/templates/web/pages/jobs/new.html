@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}New Scrape Job - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-8">
+
+  <!-- Page Header -->
+  <div>
+    <a href="/jobs" class="text-sm text-brand-red hover:underline mb-2 inline-flex items-center gap-1">
+      <i data-lucide="arrow-left" class="w-4 h-4"></i>
+      Back to Jobs
+    </a>
+    <h1 class="text-3xl font-extrabold text-navy mt-2">Start a New Scrape</h1>
+    <p class="text-slate-500 mt-1">Enter a website URL and choose what data to extract</p>
+  </div>
+
+  <!-- Main Form -->
+  <form
+    id="new-job-form"
+    x-data="{
+      domain: '',
+      dataTypes: ['blog_url', 'article', 'contact'],
+      maxPages: 100,
+      templateId: '',
+      priority: 5,
+      showAdvanced: false,
+      errors: {},
+      loading: false,
+
+      validateDomain() {
+        if (!this.domain) {
+          this.errors.domain = 'Please enter a website URL';
+          return false;
+        }
+        let url = this.domain.trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        try {
+          new URL(url);
+          this.domain = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+          delete this.errors.domain;
+          return true;
+        } catch {
+          this.errors.domain = 'Please enter a valid URL';
+          return false;
+        }
+      },
+
+      validateDataTypes() {
+        if (this.dataTypes.length === 0) {
+          this.errors.dataTypes = 'Please select at least one data type';
+          return false;
+        }
+        delete this.errors.dataTypes;
+        return true;
+      },
+
+      async submit() {
+        if (!this.validateDomain() || !this.validateDataTypes()) return;
+
+        this.loading = true;
+
+        const payload = {
+          domain: this.domain,
+          data_types: this.dataTypes,
+          max_pages: this.maxPages,
+          priority: this.priority
+        };
+
+        if (this.templateId) {
+          payload.template_id = this.templateId;
+        }
+
+        try {
+          const response = await fetch('/api/scrape/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.job_id) {
+            Alpine.store('toast').show('Scrape job started!', 'success');
+            setTimeout(() => {
+              window.location.href = '/jobs/' + data.job_id;
+            }, 500);
+          } else {
+            Alpine.store('toast').show(data.detail || 'Failed to create job', 'error');
+            this.loading = false;
+          }
+        } catch (err) {
+          Alpine.store('toast').show('Network error. Please try again.', 'error');
+          this.loading = false;
+        }
+      }
+    }"
+    @submit.prevent="submit()"
+    class="card p-8"
+  >
+    <div class="space-y-6">
+
+      <!-- Domain Input -->
+      <div id="quick-start-input">
+        <label for="domain" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+          Website URL
+          <span class="text-brand-red">*</span>
+        </label>
+        <input
+          type="text"
+          id="domain"
+          x-model="domain"
+          @blur="validateDomain()"
+          placeholder="example.com"
+          class="input input-lg"
+          :class="{ 'border-error': errors.domain }"
+        >
+        <p x-show="errors.domain" x-text="errors.domain" class="mt-2 text-sm text-error"></p>
+        <p class="mt-2 text-xs text-slate-400">Enter just the domain name or full URL</p>
+      </div>
+
+      <!-- Data Types -->
+      <div id="data-type-checkboxes">
+        <label class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">
+          What to extract
+          <span class="text-brand-red">*</span>
+        </label>
+        <div class="space-y-3">
+          {% for dt in data_types %}
+          <label class="flex items-center gap-3 cursor-pointer group p-3 rounded-xl border-2 border-slate-200 hover:border-slate-300 transition-colors"
+                 :class="{ 'border-brand-red bg-red-50/30': dataTypes.includes('{{ dt.value }}') }">
+            <input
+              type="checkbox"
+              value="{{ dt.value }}"
+              x-model="dataTypes"
+              {% if dt.default %}checked{% endif %}
+              class="w-5 h-5 rounded border-slate-300 text-brand-red focus:ring-brand-red/20 transition-colors"
+            >
+            <span class="text-navy font-medium group-hover:text-brand-red transition-colors">
+              {{ dt.label }}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <p x-show="errors.dataTypes" x-text="errors.dataTypes" class="mt-2 text-sm text-error"></p>
+      </div>
+
+      <!-- Advanced Options (Collapsible) -->
+      <div class="border-t border-slate-100 pt-6">
+        <button
+          type="button"
+          @click="showAdvanced = !showAdvanced"
+          class="flex items-center justify-between w-full text-left p-3 rounded-xl hover:bg-slate-50 transition-colors"
+        >
+          <span class="text-sm font-bold text-navy">Advanced options</span>
+          <i
+            data-lucide="chevron-down"
+            class="w-5 h-5 text-slate-400 transition-transform"
+            :class="{ 'rotate-180': showAdvanced }"
+          ></i>
+        </button>
+
+        <div x-show="showAdvanced" x-collapse class="mt-4 space-y-4 pl-3">
+          <!-- Max Pages -->
+          <div>
+            <label for="max-pages" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+              Maximum pages to scrape
+            </label>
+            <div class="flex items-center gap-4">
+              <input
+                type="range"
+                id="max-pages"
+                x-model="maxPages"
+                min="10"
+                max="500"
+                step="10"
+                class="flex-1 accent-brand-red"
+              >
+              <span class="text-sm font-bold text-navy w-12 text-right" x-text="maxPages"></span>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">Higher values take longer but find more data</p>
+          </div>
+
+          <!-- Template Selection -->
+          <div>
+            <label for="template" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+              Template
+            </label>
+            <select
+              id="template"
+              x-model="templateId"
+              class="select"
+            >
+              <option value="">Auto-detect (recommended)</option>
+              {% for template in templates %}
+              <option value="{{ template.id }}">{{ template.name }}</option>
+              {% endfor %}
+            </select>
+            <p class="mt-2 text-xs text-slate-400">We automatically detect WordPress, HubSpot, and Webflow sites</p>
+          </div>
+
+          <!-- Priority -->
+          <div>
+            <label for="priority" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+              Priority
+            </label>
+            <select
+              id="priority"
+              x-model.number="priority"
+              class="select"
+            >
+              <option value="1">Low (1)</option>
+              <option value="5">Normal (5)</option>
+              <option value="10">High (10)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit Button -->
+      <button
+        type="submit"
+        id="start-scrape-btn"
+        :disabled="loading"
+        class="w-full brand-gradient text-white py-4 px-6 rounded-full font-bold shadow-lg btn-hover-effect transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-3"
+      >
+        <template x-if="!loading">
+          <span class="flex items-center gap-2">
+            <i data-lucide="globe" class="w-5 h-5"></i>
+            Start Scraping
+          </span>
+        </template>
+        <template x-if="loading">
+          <span class="flex items-center gap-2">
+            <div class="spinner border-white border-t-transparent"></div>
+            Starting...
+          </span>
+        </template>
+      </button>
+    </div>
+  </form>
+
+  <!-- Help Tip -->
+  <div class="brand-gradient-subtle rounded-3xl p-6 flex items-start gap-5">
+    <div class="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+      <i data-lucide="info" class="w-6 h-6 text-white"></i>
+    </div>
+    <div>
+      <p class="font-bold text-navy">How it works</p>
+      <p class="text-sm text-slate-600 mt-1 leading-relaxed">
+        We'll map the website structure, identify blog posts, team pages, and resources,
+        then extract the data you selected. The process typically takes 1-5 minutes
+        depending on site size.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- Alpine.js collapse plugin -->
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.directive('collapse', (el, { expression }, { effect }) => {
+      el.style.overflow = 'hidden';
+      el.style.transition = 'max-height 0.3s ease';
+
+      effect(() => {
+        const isOpen = Alpine.evaluate(el, expression !== '' ? expression : 'true');
+        if (isOpen) {
+          el.style.maxHeight = el.scrollHeight + 'px';
+        } else {
+          el.style.maxHeight = '0px';
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

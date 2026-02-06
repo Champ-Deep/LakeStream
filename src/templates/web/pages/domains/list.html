@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Domains - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Page Header -->
+  <div>
+    <h1 class="text-2xl font-semibold text-charcoal">Domain Analytics</h1>
+    <p class="text-slate mt-1">Track performance and health of scraped domains</p>
+  </div>
+
+  <!-- Sort Options -->
+  <div class="bg-white rounded-xl border border-stone-200 p-4">
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-slate">Sort by:</span>
+      <a
+        href="/domains?sort_by=last_scraped_at"
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors
+          {% if sort_by == 'last_scraped_at' %}bg-accent text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+      >
+        Recent
+      </a>
+      <a
+        href="/domains?sort_by=success_rate"
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors
+          {% if sort_by == 'success_rate' %}bg-accent text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+      >
+        Success Rate
+      </a>
+      <a
+        href="/domains?sort_by=avg_cost_usd"
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors
+          {% if sort_by == 'avg_cost_usd' %}bg-accent text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+      >
+        Cost
+      </a>
+      <a
+        href="/domains?sort_by=domain"
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors
+          {% if sort_by == 'domain' %}bg-accent text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+      >
+        Name
+      </a>
+    </div>
+  </div>
+
+  <!-- Domains Table -->
+  <div class="bg-white rounded-xl border border-stone-200 overflow-hidden">
+    {% if domains %}
+    <table class="w-full">
+      <thead class="bg-stone-50 border-b border-stone-200">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Domain</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Success Rate</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Avg Cost</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Strategy</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Last Scraped</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Health</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-stone-100">
+        {% for domain in domains %}
+        <tr class="table-row-hover">
+          <td class="px-6 py-4">
+            <a href="/domains/{{ domain.domain }}" class="font-medium text-charcoal hover:text-accent">
+              {{ domain.domain }}
+            </a>
+          </td>
+          <td class="px-6 py-4">
+            {% set rate = (domain.success_rate * 100) | int if domain.success_rate else 0 %}
+            <div class="flex items-center gap-2">
+              <div class="w-16 h-2 bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full
+                    {% if rate >= 80 %}bg-success{% elif rate >= 50 %}bg-warning{% else %}bg-error{% endif %}"
+                  style="width: {{ rate }}%;"
+                ></div>
+              </div>
+              <span class="text-sm {% if rate >= 80 %}text-success{% elif rate >= 50 %}text-warning{% else %}text-error{% endif %}">
+                {{ rate }}%
+              </span>
+            </div>
+          </td>
+          <td class="px-6 py-4 text-sm text-charcoal">
+            ${{ "%.4f" | format(domain.avg_cost_usd or 0) }}
+          </td>
+          <td class="px-6 py-4 text-sm text-charcoal">
+            {% if domain.last_successful_strategy == 'basic_http' %}
+              Basic HTTP
+            {% elif domain.last_successful_strategy == 'headless_browser' %}
+              Headless
+            {% elif domain.last_successful_strategy == 'headless_proxy' %}
+              Proxy
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 text-sm text-slate">
+            {{ domain.last_scraped_at | timeago if domain.last_scraped_at else 'Never' }}
+          </td>
+          <td class="px-6 py-4">
+            {% if domain.block_count and domain.block_count > 3 %}
+              <span class="inline-flex items-center gap-1 px-2 py-1 bg-warning/10 text-warning rounded-full text-xs">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                Needs attention
+              </span>
+            {% elif rate >= 80 %}
+              <span class="inline-flex items-center gap-1 px-2 py-1 bg-success/10 text-success rounded-full text-xs">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                Healthy
+              </span>
+            {% else %}
+              <span class="text-xs text-stone-400">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-12 text-center">
+      <div class="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+        </svg>
+      </div>
+      <p class="text-stone-500 mb-2">No domains tracked yet</p>
+      <p class="text-sm text-stone-400 mb-4">Domains will appear here after you scrape them</p>
+      <a
+        href="/jobs/new"
+        class="inline-flex items-center gap-2 py-2 px-4 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-dark transition-colors"
+      >
+        Start Scraping
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Legend -->
+  {% if domains %}
+  <div class="flex items-center justify-center gap-6 text-xs text-stone-400">
+    <span class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-success"></span>
+      Healthy (80%+ success)
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-warning"></span>
+      Needs attention
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-error"></span>
+      Low success rate
+    </span>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

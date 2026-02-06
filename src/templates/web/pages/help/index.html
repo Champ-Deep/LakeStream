@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Help - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-8">
+
+  <!-- Page Header -->
+  <div class="text-center">
+    <h1 class="text-2xl font-semibold text-charcoal">Help & Guides</h1>
+    <p class="text-slate mt-1">Everything you need to know about using Lake B2B Scraper</p>
+  </div>
+
+  <!-- Quick Start -->
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <h2 class="text-lg font-medium text-charcoal mb-4">Quick Start</h2>
+
+    <div class="space-y-4">
+      <div class="flex items-start gap-4">
+        <div class="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-accent font-medium">1</span>
+        </div>
+        <div>
+          <p class="font-medium text-charcoal">Enter a website URL</p>
+          <p class="text-sm text-slate mt-1">
+            Go to the <a href="/" class="text-accent hover:underline">Dashboard</a> and enter the website you want to scrape.
+            Just the domain name is fine (e.g., "example.com").
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-4">
+        <div class="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-accent font-medium">2</span>
+        </div>
+        <div>
+          <p class="font-medium text-charcoal">Select what data to extract</p>
+          <p class="text-sm text-slate mt-1">
+            Choose from blog posts, articles, contacts, tech stack, resources, or pricing.
+            Most options are selected by default.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-4">
+        <div class="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-accent font-medium">3</span>
+        </div>
+        <div>
+          <p class="font-medium text-charcoal">Wait for results</p>
+          <p class="text-sm text-slate mt-1">
+            The scraping process typically takes 1-5 minutes. You can watch the progress
+            in real-time on the job status page.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-4">
+        <div class="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-accent font-medium">4</span>
+        </div>
+        <div>
+          <p class="font-medium text-charcoal">Export your data</p>
+          <p class="text-sm text-slate mt-1">
+            Once complete, browse your results and export them as CSV or send to a webhook.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 pt-6 border-t border-stone-100">
+      <button
+        @click="$store.guide.start()"
+        class="inline-flex items-center gap-2 py-2 px-4 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-dark transition-colors"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Start Interactive Tour
+      </button>
+    </div>
+  </div>
+
+  <!-- Data Types Explained -->
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <h2 class="text-lg font-medium text-charcoal mb-4">Data Types Explained</h2>
+
+    <div class="space-y-4">
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">Blog URLs</span>
+        </div>
+        <p class="text-sm text-slate">
+          Discovers the blog section of a website and collects all article URLs.
+          Useful for content analysis and competitive research.
+        </p>
+      </div>
+
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs font-medium">Articles</span>
+        </div>
+        <p class="text-sm text-slate">
+          Extracts article content including title, author, publish date, categories,
+          and word count. Great for content intelligence.
+        </p>
+      </div>
+
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs font-medium">Contacts</span>
+        </div>
+        <p class="text-sm text-slate">
+          Finds team members and contact information from about/team pages.
+          Includes names, job titles, emails, phones, and LinkedIn URLs.
+        </p>
+      </div>
+
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2 py-0.5 bg-orange-50 text-orange-700 rounded text-xs font-medium">Tech Stack</span>
+        </div>
+        <p class="text-sm text-slate">
+          Detects technologies used by the website: CMS (WordPress, HubSpot),
+          analytics, marketing tools, frameworks, and CDNs.
+        </p>
+      </div>
+
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2 py-0.5 bg-pink-50 text-pink-700 rounded text-xs font-medium">Resources</span>
+        </div>
+        <p class="text-sm text-slate">
+          Finds downloadable content like whitepapers, case studies, ebooks,
+          and webinar recordings. Identifies gated vs. ungated content.
+        </p>
+      </div>
+
+      <div class="p-4 bg-stone-50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2 py-0.5 bg-stone-100 text-stone-600 rounded text-xs font-medium">Pricing</span>
+        </div>
+        <p class="text-sm text-slate">
+          Extracts pricing information from pricing pages. Useful for
+          competitive pricing analysis.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAQs -->
+  <div class="bg-white rounded-xl border border-stone-200 p-6">
+    <h2 class="text-lg font-medium text-charcoal mb-4">Common Questions</h2>
+
+    <div class="space-y-4" x-data="{ open: null }">
+      <!-- FAQ Item -->
+      <div class="border-b border-stone-100 pb-4">
+        <button
+          @click="open = open === 1 ? null : 1"
+          class="flex items-center justify-between w-full text-left"
+        >
+          <span class="font-medium text-charcoal">Why did my scrape fail?</span>
+          <svg
+            class="w-5 h-5 text-stone-400 transition-transform"
+            :class="{ 'rotate-180': open === 1 }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div x-show="open === 1" x-collapse class="mt-2 text-sm text-slate">
+          <p>
+            Scrapes can fail for several reasons:
+          </p>
+          <ul class="list-disc list-inside mt-2 space-y-1">
+            <li>The website blocked our requests (we automatically try different strategies)</li>
+            <li>The website requires login or has a paywall</li>
+            <li>The website uses complex JavaScript that we couldn't render</li>
+            <li>Network issues or timeout</li>
+          </ul>
+          <p class="mt-2">
+            You can try again with the "Try Again" button, or contact support if the issue persists.
+          </p>
+        </div>
+      </div>
+
+      <!-- FAQ Item -->
+      <div class="border-b border-stone-100 pb-4">
+        <button
+          @click="open = open === 2 ? null : 2"
+          class="flex items-center justify-between w-full text-left"
+        >
+          <span class="font-medium text-charcoal">What are the different strategies?</span>
+          <svg
+            class="w-5 h-5 text-stone-400 transition-transform"
+            :class="{ 'rotate-180': open === 2 }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div x-show="open === 2" x-collapse class="mt-2 text-sm text-slate">
+          <p>
+            We use a three-tier adaptive scraping system:
+          </p>
+          <ul class="list-disc list-inside mt-2 space-y-1">
+            <li><strong>Basic HTTP</strong> - Fast and cheap (~$0.0001/page). Works for most simple sites.</li>
+            <li><strong>Headless Browser</strong> - Renders JavaScript (~$0.002/page). For complex SPAs.</li>
+            <li><strong>Headless + Proxy</strong> - Uses residential proxies (~$0.004/page). For sites with bot detection.</li>
+          </ul>
+          <p class="mt-2">
+            We automatically start with the cheapest strategy and escalate only when needed.
+          </p>
+        </div>
+      </div>
+
+      <!-- FAQ Item -->
+      <div class="border-b border-stone-100 pb-4">
+        <button
+          @click="open = open === 3 ? null : 3"
+          class="flex items-center justify-between w-full text-left"
+        >
+          <span class="font-medium text-charcoal">How do I export my data?</span>
+          <svg
+            class="w-5 h-5 text-stone-400 transition-transform"
+            :class="{ 'rotate-180': open === 3 }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div x-show="open === 3" x-collapse class="mt-2 text-sm text-slate">
+          <p>
+            You have two export options:
+          </p>
+          <ul class="list-disc list-inside mt-2 space-y-1">
+            <li><strong>CSV Download</strong> - Click "Export CSV" on the job status page or results page to download a spreadsheet.</li>
+            <li><strong>Webhook</strong> - Send data to your own endpoint automatically.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- FAQ Item -->
+      <div>
+        <button
+          @click="open = open === 4 ? null : 4"
+          class="flex items-center justify-between w-full text-left"
+        >
+          <span class="font-medium text-charcoal">What templates are available?</span>
+          <svg
+            class="w-5 h-5 text-stone-400 transition-transform"
+            :class="{ 'rotate-180': open === 4 }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div x-show="open === 4" x-collapse class="mt-2 text-sm text-slate">
+          <p>
+            We automatically detect and optimize for:
+          </p>
+          <ul class="list-disc list-inside mt-2 space-y-1">
+            <li><strong>WordPress</strong> - Most common CMS, excellent extraction quality</li>
+            <li><strong>HubSpot</strong> - Marketing sites and blogs</li>
+            <li><strong>Webflow</strong> - Modern marketing sites</li>
+            <li><strong>Generic</strong> - Works for any site (fallback)</li>
+            <li><strong>Directory</strong> - For listing/directory sites (manual selection)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contact -->
+  <div class="bg-accent-light/50 rounded-xl p-6 text-center">
+    <p class="text-charcoal font-medium">Still need help?</p>
+    <p class="text-sm text-slate mt-1">
+      Contact support at
+      <a href="mailto:support@lakeb2b.com" class="text-accent hover:underline">support@lakeb2b.com</a>
+    </p>
+  </div>
+
+</div>
+{% endblock %}

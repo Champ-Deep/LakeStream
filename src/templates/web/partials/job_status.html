@@ -1,0 +1,101 @@
+{% if job %}
+<div
+  class="bg-white rounded-xl border border-stone-200 p-6"
+  data-status="{{ job.status }}"
+>
+  <!-- Progress Bar (for running jobs) -->
+  {% if job.status == 'running' %}
+  <div class="mb-6">
+    <div class="h-2 bg-stone-100 rounded-full overflow-hidden">
+      <div class="h-full bg-running progress-indeterminate" style="width: 25%;"></div>
+    </div>
+    <p class="text-xs text-stone-400 mt-2 text-center">Scraping in progress...</p>
+  </div>
+  {% elif job.status == 'completed' %}
+  <div class="mb-6">
+    <div class="h-2 bg-success/20 rounded-full overflow-hidden">
+      <div class="h-full bg-success" style="width: 100%;"></div>
+    </div>
+    <p class="text-xs text-success mt-2 text-center">Completed successfully</p>
+  </div>
+  {% elif job.status == 'failed' %}
+  <div class="mb-6">
+    <div class="h-2 bg-error/20 rounded-full overflow-hidden">
+      <div class="h-full bg-error" style="width: 100%;"></div>
+    </div>
+    <p class="text-xs text-error mt-2 text-center">Failed</p>
+  </div>
+  {% endif %}
+
+  <!-- Stats Grid -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <!-- Pages Scraped -->
+    <div class="text-center p-4 bg-stone-50 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal">{{ job.pages_scraped }}</p>
+      <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Pages</p>
+    </div>
+
+    <!-- Data Found -->
+    <div class="text-center p-4 bg-stone-50 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal">{{ data_count }}</p>
+      <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Items Found</p>
+    </div>
+
+    <!-- Cost -->
+    <div class="text-center p-4 bg-stone-50 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal">${{ "%.4f" | format(job.cost_usd) }}</p>
+      <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Cost</p>
+    </div>
+
+    <!-- Duration -->
+    <div class="text-center p-4 bg-stone-50 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal">
+        {% if job.duration_ms %}
+          {% set seconds = (job.duration_ms / 1000) | int %}
+          {% if seconds < 60 %}
+            {{ seconds }}s
+          {% else %}
+            {{ (seconds / 60) | int }}m {{ seconds % 60 }}s
+          {% endif %}
+        {% elif job.status == 'running' %}
+          <span class="text-running">...</span>
+        {% else %}
+          -
+        {% endif %}
+      </p>
+      <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Duration</p>
+    </div>
+  </div>
+
+  <!-- Strategy Used -->
+  {% if job.strategy_used %}
+  <div class="mt-4 pt-4 border-t border-stone-100 text-center">
+    <span class="text-xs text-stone-400 uppercase tracking-wide">Strategy: </span>
+    <span class="text-sm text-charcoal">
+      {% if job.strategy_used == 'basic_http' %}
+        <span class="inline-flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-success"></span>
+          Basic HTTP
+        </span>
+      {% elif job.strategy_used == 'headless_browser' %}
+        <span class="inline-flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-warning"></span>
+          Headless Browser
+        </span>
+      {% elif job.strategy_used == 'headless_proxy' %}
+        <span class="inline-flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-error"></span>
+          Headless + Proxy
+        </span>
+      {% else %}
+        {{ job.strategy_used }}
+      {% endif %}
+    </span>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="bg-white rounded-xl border border-stone-200 p-6 text-center">
+  <p class="text-stone-400">Job not found</p>
+</div>
+{% endif %}

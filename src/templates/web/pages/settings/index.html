@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+  <!-- Page Header -->
+  <div>
+    <h1 class="text-3xl font-extrabold text-navy">Settings</h1>
+    <p class="text-slate-500 mt-1">Configure webhooks and integrations for your scraping workflows</p>
+  </div>
+
+  <!-- n8n Integration Card -->
+  <div class="card p-8">
+    <div class="flex items-start gap-6">
+      <div class="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+        <i data-lucide="webhook" class="w-7 h-7 text-white"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy mb-1">n8n Integration</h2>
+        <p class="text-slate-500 text-sm">
+          Connect your Lake B2B Scraper to n8n workflows via webhooks. Trigger scrapes from n8n or send results to your workflows.
+        </p>
+      </div>
+    </div>
+
+    <div class="h-1 brand-gradient rounded-full my-8 opacity-20"></div>
+
+    <!-- Webhook Trigger (Inbound) -->
+    <div class="mb-10">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
+          <i data-lucide="arrow-down-to-line" class="w-5 h-5 text-blue-600"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-navy">Trigger Scrapes via Webhook</h3>
+          <p class="text-sm text-slate-400">n8n can POST to this endpoint to start a scrape job</p>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 rounded-2xl p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Webhook URL</label>
+          <div class="flex items-center gap-3">
+            <input
+              type="text"
+              readonly
+              value="{{ webhook_trigger_url }}"
+              class="input font-mono text-sm bg-white flex-1"
+              id="trigger-url"
+            >
+            <button
+              onclick="copyToClipboard('trigger-url', this)"
+              class="px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2"
+            >
+              <i data-lucide="copy" class="w-4 h-4"></i>
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Method</label>
+          <span class="badge badge-info">POST</span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body Example</label>
+          <div class="code-block">
+<pre>{
+  "domain": "example.com",
+  "data_types": ["blog_url", "article", "contact"],
+  "max_pages": 100,
+  "template_id": "auto"
+}</pre>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response</label>
+          <div class="code-block">
+<pre>{
+  "success": true,
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status_url": "/jobs/550e8400-e29b-41d4-a716-446655440000"
+}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Webhook (Outbound) -->
+    <div>
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
+          <i data-lucide="arrow-up-from-line" class="w-5 h-5 text-green-600"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-navy">Send Results to Webhook</h3>
+          <p class="text-sm text-slate-400">Automatically POST scraped data to your n8n webhook</p>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 rounded-2xl p-6 space-y-6" x-data="webhookSettings()">
+        <!-- Webhook URL Input -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Your n8n Webhook URL</label>
+          <div class="flex items-center gap-3">
+            <input
+              type="url"
+              x-model="exportUrl"
+              placeholder="https://your-n8n-instance.com/webhook/..."
+              class="input flex-1"
+            >
+            <button
+              @click="testWebhook()"
+              :disabled="!exportUrl || testing"
+              class="px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <template x-if="testing">
+                <div class="spinner"></div>
+              </template>
+              <template x-if="!testing">
+                <i data-lucide="zap" class="w-4 h-4"></i>
+              </template>
+              Test
+            </button>
+          </div>
+          <p class="text-xs text-slate-400 mt-2">Enter your n8n webhook URL to receive scraped data automatically</p>
+        </div>
+
+        <!-- Test Result -->
+        <div x-show="testResult" x-cloak>
+          <div
+            :class="testResult === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
+            class="border rounded-xl p-4 flex items-center gap-3"
+          >
+            <template x-if="testResult === 'success'">
+              <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+            </template>
+            <template x-if="testResult === 'error'">
+              <i data-lucide="x-circle" class="w-5 h-5 text-red-600"></i>
+            </template>
+            <span
+              :class="testResult === 'success' ? 'text-green-700' : 'text-red-700'"
+              class="text-sm font-medium"
+              x-text="testMessage"
+            ></span>
+          </div>
+        </div>
+
+        <!-- Auto-send Options -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Auto-send Options</label>
+          <div class="space-y-3">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" x-model="autoSendOnComplete" class="w-5 h-5 rounded">
+              <span class="text-sm text-slate-600">Send data automatically when a job completes</span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" x-model="includeMetadata" class="w-5 h-5 rounded">
+              <span class="text-sm text-slate-600">Include full metadata in webhook payload</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="flex items-center justify-between pt-4 border-t border-slate-200">
+          <p class="text-xs text-slate-400" x-show="saved" x-cloak>
+            <i data-lucide="check" class="w-3 h-3 inline"></i> Settings saved
+          </p>
+          <button
+            @click="saveSettings()"
+            class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2 ml-auto"
+          >
+            <i data-lucide="save" class="w-4 h-4"></i>
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Export Card -->
+  <div class="card p-8">
+    <div class="flex items-start gap-6">
+      <div class="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+        <i data-lucide="file-down" class="w-7 h-7 text-purple-600"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy mb-1">Quick Export</h2>
+        <p class="text-slate-500 text-sm">
+          Manually send data to a webhook or export via API
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-6 grid md:grid-cols-2 gap-6">
+      <!-- Export All Data -->
+      <div class="bg-slate-50 rounded-2xl p-6">
+        <h4 class="font-bold text-navy mb-2">Export All Data</h4>
+        <p class="text-sm text-slate-500 mb-4">Send all scraped data to a webhook endpoint</p>
+        <form
+          hx-post="/api/export/webhook"
+          hx-target="#export-result"
+          hx-swap="innerHTML"
+          class="space-y-3"
+        >
+          <input
+            type="url"
+            name="url"
+            placeholder="https://webhook.url/..."
+            required
+            class="input text-sm"
+          >
+          <button type="submit" class="w-full btn-secondary text-sm py-2.5">
+            <i data-lucide="send" class="w-4 h-4 inline mr-2"></i>
+            Send to Webhook
+          </button>
+        </form>
+      </div>
+
+      <!-- Export by Domain -->
+      <div class="bg-slate-50 rounded-2xl p-6">
+        <h4 class="font-bold text-navy mb-2">Export by Domain</h4>
+        <p class="text-sm text-slate-500 mb-4">Send data from a specific domain</p>
+        <form
+          hx-post="/api/export/webhook"
+          hx-target="#export-result"
+          hx-swap="innerHTML"
+          class="space-y-3"
+        >
+          <input
+            type="url"
+            name="url"
+            placeholder="https://webhook.url/..."
+            required
+            class="input text-sm"
+          >
+          <input
+            type="text"
+            name="domain"
+            placeholder="example.com"
+            class="input text-sm"
+          >
+          <button type="submit" class="w-full btn-secondary text-sm py-2.5">
+            <i data-lucide="send" class="w-4 h-4 inline mr-2"></i>
+            Send to Webhook
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div id="export-result" class="mt-4"></div>
+  </div>
+
+  <!-- API Documentation Card -->
+  <div class="card p-8">
+    <div class="flex items-start gap-6 mb-6">
+      <div class="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+        <i data-lucide="book-open" class="w-7 h-7 text-slate-600"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy mb-1">API Reference</h2>
+        <p class="text-slate-500 text-sm">
+          Available API endpoints for programmatic access
+        </p>
+      </div>
+    </div>
+
+    <div class="space-y-4">
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="badge badge-success">POST</span>
+          <code class="text-sm font-mono text-slate-700">/api/scrape/execute</code>
+        </div>
+        <span class="text-xs text-slate-400">Start a new scrape job</span>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="badge badge-info">GET</span>
+          <code class="text-sm font-mono text-slate-700">/api/scrape/status/{`{job_id}`}</code>
+        </div>
+        <span class="text-xs text-slate-400">Get job status</span>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="badge badge-info">GET</span>
+          <code class="text-sm font-mono text-slate-700">/api/export/csv/{`{job_id}`}</code>
+        </div>
+        <span class="text-xs text-slate-400">Download CSV</span>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="badge badge-success">POST</span>
+          <code class="text-sm font-mono text-slate-700">/api/export/webhook</code>
+        </div>
+        <span class="text-xs text-slate-400">Send data to webhook</span>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="badge badge-success">POST</span>
+          <code class="text-sm font-mono text-slate-700">/api/webhook/trigger</code>
+        </div>
+        <span class="text-xs text-slate-400">Trigger scrape via webhook</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function copyToClipboard(inputId, button) {
+  const input = document.getElementById(inputId);
+  navigator.clipboard.writeText(input.value).then(() => {
+    const icon = button.querySelector('i');
+    icon.setAttribute('data-lucide', 'check');
+    lucide.createIcons();
+    setTimeout(() => {
+      icon.setAttribute('data-lucide', 'copy');
+      lucide.createIcons();
+    }, 2000);
+  });
+}
+
+function webhookSettings() {
+  return {
+    exportUrl: localStorage.getItem('webhook_export_url') || '',
+    autoSendOnComplete: localStorage.getItem('webhook_auto_send') === 'true',
+    includeMetadata: localStorage.getItem('webhook_include_metadata') === 'true',
+    testing: false,
+    testResult: null,
+    testMessage: '',
+    saved: false,
+
+    async testWebhook() {
+      if (!this.exportUrl) return;
+      this.testing = true;
+      this.testResult = null;
+
+      try {
+        const response = await fetch('/api/webhook/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: this.exportUrl })
+        });
+
+        if (response.ok) {
+          this.testResult = 'success';
+          this.testMessage = 'Webhook connection successful!';
+        } else {
+          this.testResult = 'error';
+          this.testMessage = 'Failed to connect to webhook';
+        }
+      } catch (e) {
+        this.testResult = 'error';
+        this.testMessage = 'Network error: ' + e.message;
+      }
+
+      this.testing = false;
+    },
+
+    saveSettings() {
+      localStorage.setItem('webhook_export_url', this.exportUrl);
+      localStorage.setItem('webhook_auto_send', this.autoSendOnComplete);
+      localStorage.setItem('webhook_include_metadata', this.includeMetadata);
+      this.saved = true;
+      setTimeout(() => this.saved = false, 3000);
+    }
+  }
+}
+</script>
+{% endblock %}

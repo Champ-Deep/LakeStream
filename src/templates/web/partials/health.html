@@ -1,0 +1,55 @@
+<div class="space-y-3">
+  <!-- Database Status -->
+  <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+    <div class="flex items-center gap-3">
+      <i data-lucide="database" class="w-4 h-4 text-slate-400"></i>
+      <span class="text-sm font-medium text-navy">Database</span>
+    </div>
+    <div class="flex items-center gap-2">
+      {% if health.database == 'connected' %}
+        <span class="badge badge-success">Connected</span>
+      {% else %}
+        <span class="badge badge-error">Disconnected</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Redis Status -->
+  <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+    <div class="flex items-center gap-3">
+      <i data-lucide="server" class="w-4 h-4 text-slate-400"></i>
+      <span class="text-sm font-medium text-navy">Redis</span>
+    </div>
+    <div class="flex items-center gap-2">
+      {% if health.redis == 'connected' %}
+        <span class="badge badge-success">Connected</span>
+      {% else %}
+        <span class="badge badge-error">Disconnected</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Overall Status -->
+  <div class="flex items-center justify-between p-4 rounded-xl
+    {% if health.status == 'ok' %}bg-green-50{% else %}bg-yellow-50{% endif %}">
+    <div class="flex items-center gap-3">
+      {% if health.status == 'ok' %}
+        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+          <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+        </div>
+        <div>
+          <span class="text-sm font-bold text-green-700">All Systems Operational</span>
+          <p class="text-xs text-green-600">Everything is running smoothly</p>
+        </div>
+      {% else %}
+        <div class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
+          <i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-600"></i>
+        </div>
+        <div>
+          <span class="text-sm font-bold text-yellow-700">System Degraded</span>
+          <p class="text-xs text-yellow-600">Some services may be unavailable</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>

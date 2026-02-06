@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Lake B2B Scraper{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+  <!-- Page Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-3xl font-extrabold text-navy">Dashboard</h1>
+      <p class="text-slate-500 mt-1">Monitor your scraping jobs and system health</p>
+    </div>
+    <a href="/jobs/new" class="brand-gradient text-white px-6 py-3 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2">
+      <i data-lucide="plus" class="w-5 h-5"></i>
+      New Scrape
+    </a>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="card p-6 group hover:shadow-lg">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+          <i data-lucide="briefcase" class="w-5 h-5 text-slate-500"></i>
+        </div>
+      </div>
+      <p class="text-3xl font-bold text-navy stat-value">{{ stats.total_jobs }}</p>
+      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Total Jobs</p>
+    </div>
+
+    <div class="card p-6 group hover:shadow-lg">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+          <i data-lucide="loader" class="w-5 h-5 text-blue-500"></i>
+        </div>
+        {% if stats.running_jobs > 0 %}
+        <span class="status-dot status-dot-running"></span>
+        {% endif %}
+      </div>
+      <p class="text-3xl font-bold text-running stat-value">{{ stats.running_jobs }}</p>
+      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Running Now</p>
+    </div>
+
+    <div class="card p-6 group hover:shadow-lg">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+          <i data-lucide="database" class="w-5 h-5 text-green-500"></i>
+        </div>
+      </div>
+      <p class="text-3xl font-bold text-navy stat-value">{{ stats.total_data | default('0') }}</p>
+      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Data Records</p>
+    </div>
+
+    <div class="card p-6 group hover:shadow-lg">
+      <div class="flex items-center justify-between mb-3">
+        <div class="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+          <i data-lucide="dollar-sign" class="w-5 h-5 text-purple-500"></i>
+        </div>
+      </div>
+      <p class="text-3xl font-bold text-navy stat-value">${{ "%.4f" | format(stats.total_cost | default(0)) }}</p>
+      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Total Spent</p>
+    </div>
+  </div>
+
+  <!-- Top Section: Health + Quick Start -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- System Health Card -->
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 brand-gradient rounded-xl flex items-center justify-center">
+          <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+        </div>
+        <h2 class="font-bold text-navy">System Health</h2>
+      </div>
+
+      <div
+        id="health-status"
+        hx-get="/partials/health"
+        hx-trigger="load, every 30s"
+        hx-swap="innerHTML"
+      >
+        <!-- Health status loads here -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+            <span class="text-slate-500">Checking status...</span>
+            <div class="spinner"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Start Card -->
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
+          <i data-lucide="zap" class="w-5 h-5 text-green-600"></i>
+        </div>
+        <h2 class="font-bold text-navy">Quick Start</h2>
+      </div>
+
+      <form
+        hx-post="/api/scrape/execute"
+        hx-headers='{"Content-Type": "application/json"}'
+        hx-ext="json-enc"
+        x-data="formValidation()"
+        @submit.prevent="
+          if (validate('domain', $refs.domainInput.value, validateUrl)) {
+            $el.submit();
+          }
+        "
+      >
+        <div class="space-y-4">
+          <div id="quick-start-input">
+            <label for="domain" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+              Website URL
+            </label>
+            <input
+              type="text"
+              name="domain"
+              id="domain"
+              x-ref="domainInput"
+              placeholder="example.com"
+              class="input input-lg"
+              required
+            >
+            <p x-show="errors.domain" x-text="errors.domain" class="mt-2 text-sm text-error"></p>
+          </div>
+
+          <button
+            type="submit"
+            id="start-scrape-btn"
+            class="w-full brand-gradient text-white py-3.5 px-6 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center justify-center gap-2"
+          >
+            <i data-lucide="globe" class="w-5 h-5"></i>
+            Start Scraping
+            <span class="htmx-indicator ml-2">
+              <div class="spinner border-white border-t-transparent"></div>
+            </span>
+          </button>
+        </div>
+
+        <!-- Hidden default data types -->
+        <input type="hidden" name="data_types" value='["blog_url", "article", "contact"]'>
+      </form>
+
+      <p class="text-xs text-slate-400 mt-4 text-center">
+        Need more control?
+        <a href="/jobs/new" class="text-brand-red hover:underline font-medium">Advanced options</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Recent Jobs Section -->
+  <div class="card overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+          <i data-lucide="clock" class="w-4 h-4 text-slate-500"></i>
+        </div>
+        <h2 class="font-bold text-navy">Recent Jobs</h2>
+      </div>
+      <a href="/jobs" class="text-sm text-brand-red hover:underline font-medium flex items-center gap-1">
+        View all
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </a>
+    </div>
+
+    <div
+      id="recent-jobs"
+      hx-get="/partials/recent-jobs"
+      hx-trigger="load, every 10s"
+      hx-swap="innerHTML"
+    >
+      <!-- Recent jobs load here -->
+      <div class="p-8 text-center">
+        <div class="spinner mx-auto mb-3"></div>
+        <p class="text-sm text-slate-400">Loading recent jobs...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Domains Section -->
+  <div class="card overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+          <i data-lucide="globe-2" class="w-4 h-4 text-slate-500"></i>
+        </div>
+        <h2 class="font-bold text-navy">Top Domains</h2>
+      </div>
+      <a href="/domains" class="text-sm text-brand-red hover:underline font-medium flex items-center gap-1">
+        View all
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </a>
+    </div>
+
+    <div
+      id="top-domains"
+      hx-get="/partials/top-domains"
+      hx-trigger="load"
+      hx-swap="innerHTML"
+    >
+      <!-- Top domains load here -->
+      <div class="p-8 text-center">
+        <p class="text-sm text-slate-400">Loading domains...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Tip -->
+  <div class="brand-gradient-subtle rounded-3xl p-6 flex items-start gap-5">
+    <div class="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+      <i data-lucide="lightbulb" class="w-6 h-6 text-white"></i>
+    </div>
+    <div class="flex-1">
+      <p class="font-bold text-navy">First time here?</p>
+      <p class="text-sm text-slate-600 mt-1 leading-relaxed">
+        We automatically detect WordPress, HubSpot, and Webflow sites and use optimized extraction strategies.
+        Just enter a URL and we'll handle the rest. Want to integrate with n8n?
+        <a href="/settings" class="text-brand-red hover:underline font-medium">Configure webhooks</a>
+      </p>
+    </div>
+    <a href="/help" class="hidden md:flex px-4 py-2 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors items-center gap-2 flex-shrink-0">
+      <i data-lucide="book-open" class="w-4 h-4"></i>
+      Learn More
+    </a>
+  </div>
+
+</div>
+
+<!-- HTMX JSON encoding extension -->
+<script>
+  htmx.defineExtension('json-enc', {
+    onEvent: function (name, evt) {
+      if (name === "htmx:configRequest") {
+        evt.detail.headers['Content-Type'] = 'application/json';
+      }
+    },
+    encodeParameters: function(xhr, parameters, elt) {
+      // Convert form data to JSON
+      const json = {};
+      for (const [key, value] of Object.entries(parameters)) {
+        try {
+          json[key] = JSON.parse(value);
+        } catch {
+          json[key] = value;
+        }
+      }
+      return JSON.stringify(json);
+    }
+  });
+</script>
+{% endblock %}
