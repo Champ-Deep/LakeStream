@@ -12,6 +12,9 @@ async def run_migrations() -> None:
         "DATABASE_URL",
         "postgresql://scraper:scraper_dev@localhost:5433/lakeb2b_scraper",
     )
+    # Railway/Heroku provide postgres:// but asyncpg requires postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
     pool = await asyncpg.create_pool(database_url)
     assert pool is not None
 

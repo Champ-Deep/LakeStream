@@ -18,7 +18,15 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging()
-    await get_pool()
+    import structlog
+
+    log = structlog.get_logger()
+    try:
+        await get_pool()
+        log.info("database_connected")
+    except Exception as e:
+        # Don't crash on startup — Railway may still be provisioning the DB
+        log.warning("database_connection_deferred", error=str(e))
     yield
     await close_pool()
 

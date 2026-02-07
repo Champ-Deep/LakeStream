@@ -6,14 +6,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Copy everything so pip install can find src/ package
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
-
-# Install Playwright browsers
-RUN playwright install --with-deps chromium
-
 COPY src/ ./src/
+COPY tests/ ./tests/
 
-EXPOSE 3000
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir .
 
-CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "3000"]
+# Railway injects PORT at runtime
+ENV PORT=8000
+EXPOSE ${PORT}
+
+CMD uvicorn src.server:app --host 0.0.0.0 --port $PORT
