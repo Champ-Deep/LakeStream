@@ -11,11 +11,12 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code and startup script
 COPY src/ ./src/
+COPY start.sh ./
 
 # Railway injects PORT at runtime
 ENV PORT=8000
 EXPOSE ${PORT}
 
-CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./start.sh"]
