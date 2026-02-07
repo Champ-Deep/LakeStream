@@ -6,16 +6,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy everything so pip install can find src/ package
-COPY pyproject.toml ./
-COPY src/ ./src/
-COPY tests/ ./tests/
-
+# Install dependencies from requirements.txt (faster, no setuptools needed)
+COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY src/ ./src/
 
 # Railway injects PORT at runtime
 ENV PORT=8000
 EXPOSE ${PORT}
 
-CMD uvicorn src.server:app --host 0.0.0.0 --port $PORT
+CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000"]
