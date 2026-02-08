@@ -16,7 +16,9 @@ class ScrapeJobInput(BaseModel):
     domain: str = Field(min_length=3)
     template_id: str | None = None
     max_pages: int = Field(default=100, gt=0, le=500)
-    data_types: list[str] = Field(default=["blog_url", "article"])
+    data_types: list[str] = Field(
+        default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]
+    )
     priority: int = Field(default=5, ge=1, le=10)
 
 

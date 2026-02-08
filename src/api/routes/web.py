@@ -24,6 +24,7 @@ def get_templates():
 async def dashboard(request: Request):
     """Main dashboard page."""
     from src.db.pool import get_pool
+    from src.templates.registry import list_templates
 
     pool = await get_pool()
 
@@ -42,9 +43,39 @@ async def dashboard(request: Request):
         "total_cost": float(total_cost or 0),
     }
 
+    # Templates for the Quick Start advanced options dropdown
+    templates_list = list_templates()
+
+    # Tracked domains health summary
+    tracked_domains: list = []
+    domain_health: dict = {}
+    try:
+        from src.db.queries.tracked_domains import list_tracked_domains
+
+        tracked_domains = await list_tracked_domains(pool)
+        if tracked_domains:
+            from src.db.queries.domains import get_domain_metadata
+
+            for td in tracked_domains[:5]:
+                meta = await get_domain_metadata(pool, td.domain)
+                if meta:
+                    domain_health[td.domain] = {
+                        "success_rate": meta.success_rate or 0,
+                        "block_count": meta.block_count or 0,
+                    }
+    except Exception:
+        pass  # tracked_domains table may not exist yet
+
     return get_templates().TemplateResponse(
         "pages/dashboard.html",
-        {"request": request, "active_page": "dashboard", "stats": stats},
+        {
+            "request": request,
+            "active_page": "dashboard",
+            "stats": stats,
+            "templates": templates_list,
+            "tracked_domains": tracked_domains,
+            "domain_health": domain_health,
+        },
     )
 
 
@@ -138,29 +169,10 @@ async def jobs_list(request: Request, status: str | None = None):
 
 @router.get("/jobs/new", response_class=HTMLResponse)
 async def new_job_form(request: Request):
-    """New job creation form."""
-    from src.models.scraped_data import DataType
-    from src.templates.registry import list_templates
+    """Redirect to dashboard — scrape form is now integrated there."""
+    from fastapi.responses import RedirectResponse
 
-    templates_list = list_templates()
-    data_types = [
-        {"value": DataType.BLOG_URL, "label": "Blog posts and articles", "default": True},
-        {"value": DataType.ARTICLE, "label": "Article content & metadata", "default": True},
-        {"value": DataType.CONTACT, "label": "Contact information", "default": True},
-        {"value": DataType.TECH_STACK, "label": "Tech stack signals", "default": False},
-        {"value": DataType.RESOURCE, "label": "Resources (whitepapers, guides)", "default": False},
-        {"value": DataType.PRICING, "label": "Pricing information", "default": False},
-    ]
-
-    return get_templates().TemplateResponse(
-        "pages/jobs/new.html",
-        {
-            "request": request,
-            "active_page": "jobs",
-            "templates": templates_list,
-            "data_types": data_types,
-        },
-    )
+    return RedirectResponse(url="/", status_code=302)
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -272,9 +284,27 @@ async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
     pool = await get_pool()
     domains = await list_domains(pool, limit=50, sort_by=sort_by)
 
+    # Fetch tracked domains for badges and the tracked sites section
+    tracked_domains: list = []
+    tracked_set: set = set()
+    try:
+        from src.db.queries.tracked_domains import list_tracked_domains
+
+        tracked_domains = await list_tracked_domains(pool)
+        tracked_set = {td.domain for td in tracked_domains}
+    except Exception:
+        pass  # tracked_domains table may not exist yet
+
     return get_templates().TemplateResponse(
         "pages/domains/list.html",
-        {"request": request, "active_page": "domains", "domains": domains, "sort_by": sort_by},
+        {
+            "request": request,
+            "active_page": "domains",
+            "domains": domains,
+            "sort_by": sort_by,
+            "tracked_domains": tracked_domains,
+            "tracked_set": tracked_set,
+        },
     )
 
 
@@ -338,11 +368,7 @@ async def settings_page(request: Request):
     from src.config.settings import get_settings
 
     settings = get_settings()
-    base_url = f"http://{settings.host}:{settings.port}"
-    if settings.host == "0.0.0.0":
-        base_url = f"http://localhost:{settings.port}"
-
-    webhook_trigger_url = f"{base_url}/api/webhook/trigger"
+    webhook_trigger_url = f"{settings.base_url}/api/webhook/trigger"
 
     return get_templates().TemplateResponse(
         "pages/settings/index.html",

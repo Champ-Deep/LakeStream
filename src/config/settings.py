@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic import model_validator
@@ -9,6 +10,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     debug: bool = False
     log_level: str = "info"
+    base_url: str = ""
 
     database_url: str = "postgresql://scraper:scraper_dev@localhost:5433/lakeb2b_scraper"
     redis_url: str = "redis://localhost:6379"
@@ -30,6 +32,17 @@ class Settings(BaseSettings):
             self.database_url = self.database_url.replace(
                 "postgres://", "postgresql://", 1
             )
+        return self
+
+    @model_validator(mode="after")
+    def compute_base_url(self) -> "Settings":
+        """Auto-detect public URL from Railway env or fall back to localhost."""
+        if not self.base_url:
+            railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+            if railway_domain:
+                self.base_url = f"https://{railway_domain}"
+            else:
+                self.base_url = f"http://localhost:{self.port}"
         return self
 
 

@@ -83,6 +83,15 @@ async def process_scrape_job(
                     )
                     total_data += len(result)
 
+                elif dtype == "pricing":
+                    from src.workers.pricing_finder import PricingFinderWorker
+
+                    worker = PricingFinderWorker(domain=domain, job_id=job_id)  # type: ignore[assignment]
+                    result = await worker.execute(
+                        [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
+                    )
+                    total_data += len(result)
+
             except Exception as e:
                 log.error("worker_error", dtype=dtype, error=str(e))
                 errors.append(f"{dtype}: {str(e)}")
@@ -98,6 +107,31 @@ async def process_scrape_job(
             cost_usd=total_cost,
             completed_at=datetime.now(),
         )
+
+        # 5. Check if domain is tracked and has webhook configured
+        from src.db.queries.tracked_domains import get_tracked_domain
+        from src.services.webhook_export import export_job_to_webhook
+
+        tracked = await get_tracked_domain(pool, domain)
+        if tracked and tracked.webhook_url:
+            try:
+                success = await export_job_to_webhook(uid, tracked.webhook_url)
+                log.info(
+                    "webhook_export_completed",
+                    job_id=job_id,
+                    domain=domain,
+                    webhook_url=tracked.webhook_url,
+                    success=success,
+                )
+            except Exception as e:
+                # Don't fail job if webhook export fails
+                log.error(
+                    "webhook_export_error",
+                    job_id=job_id,
+                    domain=domain,
+                    webhook_url=tracked.webhook_url,
+                    error=str(e),
+                )
 
         log.info(
             "job_completed",

@@ -59,7 +59,9 @@ async def trigger_scrape(request: WebhookTriggerRequest):
 
     # Default data types if not provided
     if not request.data_types:
-        request.data_types = ["blog_url", "article", "contact"]
+        request.data_types = [
+            "blog_url", "article", "contact", "tech_stack", "resource", "pricing",
+        ]
 
     # Create job input
     job_input = ScrapeJobInput(
@@ -73,8 +75,30 @@ async def trigger_scrape(request: WebhookTriggerRequest):
     pool = await get_pool()
     job = await create_job(pool, job_input)
 
-    # TODO: Enqueue the job to arq worker
-    # For now, just return the job ID
+    # Enqueue the job to arq worker
+    try:
+        from arq.connections import RedisSettings
+        from arq.connections import create_pool as create_arq_pool
+
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        redis = await create_arq_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis.enqueue_job(
+            "process_scrape_job",
+            job_id=str(job.id),
+            domain=request.domain,
+            template_id=request.template_id or "auto",
+            max_pages=request.max_pages,
+            data_types=request.data_types,
+        )
+        await redis.aclose()
+    except Exception as e:
+        import structlog
+
+        log = structlog.get_logger()
+        log.error("webhook_enqueue_failed", job_id=str(job.id), error=str(e))
+        # Job created but not enqueued - will remain in PENDING state
 
     return WebhookTriggerResponse(
         success=True,

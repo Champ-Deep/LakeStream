@@ -193,6 +193,147 @@ document.addEventListener('alpine:init', () => {
       this.open = false;
     }
   }));
+
+  // Quick Scrape component (dashboard glassmorphic form)
+  Alpine.data('quickScrape', () => ({
+    domain: '',
+    dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource', 'pricing'],
+    maxPages: 100,
+    templateId: '',
+    priority: 5,
+    showPanel: false,
+    showAdvanced: false,
+    loading: false,
+    errors: {},
+    allDataTypes: [
+      { value: 'blog_url', label: 'Blog Posts' },
+      { value: 'article', label: 'Articles' },
+      { value: 'contact', label: 'Contacts' },
+      { value: 'tech_stack', label: 'Tech Stack' },
+      { value: 'resource', label: 'Resources' },
+      { value: 'pricing', label: 'Pricing' },
+    ],
+
+    init() {
+      const params = new URLSearchParams(window.location.search);
+      const prefill = params.get('domain');
+      if (prefill) {
+        this.domain = prefill;
+        this.showPanel = true;
+      }
+    },
+
+    validateDomain() {
+      if (!this.domain) {
+        this.errors.domain = 'Please enter a website URL';
+        return false;
+      }
+      let url = this.domain.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      try {
+        new URL(url);
+        this.domain = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        delete this.errors.domain;
+        return true;
+      } catch {
+        this.errors.domain = 'Please enter a valid URL';
+        return false;
+      }
+    },
+
+    async submit() {
+      if (!this.validateDomain()) return;
+      if (this.dataTypes.length === 0) {
+        Alpine.store('toast').show('Select at least one data type', 'warning');
+        return;
+      }
+      this.loading = true;
+      const payload = {
+        domain: this.domain,
+        data_types: this.dataTypes,
+        max_pages: parseInt(this.maxPages),
+        priority: this.priority,
+      };
+      if (this.templateId) payload.template_id = this.templateId;
+
+      try {
+        const response = await fetch('/api/scrape/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (response.ok && data.job_id) {
+          Alpine.store('toast').show('Scrape job started!', 'success');
+          setTimeout(() => { window.location.href = '/jobs/' + data.job_id; }, 500);
+        } else {
+          Alpine.store('toast').show(data.detail || 'Failed to create job', 'error');
+          this.loading = false;
+        }
+      } catch (err) {
+        Alpine.store('toast').show('Network error. Please try again.', 'error');
+        this.loading = false;
+      }
+    }
+  }));
+
+  // Add Site Modal component (domains page)
+  Alpine.data('addSiteModal', () => ({
+    open: false,
+    domain: '',
+    frequency: 'weekly',
+    dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource', 'pricing'],
+    maxPages: 100,
+    webhookUrl: '',
+    loading: false,
+    allDataTypes: [
+      { value: 'blog_url', label: 'Blog Posts' },
+      { value: 'article', label: 'Articles' },
+      { value: 'contact', label: 'Contacts' },
+      { value: 'tech_stack', label: 'Tech Stack' },
+      { value: 'resource', label: 'Resources' },
+      { value: 'pricing', label: 'Pricing' },
+    ],
+
+    async submit() {
+      if (!this.domain) {
+        Alpine.store('toast').show('Please enter a domain', 'warning');
+        return;
+      }
+      this.loading = true;
+      let cleanDomain = this.domain.trim();
+      if (cleanDomain.startsWith('http://') || cleanDomain.startsWith('https://')) {
+        cleanDomain = cleanDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      }
+      const payload = {
+        domain: cleanDomain,
+        data_types: this.dataTypes,
+        scrape_frequency: this.frequency,
+        max_pages: parseInt(this.maxPages),
+      };
+      if (this.webhookUrl) payload.webhook_url = this.webhookUrl;
+
+      try {
+        const response = await fetch('/api/tracked/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) {
+          Alpine.store('toast').show('Site added for tracking!', 'success');
+          setTimeout(() => window.location.reload(), 500);
+        } else {
+          const data = await response.json();
+          Alpine.store('toast').show(data.detail || 'Failed to add site', 'error');
+        }
+      } catch (err) {
+        Alpine.store('toast').show('Network error. Please try again.', 'error');
+      }
+      this.loading = false;
+    }
+  }));
 });
 
 // Utility: Format relative time

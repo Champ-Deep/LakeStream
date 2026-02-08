@@ -62,3 +62,14 @@ class ResourceMetadata(BaseModel):
     description: str | None = None
     gated: bool = False
     download_url: str | None = None
+
+
+class PricingMetadata(BaseModel):
+    """Metadata for pricing pages."""
+
+    plan_name: str
+    price: str | None = None
+    billing_cycle: str = "unknown"  # monthly, annual, quarterly, unknown
+    features: list[str] = []
+    has_free_trial: bool = False
+    cta_text: str | None = None

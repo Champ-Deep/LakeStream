@@ -1,0 +1,186 @@
+{# Type-specific metadata rendering for scraped data results #}
+{% macro render_result(result) %}
+<div class="space-y-3">
+
+  {% if result.data_type == 'contact' %}
+  {# Contact card layout #}
+  <div class="flex items-start gap-4">
+    <div class="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center flex-shrink-0">
+      <i data-lucide="user" class="w-5 h-5 text-green-600"></i>
+    </div>
+    <div class="flex-1 space-y-2">
+      {% if result.metadata.get('first_name') or result.metadata.get('last_name') %}
+        <p class="font-bold text-navy">
+          {{ result.metadata.get('first_name', '') }} {{ result.metadata.get('last_name', '') }}
+        </p>
+      {% endif %}
+      {% if result.metadata.get('job_title') %}
+        <p class="text-sm text-slate-500">{{ result.metadata.job_title }}</p>
+      {% endif %}
+      <div class="flex flex-wrap gap-3 text-sm">
+        {% if result.metadata.get('email') %}
+          <span class="flex items-center gap-1.5 text-slate-600">
+            <i data-lucide="mail" class="w-3.5 h-3.5"></i> {{ result.metadata.email }}
+          </span>
+        {% endif %}
+        {% if result.metadata.get('phone') %}
+          <span class="flex items-center gap-1.5 text-slate-600">
+            <i data-lucide="phone" class="w-3.5 h-3.5"></i> {{ result.metadata.phone }}
+          </span>
+        {% endif %}
+        {% if result.metadata.get('linkedin_url') %}
+          <a href="{{ result.metadata.linkedin_url }}" target="_blank"
+            class="flex items-center gap-1.5 text-brand-red hover:underline">
+            <i data-lucide="linkedin" class="w-3.5 h-3.5"></i> LinkedIn
+          </a>
+        {% endif %}
+      </div>
+      {% if result.metadata.get('source') %}
+        <p class="text-xs text-slate-400">Source: {{ result.metadata.source }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% elif result.data_type == 'article' %}
+  {# Article card layout #}
+  <div class="space-y-2">
+    {% if result.metadata.get('author') %}
+      <p class="text-sm">
+        <span class="text-slate-400">By</span>
+        <span class="font-medium text-navy">{{ result.metadata.author }}</span>
+      </p>
+    {% endif %}
+    {% if result.metadata.get('excerpt') %}
+      <p class="text-sm text-slate-600 leading-relaxed">{{ result.metadata.excerpt[:200] }}{% if result.metadata.excerpt|length > 200 %}...{% endif %}</p>
+    {% endif %}
+    <div class="flex flex-wrap gap-2">
+      {% for cat in result.metadata.get('categories', []) %}
+        <span class="badge badge-neutral">{{ cat }}</span>
+      {% endfor %}
+    </div>
+    {% if result.metadata.get('word_count') %}
+      <p class="text-xs text-slate-400">{{ result.metadata.word_count }} words</p>
+    {% endif %}
+  </div>
+
+  {% elif result.data_type == 'tech_stack' %}
+  {# Tech stack - grouped tags #}
+  <div class="space-y-3">
+    {% if result.metadata.get('platform') %}
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Platform</p>
+        <span class="badge badge-info">{{ result.metadata.platform }}</span>
+      </div>
+    {% endif %}
+    {% if result.metadata.get('js_libraries') %}
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">JS Libraries</p>
+        <div class="flex flex-wrap gap-1">
+          {% for item in result.metadata.js_libraries %}
+            <span class="badge badge-neutral">{{ item }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+    {% if result.metadata.get('analytics') %}
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Analytics</p>
+        <div class="flex flex-wrap gap-1">
+          {% for item in result.metadata.analytics %}
+            <span class="badge badge-neutral">{{ item }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+    {% if result.metadata.get('marketing_tools') %}
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Marketing</p>
+        <div class="flex flex-wrap gap-1">
+          {% for item in result.metadata.marketing_tools %}
+            <span class="badge badge-neutral">{{ item }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+    {% if result.metadata.get('frameworks') %}
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Frameworks</p>
+        <div class="flex flex-wrap gap-1">
+          {% for item in result.metadata.frameworks %}
+            <span class="badge badge-neutral">{{ item }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {% elif result.data_type == 'blog_url' %}
+  {# Blog URL summary #}
+  <div class="space-y-2">
+    {% if result.metadata.get('blog_landing_url') %}
+      <p class="text-sm">
+        <span class="text-slate-400">Landing:</span>
+        <a href="{{ result.metadata.blog_landing_url }}" target="_blank"
+          class="text-brand-red hover:underline">
+          {{ result.metadata.blog_landing_url[:60] }}{% if result.metadata.blog_landing_url|length > 60 %}...{% endif %}
+        </a>
+      </p>
+    {% endif %}
+    {% if result.metadata.get('total_articles') %}
+      <p class="text-sm text-slate-600">{{ result.metadata.total_articles }} articles found</p>
+    {% endif %}
+    {% if result.metadata.get('article_urls') %}
+      <details class="text-sm">
+        <summary class="text-brand-red cursor-pointer hover:underline">
+          Show {{ result.metadata.article_urls|length }} URLs
+        </summary>
+        <ul class="mt-2 space-y-1 pl-4 max-h-40 overflow-y-auto">
+          {% for url in result.metadata.article_urls[:20] %}
+            <li>
+              <a href="{{ url }}" target="_blank"
+                class="text-slate-600 hover:text-brand-red truncate block">
+                {{ url[:80] }}{% if url|length > 80 %}...{% endif %}
+              </a>
+            </li>
+          {% endfor %}
+          {% if result.metadata.article_urls|length > 20 %}
+            <li class="text-slate-400 italic">
+              and {{ result.metadata.article_urls|length - 20 }} more...
+            </li>
+          {% endif %}
+        </ul>
+      </details>
+    {% endif %}
+  </div>
+
+  {% elif result.data_type == 'resource' %}
+  {# Resource card #}
+  <div class="space-y-2">
+    {% if result.metadata.get('resource_type') %}
+      <span class="badge badge-neutral capitalize">{{ result.metadata.resource_type }}</span>
+    {% endif %}
+    {% if result.metadata.get('description') %}
+      <p class="text-sm text-slate-600">{{ result.metadata.description[:200] }}{% if result.metadata.description|length > 200 %}...{% endif %}</p>
+    {% endif %}
+    <div class="flex gap-3 text-sm">
+      {% if result.metadata.get('gated') %}
+        <span class="text-warning flex items-center gap-1">
+          <i data-lucide="lock" class="w-3.5 h-3.5"></i> Gated
+        </span>
+      {% endif %}
+      {% if result.metadata.get('download_url') %}
+        <a href="{{ result.metadata.download_url }}" target="_blank"
+          class="text-brand-red hover:underline flex items-center gap-1">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i> Download
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% else %}
+  {# Fallback: pricing or unknown types #}
+  <pre class="text-sm text-slate-700 bg-white p-4 rounded-lg overflow-x-auto border border-slate-200">{{ result.metadata | tojson(indent=2) }}</pre>
+  {% endif %}
+
+</div>
+{% endmacro %}

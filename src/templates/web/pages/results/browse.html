@@ -2,6 +2,8 @@
 
 {% block title %}Results - Lake B2B Scraper{% endblock %}
 
+{% from "partials/result_detail.html" import render_result %}
+
 {% block content %}
 <div class="space-y-6">
 
@@ -139,8 +141,7 @@
           <tr x-show="expandedId === '{{ result.id }}'" x-collapse>
             <td colspan="5" class="px-6 py-4 bg-stone-50">
               <div class="max-w-3xl">
-                <p class="text-xs text-slate uppercase tracking-wide mb-2">Metadata</p>
-                <pre class="text-sm text-charcoal bg-white p-4 rounded-lg overflow-x-auto border border-stone-200">{{ result.metadata | tojson(indent=2) }}</pre>
+                {{ render_result(result) }}
               </div>
             </td>
           </tr>
@@ -175,7 +176,7 @@
         {% endif %}
       </p>
       <a
-        href="/jobs/new"
+        href="/"
         class="inline-flex items-center gap-2 py-2 px-4 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-dark transition-colors"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

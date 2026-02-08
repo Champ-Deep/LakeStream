@@ -11,6 +11,32 @@
     <p class="text-slate-500 mt-1">Configure webhooks and integrations for your scraping workflows</p>
   </div>
 
+  <!-- System Health Card -->
+  <div class="card p-8">
+    <div class="flex items-start gap-6">
+      <div class="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+        <i data-lucide="activity" class="w-7 h-7 text-white"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy mb-1">System Health</h2>
+        <p class="text-slate-500 text-sm">Real-time status of infrastructure services</p>
+      </div>
+    </div>
+    <div class="mt-6"
+      id="health-status"
+      hx-get="/partials/health"
+      hx-trigger="load, every 30s"
+      hx-swap="innerHTML"
+    >
+      <div class="space-y-3">
+        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+          <span class="text-slate-500">Checking status...</span>
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- n8n Integration Card -->
   <div class="card p-8">
     <div class="flex items-start gap-6">
