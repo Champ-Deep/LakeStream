@@ -38,6 +38,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Register authentication middleware for RLS context
+from src.api.middleware.auth import set_tenant_context
+
+app.middleware("http")(set_tenant_context)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 

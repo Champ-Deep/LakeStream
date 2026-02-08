@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = 10
     max_scrape_pages_per_job: int = 500
     default_rate_limit_ms: int = 1000
+
+    # Authentication & Multi-tenancy
+    jwt_secret: str = Field(..., description="JWT signing secret (required, use: openssl rand -hex 32)")
+    jwt_algorithm: str = "HS256"
+    access_token_expire_hours: int = 24
+
+    # Multi-tenancy limits
+    default_max_users_per_org: int = 5
+    default_max_domains_per_org: int = 10
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
