@@ -1,15 +1,16 @@
-# Lake B2B Scraper
+# LakeStream
 
-Template-based web scraping platform for enriching B2B data at scale.
+B2B web scraping and data extraction platform by Lake B2B.
 
 ## Features
 
 - **Multi-tier adaptive scraping** with automatic escalation (HTTP → Headless → Proxy)
 - **Template-based extraction** for WordPress, HubSpot, Webflow, and generic sites
+- **Query-to-intelligence pipeline** via LakeCurrent search integration
 - **Real-time job monitoring** with HTMX-powered dashboard
 - **CSV export** and **n8n webhook integration**
-- **HTTP fallback** when Firecrawl CLI unavailable
 - **Cost tracking** per domain with strategy optimization
+- **Tracked domains & searches** for recurring scrape schedules
 
 ## Tech Stack
 
@@ -17,8 +18,10 @@ Template-based web scraping platform for enriching B2B data at scale.
 - **API**: FastAPI + uvicorn
 - **Job Queue**: arq (async Redis queue)
 - **Database**: PostgreSQL + asyncpg (raw SQL)
+- **Scraping Engine**: Firecrawl CLI with HTTP fallback
+- **Browser Automation**: Playwright (headless)
+- **HTML Parsing**: selectolax (fast CSS selectors)
 - **Frontend**: HTMX + Alpine.js + Tailwind CSS
-- **Parsing**: selectolax (fast CSS selectors)
 
 ## Quick Start (Local Development)
 
@@ -90,7 +93,6 @@ Visit http://localhost:3001
    railway up
 
    # Add worker service (separate service in Railway dashboard)
-   # Service name: scraper-worker
    # Start command: arq src.queue.worker.WorkerSettings
    ```
 
@@ -101,6 +103,7 @@ Visit http://localhost:3001
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/db` |
 | `REDIS_URL` | Redis connection string | `redis://host:6379` |
 | `PORT` | Web server port | `8000` |
+| `JWT_SECRET` | JWT signing secret | `openssl rand -hex 32` |
 | `MAX_CONCURRENT_JOBS` | Worker concurrency | `5` |
 
 ## Architecture
@@ -142,6 +145,9 @@ make docker-down  # Stop containers
 ### REST API
 - `POST /api/scrape/execute` - Create scrape job
 - `GET /api/scrape/status/{job_id}` - Job status
+- `POST /api/discover/search` - Search-driven domain discovery
+- `GET /api/discover/status/{discovery_id}` - Discovery job status
+- `POST /api/discover/tracked` - Set up recurring search
 - `GET /api/export/csv/{job_id}` - Export job data as CSV
 - `POST /api/webhook/trigger` - Start job via webhook (n8n)
 - `GET /api/health` - Health check
@@ -158,7 +164,7 @@ src/
   workers/               # Domain mapper, extractors, parsers
   templates/             # Platform-specific templates
   scraping/              # Fetchers, parsers, validators
-  services/              # Firecrawl, escalation, cost tracking
+  services/              # Scraping engine, escalation, cost tracking
   db/                    # Migrations, queries (raw SQL)
   static/                # CSS, JS for web dashboard
 ```

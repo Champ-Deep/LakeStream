@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 # ============================================================================
 # Signal Type Models
 # ============================================================================
@@ -33,9 +32,7 @@ class TriggerConfig(BaseModel):
     """Configuration for signal trigger (what to monitor)."""
 
     type: str = Field(..., description="Signal type ID (e.g., 'job_change')")
-    filters: dict[str, Any] = Field(
-        default_factory=dict, description="Filters for the signal type"
-    )
+    filters: dict[str, Any] = Field(default_factory=dict, description="Filters for the signal type")
 
 
 class ConditionConfig(BaseModel):
@@ -51,9 +48,7 @@ class ActionConfig(BaseModel):
     type: str = Field(..., description="Action type (slack, webhook, email)")
     webhook_url: str | None = Field(None, description="Webhook URL for notifications")
     email_recipients: list[str] | None = Field(None, description="Email recipients")
-    message_template: str | None = Field(
-        None, description="Custom message template (optional)"
-    )
+    message_template: str | None = Field(None, description="Custom message template (optional)")
 
 
 # ============================================================================
@@ -115,9 +110,7 @@ class CreateSignalRequest(BaseModel):
     is_active: bool = Field(default=True, description="Whether signal is active")
 
     trigger_config: TriggerConfig = Field(..., description="Trigger configuration")
-    condition_config: ConditionConfig | None = Field(
-        None, description="Additional conditions"
-    )
+    condition_config: ConditionConfig | None = Field(None, description="Additional conditions")
     action_config: ActionConfig = Field(..., description="Action configuration")
 
 

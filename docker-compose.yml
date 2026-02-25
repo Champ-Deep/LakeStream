@@ -27,3 +27,9 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  default:
+    driver: bridge
+  lakeb2b:
+    external: true

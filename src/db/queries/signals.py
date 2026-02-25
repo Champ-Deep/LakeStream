@@ -7,7 +7,6 @@ from asyncpg import Pool
 
 from src.models.signals import Signal, SignalExecution, SignalType
 
-
 # ============================================================================
 # Signal Type Queries
 # ============================================================================
@@ -170,11 +169,11 @@ async def update_signal(
     if not updates:
         return await get_signal(pool, signal_id)
 
-    updates.append(f"updated_at = NOW()")
+    updates.append("updated_at = NOW()")
 
     query = f"""
         UPDATE signals
-        SET {', '.join(updates)}
+        SET {", ".join(updates)}
         WHERE id = ${param_num}
         RETURNING *
     """
@@ -254,9 +253,7 @@ async def get_signal_execution_history(
     return [SignalExecution(**dict(row)) for row in rows]
 
 
-async def get_signal_execution_stats(
-    pool: Pool, signal_id: UUID
-) -> dict[str, Any]:
+async def get_signal_execution_stats(pool: Pool, signal_id: UUID) -> dict[str, Any]:
     """Get execution statistics for a signal."""
     query = """
         SELECT

@@ -1,4 +1,4 @@
-# Lake B2B Scraper - Product Roadmap
+# LakeStream - Product Roadmap
 ## Phase D: Advanced Features (Post-Launch)
 
 *Based on competitive analysis, user pain points, and industry best practices*
@@ -383,7 +383,7 @@ def calculate_enrichment_score(job_id: UUID) -> EnrichmentScore:
 
 ## Competitive Positioning After Phase D
 
-**Lake B2B Scraper vs Competitors:**
+**LakeStream vs Competitors:**
 
 | Feature | Lake B2B | Apify | Bright Data | Firecrawl |
 |---------|----------|-------|-------------|-----------|

@@ -2,6 +2,7 @@ from arq.connections import RedisSettings
 from arq.cron import cron
 
 from src.config.settings import get_settings
+from src.queue.discover_jobs import check_tracked_searches, process_discovery_job
 from src.queue.jobs import process_scrape_job
 from src.workers.scheduled_scraper import check_scheduled_scrapes
 from src.workers.signal_processor import process_signals
@@ -22,15 +23,17 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_scrape_job]
+    functions = [process_scrape_job, process_discovery_job]
     on_startup = startup
     on_shutdown = shutdown
 
     # Run scheduled scrape checks every hour at :00
     # Run signal evaluation every 15 minutes
+    # Run tracked search checks every 15 minutes (offset by 10 min)
     cron_jobs = [
         cron(check_scheduled_scrapes, hour=None, minute=0),
         cron(process_signals, hour=None, minute={0, 15, 30, 45}),
+        cron(check_tracked_searches, hour=None, minute={10, 25, 40, 55}),
     ]
 
     _settings = get_settings()

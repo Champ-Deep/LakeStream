@@ -4,18 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Lake B2B Internal Scraping System — a template-based web scraping platform for enriching B2B data at scale. Extracts blog URLs, articles, resources, pricing, contact info, and tech stack signals from B2B domains, feeding into Lake B2B's enrichment pipelines via n8n workflows and PostgreSQL.
+LakeStream — B2B web scraping and data extraction platform by Lake B2B. Extracts blog URLs, articles, resources, pricing, contact info, and tech stack signals from B2B domains, feeding into Lake B2B's enrichment pipelines via n8n workflows and PostgreSQL. Uses LakeCurrent (search API) for query-to-domain discovery and Firecrawl CLI as the internal scraping engine.
 
-**Status**: Phase A (scaffolding) + Phase B (functionality) complete. All models, workers, templates, API routes, and tests are implemented.
+**Status**: Core scraping pipeline complete. Discovery pipeline (LakeCurrent integration) implemented. Authentication, organizations, and signals tracking in place.
 
 ## Tech Stack
 
 - **Runtime**: Python 3.12
 - **API**: FastAPI + uvicorn
 - **Job Queue**: arq (async Redis queue)
+- **Scraping Engine**: Firecrawl CLI (wrapped via `asyncio.create_subprocess_exec`) with HTTP fallback
 - **Browser Automation**: Playwright (headless scraping)
 - **HTML Parsing**: selectolax (fast CSS selector extraction)
-- **Scraping Tool**: Firecrawl CLI (wrapped via `asyncio.create_subprocess_exec`)
+- **Search/Discovery**: LakeCurrent API (self-hosted, HTTP client in `src/services/lakecurrent.py`)
 - **HTTP Client**: httpx (async)
 - **Proxy**: Bright Data / Smartproxy (residential + datacenter)
 - **Database**: PostgreSQL + asyncpg (raw SQL, no ORM)
@@ -43,6 +44,8 @@ make docker-up    # docker-compose up -d (Postgres + Redis)
 
 ```
 API (FastAPI) → Job Queue (arq/Redis) → Worker Pool → Proxy Service → PostgreSQL → n8n Enrichment
+                                                          ↑
+LakeCurrent (search) → Discovery Pipeline → Domain extraction → Enqueue scrape jobs
 ```
 
 **Three-tier adaptive scraping** with automatic escalation:
@@ -62,9 +65,9 @@ Escalation logic in `src/services/escalation.py`: empty results or 403/429 → h
 src/
   server.py              # FastAPI app creation + lifespan
   config/                # Pydantic Settings, constants
-  models/                # Pydantic models (job, scraped_data, template, scraping, etc.)
-  api/routes/            # FastAPI route handlers (health, scrape, domains, templates)
-  queue/                 # arq worker settings + job definitions
+  models/                # Pydantic models (job, scraped_data, discovery, template, scraping, etc.)
+  api/routes/            # FastAPI route handlers (health, scrape, discover, domains, templates)
+  queue/                 # arq worker settings + job definitions (scrape + discovery)
   workers/               # BaseWorker + domain_mapper, blog_extractor, article_parser,
                          #   contact_finder, tech_detector, resource_finder
   templates/             # BaseTemplate + wordpress, hubspot, webflow, generic, directory
@@ -73,18 +76,19 @@ src/
     parser/              # html_parser, url_classifier, contact_parser, tech_parser, resource_parser
     validator/           # url_validator, data_validator, email_validator
     exporter/            # pg_exporter, csv_exporter
-  services/              # firecrawl, escalation, cost_tracker, rate_limiter, template_detector
+  services/              # firecrawl (scraping engine), lakecurrent (search), escalation,
+                         #   cost_tracker, rate_limiter, template_detector, domain_extractor
   db/                    # asyncpg pool, migrations (.sql), queries (raw SQL)
   data/                  # tech_signatures, industries, job_functions
   utils/                 # logger, errors, url, retry, shell
 tests/
   conftest.py            # Shared fixtures (sample HTML)
-  unit/                  # URL classifier, email validator, HTML parser, WordPress template
+  unit/                  # URL classifier, email validator, HTML parser, WordPress template, discovery
 ```
 
-## Firecrawl CLI
+## Internal Scraping Engine (Firecrawl CLI)
 
-Primary scraping tool. Wrapped in `src/services/firecrawl.py` as async subprocess calls.
+The scraping engine is Firecrawl CLI, wrapped in `src/services/firecrawl.py` as async subprocess calls. HTTP-based fallbacks exist for when the CLI is unavailable.
 
 Key commands:
 - `firecrawl search "query" -o .firecrawl/results.json --json` — web search
@@ -95,10 +99,13 @@ Store all Firecrawl output in `.firecrawl/` directory.
 
 ## Database Schema
 
-Three PostgreSQL tables (migrations in `src/db/migrations/`):
+PostgreSQL tables (migrations in `src/db/migrations/`):
 - **scrape_jobs**: job tracking (domain, template_id, status, strategy_used, cost, duration)
 - **scraped_data**: extracted content (data_type, url, title, metadata JSONB) + `pg_notify` trigger
 - **domain_metadata**: per-domain stats (last strategy, block count, success rate, avg cost)
+- **discovery_jobs**: search-to-scrape pipeline (query, status, domains_found, search_results JSONB)
+- **discovery_job_domains**: links discovery jobs to child scrape jobs
+- **tracked_searches**: recurring search-to-scrape schedules
 
 ## Lake B2B Data Schema (Target Fields)
 
@@ -109,7 +116,8 @@ Three PostgreSQL tables (migrations in `src/db/migrations/`):
 
 ## Key Files
 
-- `ChampionInternalScraperPRD.md` — full product requirements document
+- `PRD-Scraper-Integration.md` — LakeCurrent integration specification
+- `PRODUCT_ROADMAP.md` — feature roadmap
 - `pyproject.toml` — dependencies, tool configs (ruff, pytest, mypy)
 - `docker-compose.yml` — Postgres 16 + Redis 7 for local dev
 - `Makefile` — common command shortcuts

@@ -32,9 +32,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(
-    title="Lake B2B Scraper",
+    title="LakeStream",
     version="0.1.0",
-    description="Template-based web scraping platform for B2B data enrichment",
+    description="B2B web scraping and data extraction platform",
     lifespan=lifespan,
 )
 

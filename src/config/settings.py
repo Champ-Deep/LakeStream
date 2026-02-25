@@ -17,14 +17,25 @@ class Settings(BaseSettings):
 
     brightdata_proxy_url: str = ""
     smartproxy_url: str = ""
-    firecrawl_api_key: str = ""
 
     max_concurrent_jobs: int = 10
     max_scrape_pages_per_job: int = 500
     default_rate_limit_ms: int = 1000
 
+    # LakeCurrent search API
+    lakecurrent_base_url: str = "http://lakecurrent-backend:8001"
+    lakecurrent_timeout: float = 15.0
+    lakecurrent_enabled: bool = True
+
+    # Discovery pipeline
+    discovery_max_search_pages: int = 10
+    discovery_skip_recent_days: int = 7
+    discovery_max_domains_per_query: int = 50
+
     # Authentication & Multi-tenancy
-    jwt_secret: str = Field(..., description="JWT signing secret (required, use: openssl rand -hex 32)")
+    jwt_secret: str = Field(
+        ..., description="JWT signing secret (required, use: openssl rand -hex 32)"
+    )
     jwt_algorithm: str = "HS256"
     access_token_expire_hours: int = 24
 
@@ -38,9 +49,7 @@ class Settings(BaseSettings):
     def fix_postgres_scheme(self) -> "Settings":
         # Railway/Heroku provide postgres:// but asyncpg requires postgresql://
         if self.database_url.startswith("postgres://"):
-            self.database_url = self.database_url.replace(
-                "postgres://", "postgresql://", 1
-            )
+            self.database_url = self.database_url.replace("postgres://", "postgresql://", 1)
         return self
 
     @model_validator(mode="after")

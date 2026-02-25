@@ -60,7 +60,12 @@ async def trigger_scrape(request: WebhookTriggerRequest):
     # Default data types if not provided
     if not request.data_types:
         request.data_types = [
-            "blog_url", "article", "contact", "tech_stack", "resource", "pricing",
+            "blog_url",
+            "article",
+            "contact",
+            "tech_stack",
+            "resource",
+            "pricing",
         ]
 
     # Create job input
@@ -118,7 +123,7 @@ async def test_webhook(request: WebhookTestRequest):
     test_payload = {
         "source": "lake_b2b_scraper",
         "type": "test",
-        "message": "This is a test webhook from Lake B2B Scraper",
+        "message": "This is a test webhook from LakeStream",
         "timestamp": "2024-01-01T00:00:00Z",
     }
 

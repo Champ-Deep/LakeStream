@@ -8,7 +8,7 @@ from selectolax.parser import HTMLParser
 class PricingParser:
     """Extracts pricing plans and details from pricing pages."""
 
-    CURRENCY_PATTERN = re.compile(r'[$€£¥]\s*[\d,]+(?:\.\d{2})?')
+    CURRENCY_PATTERN = re.compile(r"[$€£¥]\s*[\d,]+(?:\.\d{2})?")
     BILLING_PATTERNS = {
         "monthly": [r"month", r"/mo", r"per month"],
         "annual": [r"year", r"annual", r"/yr", r"per year"],

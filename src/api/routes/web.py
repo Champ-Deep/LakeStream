@@ -1,4 +1,4 @@
-"""Web UI routes for the Lake B2B Scraper dashboard."""
+"""Web UI routes for the LakeStream dashboard."""
 
 from uuid import UUID
 
@@ -30,9 +30,7 @@ async def dashboard(request: Request):
 
     # Get job stats
     total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
-    running_jobs = await pool.fetchval(
-        "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'"
-    )
+    running_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'")
     total_data = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
     total_cost = await pool.fetchval("SELECT COALESCE(SUM(cost_usd), 0) FROM scrape_jobs")
 

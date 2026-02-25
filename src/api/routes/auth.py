@@ -80,7 +80,12 @@ async def signup(request: SignupRequest):
     # Create user (first user is org_owner)
     password_hash = hash_password(request.password)
     user = await create_user(
-        pool, email=request.email, password_hash=password_hash, full_name=request.full_name, org_id=org.id, role="org_owner"
+        pool,
+        email=request.email,
+        password_hash=password_hash,
+        full_name=request.full_name,
+        org_id=org.id,
+        role="org_owner",
     )
 
     # Update last login
@@ -151,7 +156,9 @@ async def login(request: LoginRequest):
     # Get organization details
     org = await get_organization(pool, user.org_id)
     if not org:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Organization not found")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Organization not found"
+        )
 
     return LoginResponse(
         access_token=token,

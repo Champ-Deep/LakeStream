@@ -87,8 +87,7 @@ async def list_jobs(
     vals.extend([limit, offset])
 
     query = (
-        f"SELECT * FROM scrape_jobs {where} "
-        f"ORDER BY created_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
+        f"SELECT * FROM scrape_jobs {where} ORDER BY created_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
     )
     rows = await pool.fetch(query, *vals)
     return [ScrapeJob(**dict(row)) for row in rows]

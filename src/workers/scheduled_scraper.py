@@ -26,9 +26,7 @@ async def check_scheduled_scrapes(ctx: dict) -> None:
                 domain=tracked.domain,
                 data_types=tracked.data_types,
                 max_pages=tracked.max_pages,
-                template_id=tracked.template_id
-                if tracked.template_id != "auto"
-                else None,
+                template_id=tracked.template_id if tracked.template_id != "auto" else None,
             )
             job = await create_job(pool, job_input)
 

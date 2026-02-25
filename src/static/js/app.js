@@ -1,4 +1,4 @@
-/* Lake B2B Scraper - Frontend JavaScript
+/* LakeStream - Frontend JavaScript
    HTMX Configuration + Alpine.js Components
    ========================================== */
 

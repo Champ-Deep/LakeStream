@@ -23,7 +23,9 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="Minimum 8 characters")
     full_name: str = Field(..., min_length=1)
-    org_name: str = Field(..., min_length=1, description="Organization name (new org will be created)")
+    org_name: str = Field(
+        ..., min_length=1, description="Organization name (new org will be created)"
+    )
 
 
 class InviteUserRequest(BaseModel):

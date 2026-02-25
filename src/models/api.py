@@ -27,6 +27,7 @@ class HealthResponse(BaseModel):
     status: str
     database: str
     redis: str
+    lakecurrent: str = "disabled"
 
 
 class DomainStatsResponse(BaseModel):

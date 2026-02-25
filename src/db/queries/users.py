@@ -4,7 +4,6 @@ These queries use raw SQL via asyncpg for optimal performance.
 All queries are async and use asyncpg pool connection management.
 """
 
-from datetime import datetime
 from uuid import UUID
 
 from asyncpg import Pool

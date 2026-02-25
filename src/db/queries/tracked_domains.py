@@ -27,8 +27,12 @@ async def add_tracked_domain(
     """Insert or update a tracked domain."""
     if data_types is None:
         data_types = [
-            "blog_url", "article", "contact",
-            "tech_stack", "resource", "pricing",
+            "blog_url",
+            "article",
+            "contact",
+            "tech_stack",
+            "resource",
+            "pricing",
         ]
     delta = FREQUENCY_DELTAS.get(scrape_frequency, timedelta(weeks=1))
     next_scrape = datetime.now(UTC) + delta
@@ -66,27 +70,20 @@ async def list_tracked_domains(
 ) -> list[TrackedDomain]:
     """List tracked domains."""
     condition = "WHERE is_active = true" if active_only else ""
-    rows = await pool.fetch(
-        f"SELECT * FROM tracked_domains {condition} ORDER BY domain ASC"
-    )
+    rows = await pool.fetch(f"SELECT * FROM tracked_domains {condition} ORDER BY domain ASC")
     return [TrackedDomain(**dict(row)) for row in rows]
 
 
-async def get_tracked_domain(
-    pool: asyncpg.Pool, domain: str
-) -> TrackedDomain | None:
+async def get_tracked_domain(pool: asyncpg.Pool, domain: str) -> TrackedDomain | None:
     """Get a single tracked domain."""
-    row = await pool.fetchrow(
-        "SELECT * FROM tracked_domains WHERE domain = $1", domain
-    )
+    row = await pool.fetchrow("SELECT * FROM tracked_domains WHERE domain = $1", domain)
     return TrackedDomain(**dict(row)) if row else None
 
 
 async def remove_tracked_domain(pool: asyncpg.Pool, domain: str) -> None:
     """Soft-delete a tracked domain."""
     await pool.execute(
-        "UPDATE tracked_domains SET is_active = false, updated_at = NOW() "
-        "WHERE domain = $1",
+        "UPDATE tracked_domains SET is_active = false, updated_at = NOW() WHERE domain = $1",
         domain,
     )
 
@@ -94,8 +91,7 @@ async def remove_tracked_domain(pool: asyncpg.Pool, domain: str) -> None:
 async def get_due_domains(pool: asyncpg.Pool) -> list[TrackedDomain]:
     """Get tracked domains that are due for their next auto-scrape."""
     rows = await pool.fetch(
-        "SELECT * FROM tracked_domains "
-        "WHERE is_active = true AND next_scrape_at <= NOW()"
+        "SELECT * FROM tracked_domains WHERE is_active = true AND next_scrape_at <= NOW()"
     )
     return [TrackedDomain(**dict(row)) for row in rows]
 

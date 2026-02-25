@@ -7,7 +7,7 @@ This module contains the core logic for evaluating intent signals:
 """
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -65,9 +65,7 @@ async def evaluate_signals_for_org(org_id: UUID) -> int:
         return fired_count
 
 
-async def evaluate_signal(
-    pool: Pool, signal: Signal, org_id: UUID
-) -> dict[str, Any] | None:
+async def evaluate_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str, Any] | None:
     """Evaluate a single signal to check if conditions are met.
 
     Returns:
@@ -127,9 +125,7 @@ async def check_job_change_signal(
     return None
 
 
-async def check_funding_signal(
-    pool: Pool, signal: Signal, org_id: UUID
-) -> dict[str, Any] | None:
+async def check_funding_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str, Any] | None:
     """Check if funding round conditions match recent data."""
     filters = signal.trigger_config.get("filters", {})
 
@@ -259,9 +255,7 @@ async def check_hiring_spike_signal(
 # ============================================================================
 
 
-async def execute_signal_action(
-    pool: Pool, signal: Signal, matched_data: dict[str, Any]
-) -> None:
+async def execute_signal_action(pool: Pool, signal: Signal, matched_data: dict[str, Any]) -> None:
     """Execute the configured action when a signal fires."""
     action_config = signal.action_config
     action_type = action_config.get("type")

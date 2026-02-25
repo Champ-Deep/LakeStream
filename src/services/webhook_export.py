@@ -36,9 +36,7 @@ async def export_job_to_webhook(job_id: UUID, webhook_url: str) -> bool:
                 "url": item.url,
                 "title": item.title,
                 "metadata": item.metadata,
-                "scraped_at": item.scraped_at.isoformat()
-                if item.scraped_at
-                else None,
+                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else None,
             }
             for item in data
         ],

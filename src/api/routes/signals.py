@@ -47,9 +47,7 @@ async def list_signal_types(category: str | None = None):
 
 
 @router.post("/", response_model=Signal, status_code=status.HTTP_201_CREATED)
-async def create_new_signal(
-    request: CreateSignalRequest, user: dict = Depends(get_current_user)
-):
+async def create_new_signal(request: CreateSignalRequest, user: dict = Depends(get_current_user)):
     """Create a new intent signal."""
     pool = await get_pool()
 
@@ -75,9 +73,7 @@ async def create_new_signal(
 
 
 @router.get("/", response_model=list[Signal])
-async def list_signals(
-    is_active: bool | None = None, user: dict = Depends(get_current_user)
-):
+async def list_signals(is_active: bool | None = None, user: dict = Depends(get_current_user)):
     """List all signals for the current organization."""
     pool = await get_pool()
 
@@ -100,9 +96,7 @@ async def get_signal_by_id(signal_id: UUID, user: dict = Depends(get_current_use
 
         signal = await get_signal(pool, signal_id)
         if not signal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found")
 
         # Verify ownership
         if str(signal.org_id) != user["org_id"]:
@@ -128,9 +122,7 @@ async def update_signal_by_id(
         # Verify signal exists and user has access
         existing = await get_signal(pool, signal_id)
         if not existing:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found")
 
         if str(existing.org_id) != user["org_id"]:
             raise HTTPException(
@@ -151,9 +143,7 @@ async def update_signal_by_id(
             condition_config=(
                 request.condition_config.model_dump() if request.condition_config else None
             ),
-            action_config=(
-                request.action_config.model_dump() if request.action_config else None
-            ),
+            action_config=(request.action_config.model_dump() if request.action_config else None),
         )
 
         if not updated:
@@ -177,9 +167,7 @@ async def delete_signal_by_id(signal_id: UUID, user: dict = Depends(get_current_
         # Verify signal exists and user has access
         existing = await get_signal(pool, signal_id)
         if not existing:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found")
 
         if str(existing.org_id) != user["org_id"]:
             raise HTTPException(
@@ -213,9 +201,7 @@ async def test_signal(signal_id: UUID, user: dict = Depends(get_current_user)):
         # Verify signal exists and user has access
         signal = await get_signal(pool, signal_id)
         if not signal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found")
 
         if str(signal.org_id) != user["org_id"]:
             raise HTTPException(
@@ -253,9 +239,7 @@ async def get_signal_executions(
         # Verify signal exists and user has access
         signal = await get_signal(pool, signal_id)
         if not signal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found")
 
         if str(signal.org_id) != user["org_id"]:
             raise HTTPException(
