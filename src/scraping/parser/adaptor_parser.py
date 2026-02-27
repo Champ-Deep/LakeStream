@@ -4,10 +4,10 @@ from scrapling.parser import Selector
 
 
 class AdaptorParser:
-    """HTML parser using Scrapling's Adaptor (Selector).
+    """Adaptive HTML parser with intelligent element finding.
 
     This is an alternative to selectolax-based HtmlParser.
-    Provides adaptive element finding that survives site redesigns.
+    Provides resilient element selection that survives site redesigns.
     """
 
     def __init__(self, html: str, base_url: str):

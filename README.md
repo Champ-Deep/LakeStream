@@ -270,7 +270,6 @@ python benchmarks/scrapling_benchmark.py https://example.com https://python.org
 
 ## 🙏 Acknowledgments
 
-- 🕷️ [Scrapling](https://github.com/D4Vinci/Scrapling) — The amazing scraping framework we use
 - 🐍 Python community — For making this all possible
 - 💜 **You** — For choosing LakeStream!
 

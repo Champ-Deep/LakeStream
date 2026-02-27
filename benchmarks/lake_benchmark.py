@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark script to test all 3 Scrapling tiers against a list of domains."""
+"""Benchmark script to test all 3 Lake scraping tiers against a list of domains."""
 
 import asyncio
 import json

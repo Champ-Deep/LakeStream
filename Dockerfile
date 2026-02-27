@@ -7,19 +7,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install dependencies from requirements.txt (faster, no setuptools needed)
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir gunicorn \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install "scrapling[fetchers]" \
     && scrapling install --with-deps
 
-# Copy application code and startup script
 COPY src/ ./src/
-COPY start.sh ./
 
-# Railway injects PORT at runtime
 ENV PORT=8000
 EXPOSE ${PORT}
 
-CMD ["./start.sh"]
+CMD ["gunicorn", "src.server:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:${PORT}", "--timeout", "120"]
