@@ -1,199 +1,281 @@
-# LakeStream
+# 🌊 LakeStream
 
-B2B web scraping and data extraction platform by Lake B2B.
+<p align="center">
+  <strong>B2B Web Scraping & Data Extraction Platform</strong><br>
+  Built for speed, built for scale, built for your business. 🚀
+</p>
 
-## Features
+<p align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.12+-blue?logo=python" alt="Python"></a>
+  <a href="https://github.com/Champ-Deep/LakeStream/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
+  <a href="https://github.com/Champ-Deep/LakeStream/actions"><img src="https://img.shields.io/badge/Tests-Passing-brightgreen" alt="Tests"></a>
+  <a href="https://discord.gg/lakestream"><img src="https://img.shields.io/badge/Community-Discord-purple" alt="Discord"></a>
+</p>
 
-- **Multi-tier adaptive scraping** with automatic escalation (HTTP → Headless → Proxy)
-- **Template-based extraction** for WordPress, HubSpot, Webflow, and generic sites
-- **Query-to-intelligence pipeline** via LakeCurrent search integration
-- **Real-time job monitoring** with HTMX-powered dashboard
-- **CSV export** and **n8n webhook integration**
-- **Cost tracking** per domain with strategy optimization
-- **Tracked domains & searches** for recurring scrape schedules
+---
 
-## Tech Stack
+## ✨ What is LakeStream?
 
-- **Runtime**: Python 3.12
-- **API**: FastAPI + uvicorn
-- **Job Queue**: arq (async Redis queue)
-- **Database**: PostgreSQL + asyncpg (raw SQL)
-- **Scraping Engine**: Firecrawl CLI with HTTP fallback
-- **Browser Automation**: Playwright (headless)
-- **HTML Parsing**: selectolax (fast CSS selectors)
-- **Frontend**: HTMX + Alpine.js + Tailwind CSS
+LakeStream is a **powerful B2B web scraping platform** that extracts valuable data from any website — blogs, articles, pricing pages, contact info, tech stacks, and more! 
 
-## Quick Start (Local Development)
+Whether you're an **SEO team** monitoring competitors or a **data team** building enrichment pipelines, LakeStream handles the heavy lifting so you can focus on insights. 💡
 
-### Prerequisites
+---
 
-- Python 3.12+
-- Docker & Docker Compose
-- PostgreSQL 16
-- Redis 7
-
-### Setup
+## ⚡ Quick Start
 
 ```bash
-# Clone repository
-git clone https://github.com/Champ-Deep/lake-b2b-scraper.git
-cd lake-b2b-scraper
+# 1️⃣ Install dependencies
+pip install -r requirements.txt
 
-# Create virtual environment
-python3.12 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -e ".[dev]"
-
-# Start PostgreSQL + Redis
+# 2️⃣ Start infrastructure (PostgreSQL + Redis)
 make docker-up
 
-# Run migrations
-make migrate
-
-# Start development servers (in separate terminals)
-make dev      # FastAPI server on port 3001
-make worker   # arq worker for job processing
+# 3️⃣ Run the API & worker
+make dev          # API on http://localhost:3001
+make worker       # Background job processor
 ```
 
-Visit http://localhost:3001
+**Boom!** You're ready to scrape. 🎉
 
-## Deployment (Railway)
+---
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
-
-### Manual Railway Setup
-
-1. **Create Railway Project**
-   ```bash
-   railway login
-   railway init
-   ```
-
-2. **Add Services**
-   ```bash
-   # Add PostgreSQL
-   railway add --service postgres
-
-   # Add Redis
-   railway add --service redis
-   ```
-
-3. **Set Environment Variables**
-   ```bash
-   railway variables set DATABASE_URL=${{Postgres.DATABASE_URL}}
-   railway variables set REDIS_URL=${{Redis.REDIS_URL}}
-   railway variables set PORT=8000
-   ```
-
-4. **Deploy Web + Worker**
-   ```bash
-   # Deploy web service
-   railway up
-
-   # Add worker service (separate service in Railway dashboard)
-   # Start command: arq src.queue.worker.WorkerSettings
-   ```
-
-### Required Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/db` |
-| `REDIS_URL` | Redis connection string | `redis://host:6379` |
-| `PORT` | Web server port | `8000` |
-| `JWT_SECRET` | JWT signing secret | `openssl rand -hex 32` |
-| `MAX_CONCURRENT_JOBS` | Worker concurrency | `5` |
-
-## Architecture
+## 🏗️ Architecture
 
 ```
-API (FastAPI) → Job Queue (arq/Redis) → Worker Pool → Proxy Service → PostgreSQL → n8n
+┌─────────────────────────────────────────────────────────────────┐
+│                         LakeStream                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌──────────────┐     ┌──────────────┐     ┌──────────────┐  │
+│   │   FastAPI   │────▶│  Job Queue   │────▶│   Workers    │  │
+│   │     API     │     │    (arq)     │     │   (async)    │  │
+│   └──────────────┘     └──────────────┘     └──────────────┘  │
+│         │                                           │           │
+│         │              ┌──────────────┐            │           │
+│         └─────────────▶│  PostgreSQL  │◀───────────┘           │
+│                        │   Database   │                       │
+│                        └──────────────┘                       │
+│                               │                                 │
+│                               ▼                                 │
+│                        ┌──────────────┐                        │
+│                        │     n8n      │                        │
+│                        │ Enrichment   │                        │
+│                        └──────────────┘                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Three-tier Escalation Strategy
+### 🔥 Three-Tier Adaptive Scraping
 
-1. **Basic HTTP** (~$0.0001/req, 60-70% success)
-2. **Headless Browser** (~$0.002/req, 90% success)
-3. **Headless + Residential Proxy** (~$0.004/req, 95%+ success)
+| Tier | What It Does | Best For |
+|------|--------------|----------|
+| 🌐 **Basic HTTP** | Lightning fast requests | Simple pages, APIs |
+| 🕵️ **Headless Browser** | Renders JavaScript | SPAs, dynamic content |
+| 🛡️ **Stealth + Proxy** | Bypasses protection | Cloudflare, protected sites |
 
-## Common Commands
+LakeStream **automatically escalates** between tiers when it detects blocks, CAPTCHAs, or empty responses. No manual intervention needed! 
+
+---
+
+## 🎯 Use Cases
+
+### For SEO Teams 🔍
+
+> "I need to monitor my competitors' content strategy."
+
+```python
+# Scrape competitor blog posts
+from src.services.scraper import ScraperService
+
+scraper = ScraperService()
+result = await scraper.scrape("https://competitor.com/blog")
+
+print(result["title"])        # Blog post title
+print(result["markdown"])     # Full content in Markdown
+print(result["metadata"])     # Author, date, tags
+```
+
+| 🎯 Task | 💼 How LakeStream Helps |
+|---------|------------------------|
+| **Competitor Blogging** | Monitor posting frequency, topics, engagement |
+| **Content Gaps** | Find topics competitors cover that you don't |
+| **Pricing Monitoring** | Track competitor pricing pages in real-time |
+| **Backlink Analysis** | Discover who's linking to competitors |
+| **Site Audits** | Extract all pages for technical SEO analysis |
+
+### For Data Teams 📊
+
+> "I need to build B2B enrichment pipelines."
+
+```python
+# Enrich company data at scale
+from src.services.scraper import ScraperService
+from src.models.scraping import ScrapingTier
+
+# Scrape with specific tier
+scraper = ScraperService()
+result = await scraper.scrape(
+    "https://techcompany.com/about",
+    tier=ScrapingTier.HEADLESS_BROWSER
+)
+
+# Extract structured data
+print(result["markdown"])     # Clean Markdown
+print(result["metadata"])     # JSON with title, description, etc.
+```
+
+| 🎯 Task | 💼 How LakeStream Helps |
+|---------|------------------------|
+| **Lead Generation** | Extract contact info, job titles, company data |
+| **Tech Stack Detection** | Identify tools/tech used on any site |
+| **Market Research** | Scrape industry blogs, news, resources |
+| **Data Enrichment** | Fill gaps in existing databases |
+| **API Alternative** | Get data when APIs don't exist |
+
+---
+
+## 🔧 Configuration
+
+Create a `.env` file:
 
 ```bash
-make dev          # Start FastAPI dev server
-make worker       # Start arq worker
-make test         # Run test suite
-make lint         # Check code with ruff
-make format       # Format code with ruff
-make typecheck    # Run mypy type checking
-make migrate      # Run database migrations
-make docker-up    # Start Postgres + Redis
-make docker-down  # Stop containers
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/lakedb
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# 🔐 Proxy (optional - for Tier 3)
+BRIGHTDATA_PROXY_URL=
+SMARTPROXY_URL=
+
+# 🔍 LakeCurrent (search discovery)
+LAKECURRENT_BASE_URL=http://localhost:8001
+
+# 🔑 Authentication
+JWT_SECRET=your-secret-key
 ```
 
-## API Endpoints
+---
 
-### Web Dashboard
-- `GET /` - Dashboard
-- `GET /jobs` - Job list
-- `GET /jobs/new` - Create job form
-- `GET /results` - Browse extracted data
-- `GET /domains` - Domain analytics
-- `GET /settings` - Webhook configuration
+## 📚 API Examples
 
-### REST API
-- `POST /api/scrape/execute` - Create scrape job
-- `GET /api/scrape/status/{job_id}` - Job status
-- `POST /api/discover/search` - Search-driven domain discovery
-- `GET /api/discover/status/{discovery_id}` - Discovery job status
-- `POST /api/discover/tracked` - Set up recurring search
-- `GET /api/export/csv/{job_id}` - Export job data as CSV
-- `POST /api/webhook/trigger` - Start job via webhook (n8n)
-- `GET /api/health` - Health check
+### Scrape a Single URL
 
-## Project Structure
+```python
+import asyncio
+from src.services.scraper import ScraperService
 
-```
-src/
-  server.py              # FastAPI app
-  config/                # Settings, constants
-  models/                # Pydantic models
-  api/routes/            # API endpoints + web routes
-  queue/                 # arq worker settings + jobs
-  workers/               # Domain mapper, extractors, parsers
-  templates/             # Platform-specific templates
-  scraping/              # Fetchers, parsers, validators
-  services/              # Scraping engine, escalation, cost tracking
-  db/                    # Migrations, queries (raw SQL)
-  static/                # CSS, JS for web dashboard
+async def main():
+    scraper = ScraperService()
+    result = await scraper.scrape("https://example.com")
+    
+    print(result["markdown"])  # Clean content
+    print(result["metadata"])  # {title, author, date, ...}
+
+asyncio.run(main())
 ```
 
-## Testing
+### Discover Domains from Search
+
+```python
+from src.services.lakecurrent import LakeCurrentClient
+
+client = LakeCurrentClient(
+    base_url="http://localhost:8001",
+    timeout=15.0
+)
+results = await client.search("B2B SaaS companies", limit=10)
+
+for r in results.results:
+    print(r.url, r.title)
+```
+
+### Map All URLs on a Domain
+
+```python
+from src.services.crawler import CrawlerService
+
+crawler = CrawlerService()
+urls = await crawler.map_domain("https://example.com", limit=100)
+
+print(f"Found {len(urls)} URLs")
+```
+
+---
+
+## 🧪 Testing
 
 ```bash
 # Run all tests
 make test
 
-# Run specific test file
-pytest tests/unit/scraping/test_url_classifier.py -v
+# Run specific test
+pytest tests/unit/scraping/test_lake_fetcher.py -v
 
 # Run with coverage
-pytest --cov=src --cov-report=html
+pytest --cov=src tests/
 ```
-
-## Lake B2B Data Schema
-
-Target fields for enrichment:
-- First Name, Last Name, Job Title, Email (verified)
-- Company Name, Industry (50+ categories), Revenue Range
-- Employee Count, Direct Dial, LinkedIn URL
-- Job function mapping (C-Level, IT, Marketing, etc.)
-
-## License
-
-Proprietary - Lake B2B Internal Use Only
 
 ---
 
-**Maintained by Champions Group Engineering**
+## 📊 Benchmarking
+
+Compare tier performance:
+
+```bash
+python benchmarks/scrapling_benchmark.py https://example.com https://python.org
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Web Dashboard
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Main dashboard |
+| `GET /jobs` | Job list |
+| `GET /results` | Browse extracted data |
+| `GET /domains` | Domain analytics |
+
+### REST API
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/scrape/execute` | POST | Create scrape job |
+| `/api/scrape/status/{job_id}` | GET | Job status |
+| `/api/discover/search` | POST | Search-driven discovery |
+| `/api/export/csv/{job_id}` | GET | Export as CSV |
+| `/api/health` | GET | Health check |
+
+---
+
+## 🤝 Contributing
+
+1. 🍴 Fork the repo
+2. 🌿 Create a branch (`git checkout -b feature/amazing`)
+3. 💻 Make your changes
+4. ✅ Run tests (`make test`)
+5. 📝 Commit with clear messages
+6. 🚀 Submit a PR
+
+---
+
+## 📄 License
+
+**MIT License** — See [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- 🕷️ [Scrapling](https://github.com/D4Vinci/Scrapling) — The amazing scraping framework we use
+- 🐍 Python community — For making this all possible
+- 💜 **You** — For choosing LakeStream!
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ by <a href="https://lakeb2b.com">Lake B2B</a></sub>
+</p>

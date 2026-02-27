@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LakeStream — B2B web scraping and data extraction platform by Lake B2B. Extracts blog URLs, articles, resources, pricing, contact info, and tech stack signals from B2B domains, feeding into Lake B2B's enrichment pipelines via n8n workflows and PostgreSQL. Uses LakeCurrent (search API) for query-to-domain discovery and Firecrawl CLI as the internal scraping engine.
+LakeStream — B2B web scraping and data extraction platform by Lake B2B. Extracts blog URLs, articles, resources, pricing, contact info, and tech stack signals from B2B domains, feeding into Lake B2B's enrichment pipelines via n8n workflows and PostgreSQL. Uses LakeCurrent (search API) for query-to-domain discovery and Scrapling as the internal scraping engine.
 
 **Status**: Core scraping pipeline complete. Discovery pipeline (LakeCurrent integration) implemented. Authentication, organizations, and signals tracking in place.
 
@@ -13,9 +13,9 @@ LakeStream — B2B web scraping and data extraction platform by Lake B2B. Extrac
 - **Runtime**: Python 3.12
 - **API**: FastAPI + uvicorn
 - **Job Queue**: arq (async Redis queue)
-- **Scraping Engine**: Firecrawl CLI (wrapped via `asyncio.create_subprocess_exec`) with HTTP fallback
+- **Scraping Engine**: Scrapling (adaptive web scraping framework)
 - **Browser Automation**: Playwright (headless scraping)
-- **HTML Parsing**: selectolax (fast CSS selector extraction)
+- **HTML Parsing**: selectolax (fast CSS selector extraction) + Scrapling Adaptor
 - **Search/Discovery**: LakeCurrent API (self-hosted, HTTP client in `src/services/lakecurrent.py`)
 - **HTTP Client**: httpx (async)
 - **Proxy**: Bright Data / Smartproxy (residential + datacenter)
@@ -72,8 +72,8 @@ src/
                          #   contact_finder, tech_detector, resource_finder
   templates/             # BaseTemplate + wordpress, hubspot, webflow, generic, directory
   scraping/
-    fetcher/             # http_fetcher, browser_fetcher, proxy_fetcher, factory
-    parser/              # html_parser, url_classifier, contact_parser, tech_parser, resource_parser
+    fetcher/             # lake_fetcher, lake_stealth_fetcher, lake_proxy_fetcher, factory
+    parser/              # html_parser, adaptor_parser, url_classifier, contact_parser, tech_parser
     validator/           # url_validator, data_validator, email_validator
     exporter/            # pg_exporter, csv_exporter
   services/              # firecrawl (scraping engine), lakecurrent (search), escalation,
@@ -86,16 +86,19 @@ tests/
   unit/                  # URL classifier, email validator, HTML parser, WordPress template, discovery
 ```
 
-## Internal Scraping Engine (Firecrawl CLI)
+## Internal Scraping Engine (Scrapling)
 
-The scraping engine is Firecrawl CLI, wrapped in `src/services/firecrawl.py` as async subprocess calls. HTTP-based fallbacks exist for when the CLI is unavailable.
+The scraping engine is **Scrapling** — an adaptive web scraping framework that handles everything from simple requests to full-scale crawls.
 
-Key commands:
-- `firecrawl search "query" -o .firecrawl/results.json --json` — web search
-- `firecrawl scrape <url> -o .firecrawl/page.md` — single page extraction
-- `firecrawl map <url> -o .firecrawl/urls.txt` — discover all URLs on a site
+Key classes:
+- `scrapling.fetchers.Fetcher` — Fast HTTP requests
+- `scrapling.fetchers.StealthyFetcher` — Bypasses anti-bot (Cloudflare, etc.)
+- `scrapling.parser.Selector` — Adaptive HTML parsing
 
-Store all Firecrawl output in `.firecrawl/` directory.
+LakeStream wraps Scrapling in three tiers:
+1. **LakeFetcher** — Basic HTTP (Tier 1)
+2. **LakeStealthFetcher** — Headless browser (Tier 2)
+3. **LakeProxyFetcher** — Headless + residential proxy (Tier 3)
 
 ## Database Schema
 
