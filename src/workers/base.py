@@ -26,9 +26,10 @@ class BaseWorker(ABC):
 
     async def fetch_page(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         """Fetch a page. Wired to escalation service in B.7."""
-        from src.scraping.fetcher.http_fetcher import HttpFetcher
+        from src.models.scraping import ScrapingTier
+        from src.scraping.fetcher.factory import create_fetcher
 
-        fetcher = HttpFetcher()
+        fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
         return await fetcher.fetch(url, options)
 
     async def export_results(self, data: list[dict]) -> int:

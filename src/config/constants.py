@@ -13,5 +13,5 @@ DEFAULT_JOB_TIMEOUT = 300  # 5 minutes
 DEFAULT_JOB_MAX_TRIES = 3
 DISCOVERY_JOB_TIMEOUT = 600  # 10 minutes for multi-page search + enqueue
 
-# Firecrawl output directory
+# Deprecated: Firecrawl output directory (kept for backward compatibility)
 FIRECRAWL_OUTPUT_DIR = ".firecrawl"

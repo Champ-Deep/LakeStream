@@ -2,6 +2,7 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -9,7 +10,9 @@ WORKDIR /app
 # Install dependencies from requirements.txt (faster, no setuptools needed)
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install "scrapling[fetchers]" \
+    && scrapling install --with-deps
 
 # Copy application code and startup script
 COPY src/ ./src/

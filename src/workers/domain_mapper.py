@@ -2,28 +2,28 @@ import structlog
 
 from src.scraping.parser.url_classifier import classify_urls
 from src.scraping.validator.url_validator import validate_and_deduplicate
-from src.services.firecrawl import FirecrawlService
+from src.services.crawler import CrawlerService
 from src.utils.url import ensure_scheme
 
 log = structlog.get_logger()
 
 
 class DomainMapperWorker:
-    """Discovers all URLs for a domain using Firecrawl map, then classifies them."""
+    """Discovers all URLs for a domain using CrawlerService, then classifies them."""
 
     def __init__(self, domain: str, job_id: str):
         self.domain = domain
         self.job_id = job_id
-        self.firecrawl = FirecrawlService()
+        self.crawler = CrawlerService()
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
 
     async def execute(self, max_pages: int = 100) -> list[dict]:
         """Map a domain and return classified URLs."""
         self.log.info("mapping_domain", max_pages=max_pages)
 
-        # 1. Discover URLs via Firecrawl
+        # 1. Discover URLs via CrawlerService
         url = ensure_scheme(self.domain)
-        raw_urls = await self.firecrawl.map_domain(url, limit=max_pages)
+        raw_urls = await self.crawler.map_domain(url, limit=max_pages)
         self.log.info("urls_discovered", count=len(raw_urls))
 
         # 2. Validate and deduplicate

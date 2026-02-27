@@ -1,0 +1,632 @@
+# LakeStream × Scrapling Integration — Agent Implementation Plan
+
+> [!IMPORTANT]
+> **Read this document completely before writing any code.** This is a surgical integration — we are replacing what's inside the fetcher box only. The architecture, job queue, escalation service, cost tracker, parsers, and database layer remain untouched unless explicitly stated.
+
+---
+
+## Context & Prior Reading
+
+You are implementing the Scrapling integration described in:
+- **PRD:** [LakeStream_Scrapling_Integration_PRD.md](file:///Users/deep/Apps&Projects/LakeStream/LakeStream_Scrapling_Integration_PRD.md) (in project root)
+- **Project brain:** `GEMINI.md` (in project root)
+
+The PRD contains pseudocode — **do not copy-paste it blindly.** The pseudocode has API inaccuracies that you must correct against Scrapling's actual library. This plan supersedes the pseudocode in the PRD whenever they conflict.
+
+---
+
+## Phase 0: Research & Dependency Setup
+
+### Step 0.1 — Research Scrapling's Actual API
+
+Before writing any fetcher code, you **must** read the Scrapling library's documentation/source to verify the actual API surface. The PRD pseudocode makes assumptions that may be wrong. Specifically confirm:
+
+1. **[Fetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) class** — Is it `from scrapling import Fetcher`? What does `.get()` return? Does the response object have `.html_content`, `.status`, `.text`, `.html`? Is it sync-only?
+2. **`StealthyFetcher` class** — Is it `from scrapling import StealthyFetcher`? What does `.fetch()` accept? Confirm the parameter names (`headless`, `network_idle`, `timeout`, `proxy`). Is it sync-only?
+3. **`Adaptor` class** — Is it `from scrapling import Adaptor`? What methods does it expose (`.css()`, `.css_first()`, `.xpath()`, `.find_by_text()`)?
+4. **Response object** — What type does `Fetcher.get()` / `StealthyFetcher.fetch()` return? Is it an `Adaptor` instance? What properties exist for status code, HTML content, headers?
+5. **Async compatibility** — Are all Scrapling calls synchronous? Confirm that we need `asyncio.to_thread()` wrapping.
+
+Use firecrawl to **scrape the Scrapling GitHub repo README and docs** at `https://github.com/D4Vinci/Scrapling` to get the real API. Also check `pip show scrapling` after installation.
+
+> [!CAUTION]
+> Do NOT proceed to Step 1 until you have confirmed the actual Scrapling API. The PRD pseudocode uses methods like `response.html_content` and `response.status` — these may not be the real attribute names. Get the ground truth first.
+
+### Step 0.2 — Install Scrapling
+
+Modify both dependency files and install:
+
+**File: [pyproject.toml](file:///Users/deep/Apps&Projects/LakeStream/pyproject.toml)** — Add to `dependencies` array:
+```toml
+"scrapling>=0.2.0",
+```
+
+**File: [requirements.txt](file:///Users/deep/Apps&Projects/LakeStream/requirements.txt)** — Add line:
+```
+scrapling>=0.2.0
+```
+
+Then run:
+```bash
+pip install scrapling>=0.2.0
+```
+
+After install, run Scrapling's own installer if needed (check docs — Scrapling may require `scrapling install` or similar for browser binaries).
+
+---
+
+## Phase 1: New Fetcher Classes (Week 1 scope)
+
+### Architectural Constraints (DO NOT VIOLATE)
+
+1. **Every fetcher must have this exact signature:**
+   ```python
+   async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult
+   ```
+   This is the contract that [factory.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py), [EscalationService](file:///Users/deep/Apps&Projects/LakeStream/src/services/escalation.py#15-68), [ScraperService](file:///Users/deep/Apps&Projects/LakeStream/src/services/scraper.py#14-104), and [CrawlerService](file:///Users/deep/Apps&Projects/LakeStream/src/services/crawler.py#15-97) all depend on.
+
+2. **Return a [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22) Pydantic model** — See [src/models/scraping.py](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py). Fields:
+   ```python
+   class FetchResult(BaseModel):
+       url: str
+       status_code: int
+       html: str
+       headers: dict[str, str] = {}
+       tier_used: ScrapingTier
+       cost_usd: float
+       duration_ms: int
+       blocked: bool = False
+       captcha_detected: bool = False
+   ```
+
+3. **Use `TIER_COSTS` from [src/config/constants.py](file:///Users/deep/Apps&Projects/LakeStream/src/config/constants.py):**
+   ```python
+   TIER_COSTS = {"basic_http": 0.0001, "headless_browser": 0.002, "headless_proxy": 0.004}
+   ```
+
+4. **Wrap synchronous Scrapling calls in `asyncio.to_thread()`** — Our workers use arq (async). Scrapling's [Fetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) and `StealthyFetcher` are sync. Blocking the event loop will kill worker throughput.
+
+5. **Captcha detection** — Reuse the same signal list from the existing fetchers:
+   ```python
+   ["captcha", "challenge-form", "cf-browser-verification", "recaptcha", "hcaptcha", "turnstile"]
+   ```
+
+6. **Block detection** — Status codes [(403, 429, 503)](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py#10-69) OR `len(html) < 200` (same as existing).
+
+### Step 1.1 — Create `ScraplingFetcher` (Tier 1: Basic HTTP)
+
+**Create file:** `src/scraping/fetcher/scrapling_fetcher.py`
+
+This replaces [HttpFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) as the Tier 1 fetcher. Key differences from the existing [HttpFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81):
+- Uses Scrapling's [Fetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) instead of raw `httpx.AsyncClient`
+- Response is an `Adaptor`-wrapped object with richer parsing capabilities
+- Still fast HTTP, no browser overhead
+
+**Reference the existing [HttpFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81)** at [src/scraping/fetcher/http_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py) for the pattern, but adapt for Scrapling's API.
+
+**Implementation requirements:**
+- Import [Fetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) from scrapling (verify actual import path from Step 0.1)
+- [__init__](file:///Users/deep/Apps&Projects/LakeStream/src/services/crawler.py#18-22) creates a [Fetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) instance with `auto_match=False`
+- `async def fetch()` wraps the sync `self.fetcher.get(url)` call in `asyncio.to_thread()`
+- Extract HTML string, status code from the Scrapling response (use actual attribute names from Step 0.1)
+- Build and return a [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22) with `tier_used=ScrapingTier.BASIC_HTTP`
+- Include [_detect_captcha()](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#70-81) method (copy from existing [HttpFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81))
+- Handle exceptions gracefully — on failure, return [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22) with `blocked=True`, empty html, status_code=0
+
+**Structure:**
+```python
+import asyncio
+import time
+
+from scrapling import Fetcher  # VERIFY this import path
+
+from src.config.constants import TIER_COSTS
+from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+
+
+class ScraplingFetcher:
+    """Tier 1: Fast HTTP fetcher using Scrapling's Fetcher."""
+
+    def __init__(self):
+        self.fetcher = Fetcher(auto_match=False)
+
+    async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
+        options = options or FetchOptions()
+        start = time.time()
+        try:
+            response = await asyncio.to_thread(
+                self._sync_fetch, url, options.timeout / 1000
+            )
+            html = # GET HTML FROM RESPONSE — verify attribute name
+            status_code = # GET STATUS CODE — verify attribute name
+            blocked = status_code in (403, 429, 503) or len(html) < 200
+            captcha = self._detect_captcha(html)
+        except Exception:
+            html, status_code, blocked, captcha = "", 0, True, False
+
+        return FetchResult(
+            url=url,
+            status_code=status_code,
+            html=html,
+            headers={},
+            tier_used=ScrapingTier.BASIC_HTTP,
+            cost_usd=TIER_COSTS["basic_http"],
+            duration_ms=int((time.time() - start) * 1000),
+            blocked=blocked,
+            captcha_detected=captcha,
+        )
+
+    def _sync_fetch(self, url: str, timeout: float):
+        return self.fetcher.get(url, timeout=timeout)
+
+    def _detect_captcha(self, html: str) -> bool:
+        signals = ["captcha", "challenge-form", "cf-browser-verification",
+                   "recaptcha", "hcaptcha", "turnstile"]
+        lower = html.lower()
+        return any(s in lower for s in signals)
+```
+
+### Step 1.2 — Create `ScraplingStealthFetcher` (Tier 2: Headless Stealth)
+
+**Create file:** `src/scraping/fetcher/scrapling_stealth_fetcher.py`
+
+This replaces [BrowserFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py#7-69). Key improvement: built-in anti-detection stealth (Cloudflare, Akamai, DataDome bypass) without manual fingerprint management.
+
+**Reference the existing [BrowserFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py#7-69)** at [src/scraping/fetcher/browser_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py) for the contract.
+
+**Implementation requirements:**
+- Import `StealthyFetcher` from scrapling (verify actual import path)
+- Create a new `StealthyFetcher` instance per fetch call (or verify if reuse is safe)
+- `async def fetch()` wraps sync `fetcher.fetch(url, ...)` in `asyncio.to_thread()`
+- Pass `headless=True`, `network_idle=True`, and `timeout` to Scrapling (verify param names from Step 0.1)
+- Extract HTML and status code from response
+- Return [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22) with `tier_used=ScrapingTier.HEADLESS_BROWSER`
+- Include captcha detection
+
+**Structure follows the same pattern as Step 1.1** but uses `StealthyFetcher` and `ScrapingTier.HEADLESS_BROWSER` / `TIER_COSTS["headless_browser"]`.
+
+### Step 1.3 — Create `ScraplingProxyFetcher` (Tier 3: Stealth + Proxy)
+
+**Create file:** `src/scraping/fetcher/scrapling_proxy_fetcher.py`
+
+This replaces [ProxyFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/proxy_fetcher.py#8-83). Same as Tier 2 but adds residential proxy support.
+
+**Reference the existing [ProxyFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/proxy_fetcher.py#8-83)** at [src/scraping/fetcher/proxy_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/proxy_fetcher.py).
+
+**Implementation requirements:**
+- Same as Step 1.2, but adds proxy configuration
+- Read proxy URL from settings: [get_settings().brightdata_proxy_url or get_settings().smartproxy_url](file:///Users/deep/Apps&Projects/LakeStream/src/config/settings.py#67-70)
+- Pass proxy config to `StealthyFetcher.fetch()` — verify the exact parameter format from Step 0.1 (PRD says `proxy={"server": proxy_url}` — confirm this)
+- **Fallback behavior:** If no proxy URL is configured, fall back to `ScraplingStealthFetcher` behavior (just stealth without proxy), but still set `tier_used=ScrapingTier.HEADLESS_PROXY` and `cost_usd=TIER_COSTS["headless_proxy"]`
+- Return [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22) with `tier_used=ScrapingTier.HEADLESS_PROXY`
+
+### Step 1.4 — Update Factory
+
+**Modify file:** [src/scraping/fetcher/factory.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py)
+
+Current contents (17 lines):
+```python
+from src.models.scraping import ScrapingTier
+from src.scraping.fetcher.browser_fetcher import BrowserFetcher
+from src.scraping.fetcher.http_fetcher import HttpFetcher
+from src.scraping.fetcher.proxy_fetcher import ProxyFetcher
+
+_FETCHERS = {
+    ScrapingTier.BASIC_HTTP: HttpFetcher,
+    ScrapingTier.HEADLESS_BROWSER: BrowserFetcher,
+    ScrapingTier.HEADLESS_PROXY: ProxyFetcher,
+}
+
+def create_fetcher(tier: ScrapingTier) -> HttpFetcher | BrowserFetcher | ProxyFetcher:
+    """Create a fetcher instance for the given tier."""
+    fetcher_class = _FETCHERS.get(tier, HttpFetcher)
+    return fetcher_class()
+```
+
+**Replace entirely with:**
+```python
+from src.models.scraping import ScrapingTier
+from src.scraping.fetcher.scrapling_fetcher import ScraplingFetcher
+from src.scraping.fetcher.scrapling_stealth_fetcher import ScraplingStealthFetcher
+from src.scraping.fetcher.scrapling_proxy_fetcher import ScraplingProxyFetcher
+
+_FETCHERS = {
+    ScrapingTier.BASIC_HTTP: ScraplingFetcher,
+    ScrapingTier.HEADLESS_BROWSER: ScraplingStealthFetcher,
+    ScrapingTier.HEADLESS_PROXY: ScraplingProxyFetcher,
+}
+
+
+def create_fetcher(tier: ScrapingTier) -> ScraplingFetcher | ScraplingStealthFetcher | ScraplingProxyFetcher:
+    """Create a fetcher instance for the given tier."""
+    fetcher_class = _FETCHERS.get(tier, ScraplingFetcher)
+    return fetcher_class()
+```
+
+> [!WARNING]
+> This is the single point of integration. Once you update this file, **every** consumer of [create_fetcher()](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py#13-17) automatically uses Scrapling. Consumers include:
+> - [src/services/scraper.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/scraper.py) → `ScraperService.scrape()` (line 37)
+> - [src/services/crawler.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/crawler.py) → `CrawlerService._crawl_recursive()` (line 60)
+> - [src/services/escalation.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/escalation.py) → indirectly, via the above
+> 
+> None of those files need changes for the fetcher swap to work. The factory pattern gives us zero blast radius.
+
+### Step 1.5 — Rename Legacy Fetchers
+
+Rename (don't delete) the old fetchers so they're available as fallback:
+
+```bash
+mv src/scraping/fetcher/http_fetcher.py src/scraping/fetcher/legacy_http_fetcher.py
+mv src/scraping/fetcher/browser_fetcher.py src/scraping/fetcher/legacy_browser_fetcher.py
+mv src/scraping/fetcher/proxy_fetcher.py src/scraping/fetcher/legacy_proxy_fetcher.py
+```
+
+---
+
+## Phase 2: Parser Upgrade + FirecrawlService Deprecation (Week 2 scope)
+
+### Step 2.1 — Add Adaptor-Based Parsing to [html_parser.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py)
+
+**Modify file:** [src/scraping/parser/html_parser.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py)
+
+The existing [HtmlParser](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py#6-91) uses `selectolax.parser.HTMLParser`. We want to **add a parallel code path** using Scrapling's `Adaptor` class for richer selector support (auto-matching, text-based selectors, regex).
+
+**DO NOT remove selectolax.** Add Adaptor as an alternative parser that can be used when Scrapling is available.
+
+**Implementation approach:**
+1. Add a class method or factory that creates an `Adaptor`-based parser from HTML
+2. Add Adaptor-powered versions of key methods: [extract_title](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py#13-24), [extract_links](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py#35-53), [extract_text](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py#54-61), [extract_categories](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py#62-77)
+3. Keep the selectolax implementation as the default for now — make Adaptor opt-in
+
+**Suggested approach — add an `AdaptorParser` class** in the same file or a new file `src/scraping/parser/adaptor_parser.py`:
+
+```python
+from scrapling import Adaptor
+
+class AdaptorParser:
+    """Enhanced HTML parser using Scrapling's Adaptor for resilient selectors."""
+
+    def __init__(self, html: str, base_url: str):
+        self.adaptor = Adaptor(html, auto_match=False)  # Verify constructor
+        self.base_url = base_url
+    
+    # Mirror the same methods as HtmlParser but use Adaptor API
+    def extract_title(self) -> str | None: ...
+    def extract_links(self, selectors=None, base_url=None) -> list[str]: ...
+    def extract_text(self, selectors: list[str]) -> str | None: ...
+    def extract_categories(self) -> list[str]: ...
+    def count_words(self) -> int: ...
+```
+
+### Step 2.2 — Update `ScraperService._find_main_content`
+
+**Modify file:** [src/services/scraper.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/scraper.py)
+
+The [_find_main_content](file:///Users/deep/Apps&Projects/LakeStream/src/services/scraper.py#69-92) method at [line 69](file:///Users/deep/Apps&Projects/LakeStream/src/services/scraper.py#L69) currently uses selectolax's `HTMLParser`. Optionally add a path that uses Scrapling's `Adaptor` for the content-finding logic.
+
+**This is a P1 enhancement, not a P0 blocker.** If time is short, skip this and move to Step 2.3. The fetcher swap in Phase 1 is the critical path.
+
+### Step 2.3 — Deprecate [FirecrawlService](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py#17-76)
+
+**Modify file:** [src/services/firecrawl.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py)
+
+Add a deprecation warning at the top of the class:
+
+```python
+import warnings
+
+class FirecrawlService:
+    """DEPRECATED: Use CrawlerService and ScraperService directly.
+    
+    Scheduled for removal in M2 (Week 6). This wrapper was a transitionary
+    layer for moving away from the Firecrawl CLI. It now delegates entirely
+    to native services and can be bypassed.
+    """
+
+    def __init__(self, ...):
+        warnings.warn(
+            "FirecrawlService is deprecated. Use CrawlerService/ScraperService directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        ...
+```
+
+### Step 2.4 — Update [DomainMapperWorker](file:///Users/deep/Apps&Projects/LakeStream/src/workers/domain_mapper.py#11-66) to Bypass FirecrawlService
+
+**Modify file:** [src/workers/domain_mapper.py](file:///Users/deep/Apps&Projects/LakeStream/src/workers/domain_mapper.py)
+
+The [DomainMapperWorker](file:///Users/deep/Apps&Projects/LakeStream/src/workers/domain_mapper.py#11-66) at [line 5](file:///Users/deep/Apps&Projects/LakeStream/src/workers/domain_mapper.py#L5) imports and uses [FirecrawlService](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py#17-76). Update it to use [CrawlerService](file:///Users/deep/Apps&Projects/LakeStream/src/services/crawler.py#15-97) directly:
+
+**Change:**
+```python
+# OLD
+from src.services.firecrawl import FirecrawlService
+# ...
+self.firecrawl = FirecrawlService()
+# ...
+raw_urls = await self.firecrawl.map_domain(url, limit=max_pages)
+```
+
+**To:**
+```python
+# NEW
+from src.services.crawler import CrawlerService
+# ...
+self.crawler = CrawlerService()
+# ...
+raw_urls = await self.crawler.map_domain(url, limit=max_pages)
+```
+
+Update the class docstring to remove the Firecrawl reference.
+
+### Step 2.5 — Clean Up Constants
+
+**Modify file:** [src/config/constants.py](file:///Users/deep/Apps&Projects/LakeStream/src/config/constants.py)
+
+Remove or comment out the Firecrawl-specific constant:
+```python
+# Remove these lines:
+# Firecrawl output directory
+FIRECRAWL_OUTPUT_DIR = ".firecrawl"
+```
+
+---
+
+## Phase 3: Tests & Benchmark (Week 2-3 scope)
+
+### Step 3.1 — Unit Tests for New Fetchers
+
+**Create file:** `tests/unit/scraping/test_scrapling_fetcher.py`
+
+Test all three new fetcher classes. Since Scrapling makes real HTTP/browser calls, mock the Scrapling layer and test that:
+
+1. `ScraplingFetcher.fetch()` returns a valid [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22)
+2. `ScraplingStealthFetcher.fetch()` returns a valid [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22)
+3. `ScraplingProxyFetcher.fetch()` returns a valid [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22)
+4. Block detection works (status 403 → `blocked=True`)
+5. Captcha detection works (HTML containing "captcha" → `captcha_detected=True`)
+6. Timeout handling works (exception → `blocked=True`, empty HTML)
+7. `asyncio.to_thread` is used (the fetch calls don't block the event loop)
+
+**Use `unittest.mock.patch`** to mock the Scrapling [Fetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81) and `StealthyFetcher` classes. Do NOT make real network calls in unit tests.
+
+**Test pattern:**
+```python
+import pytest
+from unittest.mock import MagicMock, patch
+
+from src.scraping.fetcher.scrapling_fetcher import ScraplingFetcher
+from src.models.scraping import FetchResult, ScrapingTier
+
+
+@pytest.fixture
+def mock_scrapling_response():
+    """Create a mock Scrapling response object."""
+    response = MagicMock()
+    response.status = 200  # VERIFY actual attribute name
+    response.html_content = "<html><body>Hello</body></html>"  # VERIFY
+    return response
+
+
+async def test_scrapling_fetcher_returns_fetch_result(mock_scrapling_response):
+    with patch("src.scraping.fetcher.scrapling_fetcher.Fetcher") as MockFetcher:
+        instance = MockFetcher.return_value
+        instance.get.return_value = mock_scrapling_response
+        
+        fetcher = ScraplingFetcher()
+        result = await fetcher.fetch("https://example.com")
+        
+        assert isinstance(result, FetchResult)
+        assert result.tier_used == ScrapingTier.BASIC_HTTP
+        assert result.status_code == 200
+        assert result.blocked is False
+
+
+async def test_scrapling_fetcher_detects_block():
+    # ... test with status 403
+    
+
+async def test_scrapling_fetcher_detects_captcha():
+    # ... test with captcha HTML
+```
+
+### Step 3.2 — Integration Test for Escalation with Scrapling Fetchers
+
+**Create file:** `tests/integration/test_scrapling_escalation.py`
+
+Test that the escalation service correctly escalates through the Scrapling fetcher tiers. This can use mocked Scrapling responses but should exercise the real [EscalationService](file:///Users/deep/Apps&Projects/LakeStream/src/services/escalation.py#15-68) → [create_fetcher()](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py#13-17) → `ScraplingFetcher` chain.
+
+### Step 3.3 — Benchmark Script
+
+**Create file:** `benchmarks/scrapling_benchmark.py`
+
+A standalone script that:
+1. Takes a list of domains (hardcode 10-20 representative B2B domains for testing, or read from a file)
+2. Runs each domain through all 3 tiers
+3. Records: success/failure, blocked status, captcha detection, HTML length, latency (ms)
+4. Prints a summary table comparing Tier 1 vs Tier 2 vs Tier 3
+5. Outputs results to `benchmarks/results.json`
+
+```python
+"""Scrapling fetcher benchmark — run against target domains to validate integration."""
+import asyncio
+import json
+import time
+from src.scraping.fetcher.scrapling_fetcher import ScraplingFetcher
+from src.scraping.fetcher.scrapling_stealth_fetcher import ScraplingStealthFetcher
+from src.scraping.fetcher.scrapling_proxy_fetcher import ScraplingProxyFetcher
+
+DOMAINS = [
+    "https://example.com",
+    # Add 10-20 real B2B domains from the domain_metadata table
+]
+
+async def benchmark():
+    fetchers = {
+        "Tier 1 (HTTP)": ScraplingFetcher(),
+        "Tier 2 (Stealth)": ScraplingStealthFetcher(),
+        # "Tier 3 (Proxy)": ScraplingProxyFetcher(),  # Only if proxy configured
+    }
+    results = []
+    for domain in DOMAINS:
+        for tier_name, fetcher in fetchers.items():
+            result = await fetcher.fetch(domain)
+            results.append({
+                "domain": domain,
+                "tier": tier_name,
+                "status": result.status_code,
+                "blocked": result.blocked,
+                "captcha": result.captcha_detected,
+                "html_length": len(result.html),
+                "duration_ms": result.duration_ms,
+            })
+            print(f"{tier_name} | {domain} | {result.status_code} | blocked={result.blocked} | {result.duration_ms}ms | {len(result.html)} chars")
+    
+    with open("benchmarks/results.json", "w") as f:
+        json.dump(results, f, indent=2)
+
+if __name__ == "__main__":
+    asyncio.run(benchmark())
+```
+
+---
+
+## Phase 4: Dockerfile & Deployment (Week 3 scope)
+
+### Step 4.1 — Update Dockerfile
+
+**Modify file:** [Dockerfile](file:///Users/deep/Apps&Projects/LakeStream/Dockerfile)
+
+The current Dockerfile does not install Playwright/Chromium browser binaries. Scrapling's `StealthyFetcher` needs them.
+
+```dockerfile
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Install Scrapling's browser dependencies (Playwright + Chromium)
+# VERIFY: Scrapling may have its own install command — check docs
+RUN playwright install chromium --with-deps
+
+COPY src/ ./src/
+COPY start.sh ./
+
+ENV PORT=8000
+EXPOSE ${PORT}
+
+CMD ["./start.sh"]
+```
+
+> [!NOTE]
+> Check if Scrapling has its own `scrapling install` CLI command that handles browser binary installation differently from raw Playwright. If so, use that instead of `playwright install`.
+
+---
+
+## File Change Summary
+
+| File | Action | Phase |
+|------|--------|-------|
+| [pyproject.toml](file:///Users/deep/Apps&Projects/LakeStream/pyproject.toml) | **MODIFY** — add `scrapling>=0.2.0` to dependencies | 0 |
+| [requirements.txt](file:///Users/deep/Apps&Projects/LakeStream/requirements.txt) | **MODIFY** — add `scrapling>=0.2.0` | 0 |
+| `src/scraping/fetcher/scrapling_fetcher.py` | **CREATE** — Tier 1 HTTP fetcher | 1 |
+| `src/scraping/fetcher/scrapling_stealth_fetcher.py` | **CREATE** — Tier 2 stealth fetcher | 1 |
+| `src/scraping/fetcher/scrapling_proxy_fetcher.py` | **CREATE** — Tier 3 proxy fetcher | 1 |
+| [src/scraping/fetcher/factory.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py) | **MODIFY** — swap to Scrapling fetchers | 1 |
+| [src/scraping/fetcher/http_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py) | **RENAME** → `legacy_http_fetcher.py` | 1 |
+| [src/scraping/fetcher/browser_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py) | **RENAME** → `legacy_browser_fetcher.py` | 1 |
+| [src/scraping/fetcher/proxy_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/proxy_fetcher.py) | **RENAME** → `legacy_proxy_fetcher.py` | 1 |
+| [src/scraping/parser/html_parser.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/parser/html_parser.py) | **MODIFY** — add Adaptor-based parser | 2 |
+| [src/services/firecrawl.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py) | **MODIFY** — add deprecation warning | 2 |
+| [src/workers/domain_mapper.py](file:///Users/deep/Apps&Projects/LakeStream/src/workers/domain_mapper.py) | **MODIFY** — use CrawlerService directly | 2 |
+| [src/config/constants.py](file:///Users/deep/Apps&Projects/LakeStream/src/config/constants.py) | **MODIFY** — remove FIRECRAWL_OUTPUT_DIR | 2 |
+| `tests/unit/scraping/test_scrapling_fetcher.py` | **CREATE** — unit tests | 3 |
+| `tests/integration/test_scrapling_escalation.py` | **CREATE** — integration test | 3 |
+| `benchmarks/scrapling_benchmark.py` | **CREATE** — benchmark script | 3 |
+| [Dockerfile](file:///Users/deep/Apps&Projects/LakeStream/Dockerfile) | **MODIFY** — add Playwright/Chromium install | 4 |
+
+---
+
+## Validation Checklist
+
+After completing all phases, verify:
+
+- [ ] `ruff check src/` passes with no errors (line-length 100, Python 3.12 target)
+- [ ] `pytest tests/unit/` passes — all existing tests still pass + new fetcher tests pass
+- [ ] `python -c "from src.scraping.fetcher.factory import create_fetcher; print('OK')"` — factory imports work
+- [ ] No import of [HttpFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py#9-81), [BrowserFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py#7-69), or [ProxyFetcher](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/proxy_fetcher.py#8-83) (old names) remains in [factory.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py)
+- [ ] `grep -r "firecrawl" src/ --include="*.py" -l` only shows [src/services/firecrawl.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py) (deprecated file itself)
+- [ ] `grep -r "from src.scraping.fetcher.http_fetcher" src/` returns nothing
+- [ ] `grep -r "from src.scraping.fetcher.browser_fetcher" src/` returns nothing
+- [ ] `grep -r "from src.scraping.fetcher.proxy_fetcher" src/` returns nothing
+- [ ] The benchmark script runs against at least 3 test domains without crashing
+
+---
+
+## Key Files to Read Before Starting
+
+These are the files you **must** understand before writing any code:
+
+| File | Why |
+|------|-----|
+| [src/models/scraping.py](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py) | [FetchResult](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#12-22), [FetchOptions](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#24-29), [ScrapingTier](file:///Users/deep/Apps&Projects/LakeStream/src/models/scraping.py#6-10) — the contract |
+| [src/scraping/fetcher/factory.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py) | The only file that wires fetchers to tiers |
+| [src/scraping/fetcher/http_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/http_fetcher.py) | Pattern to replicate for Tier 1 |
+| [src/scraping/fetcher/browser_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/browser_fetcher.py) | Pattern to replicate for Tier 2 |
+| [src/scraping/fetcher/proxy_fetcher.py](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/proxy_fetcher.py) | Pattern to replicate for Tier 3 |
+| [src/config/constants.py](file:///Users/deep/Apps&Projects/LakeStream/src/config/constants.py) | `TIER_COSTS` dict |
+| [src/config/settings.py](file:///Users/deep/Apps&Projects/LakeStream/src/config/settings.py) | Proxy URLs: `brightdata_proxy_url`, `smartproxy_url` |
+| [src/services/escalation.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/escalation.py) | How escalation decides tiers — no changes needed here |
+| [src/services/scraper.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/scraper.py) | Main consumer of [create_fetcher()](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py#13-17) |
+| [src/services/crawler.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/crawler.py) | Another consumer of [create_fetcher()](file:///Users/deep/Apps&Projects/LakeStream/src/scraping/fetcher/factory.py#13-17) |
+| [src/workers/domain_mapper.py](file:///Users/deep/Apps&Projects/LakeStream/src/workers/domain_mapper.py) | Uses [FirecrawlService](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py#17-76) — needs update |
+| [src/services/firecrawl.py](file:///Users/deep/Apps&Projects/LakeStream/src/services/firecrawl.py) | Transitionary wrapper to deprecate |
+
+---
+
+## Execution Order (Critical Path)
+
+```
+Step 0.1 (Research Scrapling API) ─── BLOCKING ──→ Step 0.2 (Install)
+                                                       │
+                                                       ▼
+                                           ┌─── Step 1.1 (ScraplingFetcher)
+                                           │
+                                           ├─── Step 1.2 (ScraplingStealthFetcher)
+                                           │
+                                           ├─── Step 1.3 (ScraplingProxyFetcher)
+                                           │
+                                           └──→ Step 1.4 (Update Factory) ─── depends on 1.1-1.3
+                                                       │
+                                                       ├─── Step 1.5 (Rename Legacy)
+                                                       │
+                                                       ▼
+                                           ┌─── Step 2.1 (Adaptor Parser) ── P1, can parallel
+                                           │
+                                           ├─── Step 2.3 (Deprecate Firecrawl)
+                                           │
+                                           ├─── Step 2.4 (Update DomainMapper)
+                                           │
+                                           └─── Step 2.5 (Clean Constants)
+                                                       │
+                                                       ▼
+                                           ┌─── Step 3.1 (Unit Tests)
+                                           │
+                                           ├─── Step 3.2 (Integration Test)
+                                           │
+                                           └─── Step 3.3 (Benchmark Script)
+                                                       │
+                                                       ▼
+                                                Step 4.1 (Dockerfile)
+```
+
+> [!TIP]
+> Steps 1.1, 1.2, and 1.3 can be done in parallel. Steps 2.1-2.5 can all be done in parallel after Step 1.4 is complete. Steps 3.1-3.3 can be done in parallel after Phase 2.
