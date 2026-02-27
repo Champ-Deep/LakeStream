@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir gunicorn \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install "scrapling[fetchers]" \
-    && scrapling install --with-deps
+    && scrapling install
 
 COPY src/ ./src/
 
