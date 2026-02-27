@@ -8,35 +8,35 @@ from src.services.escalation import EscalationService
 
 
 class MockResponse:
-    """Mock Scrapling response object."""
+    """Mock response object."""
 
     def __init__(self, html_content: str = "", status: int = 200):
         self.html_content = html_content
         self.status = status
 
 
-class TestScraplingEscalationIntegration:
-    """Integration tests for escalation with Scrapling fetchers."""
+class TestLakeEscalationIntegration:
+    """Integration tests for escalation with Lake fetchers."""
 
     def test_factory_creates_correct_fetcher_tier(self):
         """Test that factory creates correct fetcher for each tier."""
         fetcher_basic = create_fetcher(ScrapingTier.BASIC_HTTP)
-        assert fetcher_basic.__class__.__name__ == "ScraplingFetcher"
+        assert fetcher_basic.__class__.__name__ == "LakeFetcher"
 
         fetcher_headless = create_fetcher(ScrapingTier.HEADLESS_BROWSER)
-        assert fetcher_headless.__class__.__name__ == "ScraplingStealthFetcher"
+        assert fetcher_headless.__class__.__name__ == "LakeStealthFetcher"
 
         fetcher_proxy = create_fetcher(ScrapingTier.HEADLESS_PROXY)
-        assert fetcher_proxy.__class__.__name__ == "ScraplingProxyFetcher"
+        assert fetcher_proxy.__class__.__name__ == "LakeProxyFetcher"
 
     def test_factory_default_fallback(self):
-        """Test that factory falls back to ScraplingFetcher for unknown tiers."""
+        """Test that factory falls back to LakeFetcher for unknown tiers."""
         fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
-        assert fetcher.__class__.__name__ == "ScraplingFetcher"
+        assert fetcher.__class__.__name__ == "LakeFetcher"
 
     @pytest.mark.asyncio
-    async def test_escalation_service_uses_scrapling_fetcher(self):
-        """Test that escalation service properly works with Scrapling fetchers."""
+    async def test_escalation_service_uses_lake_fetcher(self):
+        """Test that escalation service properly works with Lake fetchers."""
         mock_pool = MagicMock()
 
         escalation = EscalationService(mock_pool)
@@ -85,7 +85,7 @@ class TestScraplingEscalationIntegration:
 
     @pytest.mark.asyncio
     async def test_full_escalation_chain(self):
-        """Test complete escalation chain with mocked Scrapling responses."""
+        """Test complete escalation chain with mocked responses."""
         mock_pool = MagicMock()
         escalation = EscalationService(mock_pool)
 

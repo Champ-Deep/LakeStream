@@ -8,8 +8,8 @@ from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 
 
-class ScraplingProxyFetcher:
-    """Tier 3: Stealth browser + residential proxy via Scrapling's StealthyFetcher."""
+class LakeProxyFetcher:
+    """Tier 3: Stealth browser + residential proxy."""
 
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         options = options or FetchOptions()

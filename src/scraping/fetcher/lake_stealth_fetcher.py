@@ -1,27 +1,27 @@
 import asyncio
 import time
 
-from scrapling.fetchers import Fetcher
+from scrapling.fetchers import StealthyFetcher
 
 from src.config.constants import TIER_COSTS
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 
 
-class ScraplingFetcher:
-    """Tier 1: Fast HTTP fetcher using Scrapling's Fetcher."""
-
-    def __init__(self):
-        self.fetcher = Fetcher(auto_match=False)
+class LakeStealthFetcher:
+    """Tier 2: Stealth headless browser fetcher."""
 
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         options = options or FetchOptions()
         start = time.time()
 
         try:
+            fetcher = StealthyFetcher(auto_match=False)
             response = await asyncio.to_thread(
-                self.fetcher.get,
+                fetcher.fetch,
                 url,
-                timeout=options.timeout / 1000,
+                headless=True,
+                network_idle=True,
+                timeout=options.timeout,
             )
             html = response.html_content
             status_code = response.status
@@ -40,8 +40,8 @@ class ScraplingFetcher:
             status_code=status_code,
             html=html,
             headers={},
-            tier_used=ScrapingTier.BASIC_HTTP,
-            cost_usd=TIER_COSTS["basic_http"],
+            tier_used=ScrapingTier.HEADLESS_BROWSER,
+            cost_usd=TIER_COSTS["headless_browser"],
             duration_ms=duration_ms,
             blocked=blocked,
             captcha_detected=captcha,

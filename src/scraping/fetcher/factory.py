@@ -1,18 +1,18 @@
 from src.models.scraping import ScrapingTier
-from src.scraping.fetcher.scrapling_fetcher import ScraplingFetcher
-from src.scraping.fetcher.scrapling_proxy_fetcher import ScraplingProxyFetcher
-from src.scraping.fetcher.scrapling_stealth_fetcher import ScraplingStealthFetcher
+from src.scraping.fetcher.lake_fetcher import LakeFetcher
+from src.scraping.fetcher.lake_proxy_fetcher import LakeProxyFetcher
+from src.scraping.fetcher.lake_stealth_fetcher import LakeStealthFetcher
 
 _FETCHERS = {
-    ScrapingTier.BASIC_HTTP: ScraplingFetcher,
-    ScrapingTier.HEADLESS_BROWSER: ScraplingStealthFetcher,
-    ScrapingTier.HEADLESS_PROXY: ScraplingProxyFetcher,
+    ScrapingTier.BASIC_HTTP: LakeFetcher,
+    ScrapingTier.HEADLESS_BROWSER: LakeStealthFetcher,
+    ScrapingTier.HEADLESS_PROXY: LakeProxyFetcher,
 }
 
 
 def create_fetcher(
     tier: ScrapingTier,
-) -> ScraplingFetcher | ScraplingStealthFetcher | ScraplingProxyFetcher:
+) -> LakeFetcher | LakeStealthFetcher | LakeProxyFetcher:
     """Create a fetcher instance for the given tier."""
-    fetcher_class = _FETCHERS.get(tier, ScraplingFetcher)
+    fetcher_class = _FETCHERS.get(tier, LakeFetcher)
     return fetcher_class()

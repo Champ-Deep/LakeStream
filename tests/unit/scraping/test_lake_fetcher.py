@@ -7,21 +7,21 @@ from src.models.scraping import ScrapingTier
 
 
 class MockResponse:
-    """Mock Scrapling response object."""
+    """Mock response object."""
 
     def __init__(self, html_content: str = "", status: int = 200):
         self.html_content = html_content
         self.status = status
 
 
-class TestScraplingFetcher:
-    """Tests for ScraplingFetcher (Tier 1)."""
+class TestLakeFetcher:
+    """Tests for LakeFetcher (Tier 1)."""
 
     @pytest.fixture
     def fetcher(self):
-        from src.scraping.fetcher.scrapling_fetcher import ScraplingFetcher
+        from src.scraping.fetcher.lake_fetcher import LakeFetcher
 
-        return ScraplingFetcher()
+        return LakeFetcher()
 
     @pytest.mark.asyncio
     async def test_fetch_blocked_403(self, fetcher):
@@ -74,14 +74,14 @@ class TestScraplingFetcher:
                 assert result.html == ""
 
 
-class TestScraplingStealthFetcher:
-    """Tests for ScraplingStealthFetcher (Tier 2)."""
+class TestLakeStealthFetcher:
+    """Tests for LakeStealthFetcher (Tier 2)."""
 
     @pytest.fixture
     def fetcher(self):
-        from src.scraping.fetcher.scrapling_stealth_fetcher import ScraplingStealthFetcher
+        from src.scraping.fetcher.lake_stealth_fetcher import LakeStealthFetcher
 
-        return ScraplingStealthFetcher()
+        return LakeStealthFetcher()
 
     @pytest.mark.asyncio
     async def test_fetch_blocked_429(self, fetcher):
@@ -90,9 +90,7 @@ class TestScraplingStealthFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
 
-            with patch(
-                "src.scraping.fetcher.scrapling_stealth_fetcher.StealthyFetcher"
-            ) as MockFetcher:
+            with patch("src.scraping.fetcher.lake_stealth_fetcher.StealthyFetcher") as MockFetcher:
                 mock_fetcher_instance = MagicMock()
                 mock_fetcher_instance.fetch.return_value = mock_response
                 MockFetcher.return_value = mock_fetcher_instance
@@ -103,30 +101,11 @@ class TestScraplingStealthFetcher:
                 assert result.blocked is True
 
     @pytest.mark.asyncio
-    async def test_fetch_exception(self, fetcher):
+    async def test_stealth_fetch_exception(self, fetcher):
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.side_effect = Exception("Browser error")
 
-            with patch(
-                "src.scraping.fetcher.scrapling_stealth_fetcher.StealthyFetcher"
-            ) as MockFetcher:
-                mock_fetcher_instance = MagicMock()
-                mock_fetcher_instance.fetch.side_effect = Exception("Browser error")
-                MockFetcher.return_value = mock_fetcher_instance
-
-                result = await fetcher.fetch("https://example.com")
-
-                assert result.status_code == 0
-                assert result.blocked is True
-
-    @pytest.mark.asyncio
-    async def test_fetch_exception(self, fetcher):
-        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
-            mock_thread.side_effect = Exception("Browser error")
-
-            with patch(
-                "src.scraping.fetcher.scrapling_stealth_fetcher.StealthyFetcher"
-            ) as MockFetcher:
+            with patch("src.scraping.fetcher.lake_stealth_fetcher.StealthyFetcher") as MockFetcher:
                 mock_fetcher_instance = MagicMock()
                 mock_fetcher_instance.fetch.side_effect = Exception("Browser error")
                 MockFetcher.return_value = mock_fetcher_instance
@@ -137,14 +116,14 @@ class TestScraplingStealthFetcher:
                 assert result.blocked is True
 
 
-class TestScraplingProxyFetcher:
-    """Tests for ScraplingProxyFetcher (Tier 3)."""
+class TestLakeProxyFetcher:
+    """Tests for LakeProxyFetcher (Tier 3)."""
 
     @pytest.fixture
     def fetcher(self):
-        from src.scraping.fetcher.scrapling_proxy_fetcher import ScraplingProxyFetcher
+        from src.scraping.fetcher.lake_proxy_fetcher import LakeProxyFetcher
 
-        return ScraplingProxyFetcher()
+        return LakeProxyFetcher()
 
     @pytest.mark.asyncio
     async def test_fetch_with_proxy(self, fetcher):
@@ -153,12 +132,8 @@ class TestScraplingProxyFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
 
-            with patch(
-                "src.scraping.fetcher.scrapling_proxy_fetcher.StealthyFetcher"
-            ) as MockFetcher:
-                with patch(
-                    "src.scraping.fetcher.scrapling_proxy_fetcher.get_settings"
-                ) as mock_settings:
+            with patch("src.scraping.fetcher.lake_proxy_fetcher.StealthyFetcher") as MockFetcher:
+                with patch("src.scraping.fetcher.lake_proxy_fetcher.get_settings") as mock_settings:
                     mock_settings.return_value.brightdata_proxy_url = "http://proxy:8080"
                     mock_settings.return_value.smartproxy_url = ""
 
@@ -178,12 +153,8 @@ class TestScraplingProxyFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
 
-            with patch(
-                "src.scraping.fetcher.scrapling_proxy_fetcher.StealthyFetcher"
-            ) as MockFetcher:
-                with patch(
-                    "src.scraping.fetcher.scrapling_proxy_fetcher.get_settings"
-                ) as mock_settings:
+            with patch("src.scraping.fetcher.lake_proxy_fetcher.StealthyFetcher") as MockFetcher:
+                with patch("src.scraping.fetcher.lake_proxy_fetcher.get_settings") as mock_settings:
                     mock_settings.return_value.brightdata_proxy_url = ""
                     mock_settings.return_value.smartproxy_url = ""
 
