@@ -29,3 +29,20 @@ coverage.xml
 
 .DS_Store
 Thumbs.db
+
+# === Internal Docs & Planning (not for repo) ===
+CLAUDE.md
+LakeStream_Scrapling_Integration_PRD.md
+scrapling_integration_plan.md.resolved
+PRD-Scraper-Integration.md
+PRODUCT_ROADMAP.md
+ChampionInternalScraperPRD.md
+LakeB2B_Intent_Data_Platform_PRD_v3.docx
+LakeB2B_Scraper_PRD_v2_Mobile_WebApp.docx
+
+# === Agent Files ===
+.agents/
+.gemini/
+
+# === Benchmark Results ===
+benchmarks/results.json
