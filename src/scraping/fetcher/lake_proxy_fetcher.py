@@ -1,11 +1,14 @@
 import asyncio
 import time
 
+import structlog
 from scrapling.fetchers import StealthyFetcher
 
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+
+log = structlog.get_logger()
 
 
 class LakeProxyFetcher:
@@ -34,7 +37,10 @@ class LakeProxyFetcher:
             status_code = response.status
             blocked = status_code in (403, 429, 503) or len(html) < 200
             captcha = self._detect_captcha(html)
-        except Exception:
+        except Exception as exc:
+            log.warning(
+                "lake_proxy_fetcher_error", url=url, error=str(exc), error_type=type(exc).__name__
+            )
             html = ""
             status_code = 0
             blocked = True

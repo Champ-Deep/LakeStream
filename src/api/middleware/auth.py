@@ -8,6 +8,7 @@ This middleware:
 """
 
 import jwt
+import structlog
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -15,6 +16,7 @@ from src.db.pool import get_pool
 from src.services.auth import decode_access_token
 
 security = HTTPBearer()
+log = structlog.get_logger()
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = security):  # type: ignore[call-arg]
@@ -109,10 +111,14 @@ async def set_tenant_context(request: Request, call_next):  # type: ignore[no-un
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
             # Invalid token - don't set context, let routes handle auth
             pass
-        except Exception:
+        except Exception as exc:
             # Database connection error or other issue
             # Log error but don't fail request (public endpoints still work)
-            pass
+            log.warning(
+                "tenant_context_error",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
     # Call next middleware/route handler
     response = await call_next(request)

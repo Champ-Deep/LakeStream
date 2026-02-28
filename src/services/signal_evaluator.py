@@ -384,17 +384,59 @@ async def send_webhook_notification(
 async def send_email_notification(
     signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
 ) -> None:
-    """Send email notification."""
+    """Send email notification via ChampMail engine API."""
     email_recipients = action_config.get("email_recipients", [])
     if not email_recipients:
         raise ValueError("Email recipients not configured")
 
-    # TODO: Integrate with email service (SendGrid, AWS SES, etc.)
+    settings = get_settings()
+    if not settings.mail_engine_enabled:
+        raise RuntimeError(
+            "Email notifications are not enabled. "
+            "Set MAIL_ENGINE_ENABLED=true and MAIL_ENGINE_API_KEY."
+        )
+
+    subject = f"Intent Signal Fired: {signal.name}"
+    match_count = matched_data.get("match_count", 0)
+    trigger_text = matched_data.get("trigger", "Signal conditions were met")
+    signal_type = matched_data.get("signal_type", "unknown")
+
+    html_body = (
+        f"<h2>Intent Signal: {signal.name}</h2>"
+        f"<p><strong>Type:</strong> {signal_type}</p>"
+        f"<p><strong>Matches:</strong> {match_count}</p>"
+        f"<p><strong>Trigger:</strong> {trigger_text}</p>"
+        f"<hr><p>Automated notification from LakeStream.</p>"
+    )
+
+    headers = {"Content-Type": "application/json"}
+    if settings.mail_engine_api_key:
+        headers["X-API-Key"] = settings.mail_engine_api_key
+
+    async with httpx.AsyncClient() as client:
+        for recipient in email_recipients:
+            text_body = f"Signal: {signal.name} | Type: {signal_type} | Matches: {match_count}"
+            response = await client.post(
+                f"{settings.mail_engine_url}/api/v1/send",
+                headers=headers,
+                json={
+                    "recipient": recipient,
+                    "subject": subject,
+                    "html_body": html_body,
+                    "text_body": text_body,
+                    "from_address": settings.mail_engine_from_address,
+                    "track_opens": False,
+                    "track_clicks": False,
+                },
+                timeout=10.0,
+            )
+            response.raise_for_status()
+
     log.info(
-        "email_notification_placeholder",
+        "email_notification_sent",
         signal_id=str(signal.id),
         recipients=email_recipients,
-        match_count=matched_data.get("match_count", 0),
+        match_count=match_count,
     )
 
 

@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     default_max_users_per_org: int = 5
     default_max_domains_per_org: int = 10
 
+    # Email notifications (ChampMail engine)
+    mail_engine_url: str = "http://localhost:8025"
+    mail_engine_api_key: str = ""
+    mail_engine_from_address: str = "LakeStream <notifications@lakeb2b.com>"
+    mail_engine_enabled: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

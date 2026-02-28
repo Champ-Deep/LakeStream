@@ -52,7 +52,7 @@ async def process_scrape_job(
         for dtype in data_types:
             try:
                 if dtype == "blog_url":
-                    worker = BlogExtractorWorker(domain=domain, job_id=job_id)
+                    worker = BlogExtractorWorker(domain=domain, job_id=job_id, pool=pool)
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
                     )
@@ -60,24 +60,24 @@ async def process_scrape_job(
                     total_data += len(result)
 
                 elif dtype == "article":
-                    worker = ArticleParserWorker(domain=domain, job_id=job_id)  # type: ignore[assignment]
+                    worker = ArticleParserWorker(domain=domain, job_id=job_id, pool=pool)  # type: ignore[assignment]
                     result = await worker.execute(blog_urls)
                     total_data += len(result)
 
                 elif dtype == "contact":
-                    worker = ContactFinderWorker(domain=domain, job_id=job_id)  # type: ignore[assignment]
+                    worker = ContactFinderWorker(domain=domain, job_id=job_id, pool=pool)  # type: ignore[assignment]
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "contact"]
                     )
                     total_data += len(result)
 
                 elif dtype == "tech_stack":
-                    worker = TechDetectorWorker(domain=domain, job_id=job_id)  # type: ignore[assignment]
+                    worker = TechDetectorWorker(domain=domain, job_id=job_id, pool=pool)  # type: ignore[assignment]
                     result = await worker.execute([f"https://{domain}"])
                     total_data += len(result)
 
                 elif dtype == "resource":
-                    worker = ResourceFinderWorker(domain=domain, job_id=job_id)  # type: ignore[assignment]
+                    worker = ResourceFinderWorker(domain=domain, job_id=job_id, pool=pool)  # type: ignore[assignment]
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "resource"]
                     )
@@ -86,7 +86,7 @@ async def process_scrape_job(
                 elif dtype == "pricing":
                     from src.workers.pricing_finder import PricingFinderWorker
 
-                    worker = PricingFinderWorker(domain=domain, job_id=job_id)  # type: ignore[assignment]
+                    worker = PricingFinderWorker(domain=domain, job_id=job_id, pool=pool)  # type: ignore[assignment]
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
                     )

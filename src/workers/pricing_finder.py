@@ -10,8 +10,8 @@ from src.workers.base import BaseWorker
 class PricingFinderWorker(BaseWorker):
     """Discovers and extracts pricing plans from pricing pages."""
 
-    def __init__(self, domain: str, job_id: str):
-        super().__init__(domain=domain, job_id=job_id)
+    def __init__(self, domain: str, job_id: str, pool: object | None = None):
+        super().__init__(domain=domain, job_id=job_id, pool=pool)
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
         if not urls:

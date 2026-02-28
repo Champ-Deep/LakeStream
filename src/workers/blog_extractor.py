@@ -8,8 +8,8 @@ from src.workers.base import BaseWorker
 class BlogExtractorWorker(BaseWorker):
     """Extracts blog URLs and article links from blog landing pages."""
 
-    def __init__(self, domain: str, job_id: str):
-        super().__init__(domain=domain, job_id=job_id)
+    def __init__(self, domain: str, job_id: str, pool: object | None = None):
+        super().__init__(domain=domain, job_id=job_id, pool=pool)
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
         if not urls:
