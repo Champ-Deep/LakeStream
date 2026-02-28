@@ -9,6 +9,7 @@ from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
 from src.services.cost_tracker import CostTracker
 from src.services.rate_limiter import RateLimiter
+from src.utils.retry import retry_async
 
 
 class BaseWorker(ABC):
@@ -46,7 +47,15 @@ class BaseWorker(ABC):
         if self._escalation is None:
             await self._rate_limiter.wait(domain)
             fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
-            result = await fetcher.fetch(url, options)
+            result = await retry_async(
+                fetcher.fetch,
+                url,
+                options,
+                max_retries=2,
+                base_delay=2.0,
+                retry_on=(ConnectionError, TimeoutError, OSError),
+            )
+            self._rate_limiter.report_result(domain, result.status_code)
             self._cost_tracker.record_cost(self.job_id, self.domain, result.tier_used.value)
             return result
 
@@ -55,7 +64,15 @@ class BaseWorker(ABC):
         while True:
             await self._rate_limiter.wait(domain)
             fetcher = create_fetcher(current_tier)
-            result = await fetcher.fetch(url, options)
+            result = await retry_async(
+                fetcher.fetch,
+                url,
+                options,
+                max_retries=2,
+                base_delay=2.0,
+                retry_on=(ConnectionError, TimeoutError, OSError),
+            )
+            self._rate_limiter.report_result(domain, result.status_code)
             self._cost_tracker.record_cost(self.job_id, self.domain, result.tier_used.value)
 
             if not self._escalation.should_escalate(result):

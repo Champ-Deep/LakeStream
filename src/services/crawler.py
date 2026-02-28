@@ -1,26 +1,42 @@
 import asyncio
-from typing import Set, List
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
 from selectolax.parser import HTMLParser
 
-from src.models.scraping import FetchOptions, ScrapingTier
+from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 from src.scraping.fetcher.factory import create_fetcher
 from src.utils.url import ensure_scheme, is_valid_scrape_url, normalize_url
 
 log = structlog.get_logger()
 
+
 class CrawlerService:
     """Native domain crawler and URL discovery engine."""
 
-    def __init__(self, max_concurrent: int = 10, timeout: int = 30000):
+    def __init__(self, max_concurrent: int = 10, max_per_domain: int = 2, timeout: int = 30000):
         self.max_concurrent = max_concurrent
+        self.max_per_domain = max_per_domain
         self.timeout = timeout
+        self._domain_semaphores: dict[str, asyncio.Semaphore] = {}
         self.log = log.bind(service="CrawlerService")
 
-    async def map_domain(self, domain: str, limit: int = 100) -> List[str]:
+    def _get_semaphore(self, domain: str) -> asyncio.Semaphore:
+        """Get or create a semaphore for the given domain."""
+        if domain not in self._domain_semaphores:
+            self._domain_semaphores[domain] = asyncio.Semaphore(self.max_per_domain)
+        return self._domain_semaphores[domain]
+
+    async def fetch_with_limit(self, url: str, fetcher, options: FetchOptions) -> FetchResult:
+        """Fetch a URL with per-domain concurrency limiting."""
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower().replace("www.", "")
+        sem = self._get_semaphore(domain)
+        async with sem:
+            return await fetcher.fetch(url, options)
+
+    async def map_domain(self, domain: str, limit: int = 100) -> list[str]:
         """Discover all valid URLs on a domain."""
         base_url = ensure_scheme(domain)
         self.log.info("mapping_domain", domain=domain, limit=limit)
@@ -34,7 +50,7 @@ class CrawlerService:
         # 2. Fallback to native recursive crawl
         return await self._crawl_recursive(base_url, limit)
 
-    async def _try_sitemap(self, base_url: str) -> Set[str]:
+    async def _try_sitemap(self, base_url: str) -> set[str]:
         """Attempt to find and parse sitemap.xml."""
         sitemap_url = urljoin(base_url, "/sitemap.xml")
         try:
@@ -42,52 +58,61 @@ class CrawlerService:
                 r = await client.get(sitemap_url)
                 if r.status_code == 200:
                     import re
+
                     urls = re.findall(r"<loc>(.*?)</loc>", r.text)
                     return {u for u in urls if is_valid_scrape_url(u)}
         except Exception as e:
             self.log.debug("sitemap_not_found", url=sitemap_url, error=str(e))
         return set()
 
-    async def _crawl_recursive(self, base_url: str, limit: int) -> List[str]:
+    async def _crawl_recursive(self, base_url: str, limit: int) -> list[str]:
         """Recursively crawl the domain up to the limit."""
         parsed_base = urlparse(base_url)
         base_domain = parsed_base.netloc.lower().replace("www.", "")
-        
-        discovered: Set[str] = {base_url}
-        to_crawl: List[str] = [base_url]
-        crawled: Set[str] = set()
+
+        discovered: set[str] = {base_url}
+        to_crawl: list[str] = [base_url]
+        crawled: set[str] = set()
 
         fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
         options = FetchOptions(timeout=self.timeout)
+        sem = self._get_semaphore(base_domain)
+
+        async def _fetch_with_limit(url: str):
+            async with sem:
+                return await fetcher.fetch(url, options)
 
         while to_crawl and len(discovered) < limit:
             batch_size = min(self.max_concurrent, len(to_crawl))
             batch = [to_crawl.pop(0) for _ in range(batch_size)]
-            
-            tasks = [fetcher.fetch(u, options) for u in batch]
+
+            tasks = [_fetch_with_limit(u) for u in batch]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for result in results:
-                if isinstance(result, Exception) or result.blocked or not result.html:
+                if isinstance(result, Exception):
                     continue
-                
+                if result.blocked or not result.html:
+                    continue
+
                 crawled.add(result.url)
                 parser = HTMLParser(result.html)
-                
+
                 for a in parser.css("a[href]"):
                     href = a.attributes.get("href")
-                    if not href: continue
-                        
+                    if not href:
+                        continue
+
                     full_url = normalize_url(href, result.url)
                     parsed_link = urlparse(full_url)
                     link_domain = parsed_link.netloc.lower().replace("www.", "")
-                    
+
                     if link_domain == base_domain and is_valid_scrape_url(full_url):
                         if full_url not in discovered:
                             discovered.add(full_url)
                             if full_url not in crawled and full_url not in to_crawl:
                                 to_crawl.append(full_url)
-                                
+
                     if len(discovered) >= limit:
                         break
 

@@ -35,3 +35,26 @@ class TestRateLimiter:
         r._last_request["ex.com"] = time.time()
         r.reset("ex.com")
         assert "ex.com" not in r._last_request
+
+    def test_429_doubles_delay(self):
+        r = RateLimiter(default_delay_ms=1000, max_delay_ms=30000)
+        r.report_result("ex.com", 429)
+        assert r._current_delay["ex.com"] == 2.0
+
+    def test_503_doubles_delay(self):
+        r = RateLimiter(default_delay_ms=1000, max_delay_ms=30000)
+        r.report_result("ex.com", 503)
+        assert r._current_delay["ex.com"] == 2.0
+
+    def test_success_after_429_decays_delay(self):
+        r = RateLimiter(default_delay_ms=1000, max_delay_ms=30000)
+        r.report_result("ex.com", 429)
+        r.report_result("ex.com", 429)
+        r.report_result("ex.com", 200)
+        assert r._current_delay["ex.com"] < 4.0
+
+    def test_delay_never_exceeds_max(self):
+        r = RateLimiter(default_delay_ms=1000, max_delay_ms=5000)
+        for _ in range(10):
+            r.report_result("ex.com", 429)
+        assert r._current_delay["ex.com"] == 5.0

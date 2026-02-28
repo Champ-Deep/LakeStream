@@ -171,3 +171,51 @@ class TestBaseWorkerWithPool:
             result = await worker.fetch_page("https://example.com")
             assert result.blocked is True
             assert mock_fetcher.fetch.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_retry_on_transport_error_succeeds_after_2_attempts(self, worker):
+        call_count = 0
+
+        async def fetch_side_effect(url, options=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise TimeoutError("connection timeout")
+            return _make_result()
+
+        with (
+            patch.object(
+                worker._escalation,
+                "decide_initial_tier",
+                new_callable=AsyncMock,
+                return_value=ScrapingTier.BASIC_HTTP,
+            ),
+            patch.object(worker._escalation, "should_escalate", return_value=False),
+            patch.object(worker._escalation, "record_result", new_callable=AsyncMock),
+            patch("src.workers.base.create_fetcher") as mock_factory,
+        ):
+            mock_fetcher = MagicMock()
+            mock_fetcher.fetch = AsyncMock(side_effect=fetch_side_effect)
+            mock_factory.return_value = mock_fetcher
+            result = await worker.fetch_page("https://example.com")
+            assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_retry_propagates_after_max_retries(self, worker):
+        with (
+            patch.object(
+                worker._escalation,
+                "decide_initial_tier",
+                new_callable=AsyncMock,
+                return_value=ScrapingTier.BASIC_HTTP,
+            ),
+            patch.object(worker._escalation, "should_escalate", return_value=False),
+            patch.object(worker._escalation, "record_result", new_callable=AsyncMock),
+            patch("src.workers.base.create_fetcher") as mock_factory,
+        ):
+            mock_fetcher = MagicMock()
+            mock_fetcher.fetch = AsyncMock(side_effect=TimeoutError("connection timeout"))
+            mock_factory.return_value = mock_fetcher
+            with pytest.raises(TimeoutError):
+                await worker.fetch_page("https://example.com")
+            assert mock_fetcher.fetch.call_count == 3
