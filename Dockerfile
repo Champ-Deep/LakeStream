@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && python -m playwright install-deps \
     && scrapling install
 
+COPY start.sh ./
 COPY src/ ./src/
 
 ENV PORT=8000
