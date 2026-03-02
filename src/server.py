@@ -38,6 +38,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.get("/ping")
+async def root_ping() -> dict:
+    """Liveness probe — instant 200, no dependencies. Use for Railway healthcheck."""
+    return {"status": "ok"}
+
+
 # Register authentication middleware for RLS context
 from src.api.middleware.auth import set_tenant_context  # noqa: E402
 
