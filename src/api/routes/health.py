@@ -12,6 +12,12 @@ router = APIRouter()
 log = structlog.get_logger()
 
 
+@router.get("/ping")
+async def ping() -> dict:
+    """Liveness probe — instant 200, no external calls. Use for Railway healthcheck."""
+    return {"status": "ok"}
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     db_status = "disconnected"
