@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir gunicorn \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install "scrapling[fetchers]" \
+    && python -m playwright install-deps \
     && scrapling install
 
 COPY src/ ./src/
@@ -19,4 +20,4 @@ COPY src/ ./src/
 ENV PORT=8000
 EXPOSE ${PORT}
 
-CMD ["gunicorn", "src.server:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:${PORT}", "--timeout", "120"]
+CMD gunicorn src.server:app -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT} --timeout 120
