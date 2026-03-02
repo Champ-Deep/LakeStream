@@ -127,7 +127,7 @@ async def check_job_change_signal(
 
 async def check_funding_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str, Any] | None:
     """Check if funding round conditions match recent data."""
-    filters = signal.trigger_config.get("filters", {})
+    _filters = signal.trigger_config.get("filters", {})  # noqa: F841
 
     # In a real implementation, this would query funding data sources
     # For now, check scraped_data for funding mentions
@@ -222,7 +222,7 @@ async def check_hiring_spike_signal(
 ) -> dict[str, Any] | None:
     """Check if hiring volume spike conditions match."""
     filters = signal.trigger_config.get("filters", {})
-    department = filters.get("department", "All")
+    _department = filters.get("department", "All")  # noqa: F841
     spike_threshold = filters.get("spike_threshold", 3)  # 3x normal
 
     # Query for recent job postings
@@ -348,7 +348,11 @@ async def send_slack_notification(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Signal:* {signal.name}\n*Matches:* {matched_data.get('match_count', 0)}\n*Trigger:* {matched_data.get('trigger', 'N/A')}",
+                    "text": (
+                        f"*Signal:* {signal.name}\n"
+                        f"*Matches:* {matched_data.get('match_count', 0)}\n"
+                        f"*Trigger:* {matched_data.get('trigger', 'N/A')}"
+                    ),
                 },
             },
         ],

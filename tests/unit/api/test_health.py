@@ -1,13 +1,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import sys
 
 
 class TestHealthEndpoint:
     @pytest.mark.asyncio
     async def test_health_logs_database_error(self):
-        # Import first to populate the module
-        from src.api.routes import health as health_module
         from src.api.routes.health import health
 
         with (

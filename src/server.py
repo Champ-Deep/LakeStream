@@ -39,7 +39,7 @@ app = FastAPI(
 )
 
 # Register authentication middleware for RLS context
-from src.api.middleware.auth import set_tenant_context
+from src.api.middleware.auth import set_tenant_context  # noqa: E402
 
 app.middleware("http")(set_tenant_context)
 

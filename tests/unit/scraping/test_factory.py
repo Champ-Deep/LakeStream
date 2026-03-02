@@ -1,8 +1,8 @@
 from src.models.scraping import ScrapingTier
 from src.scraping.fetcher.factory import create_fetcher
 from src.scraping.fetcher.lake_fetcher import LakeFetcher
-from src.scraping.fetcher.lake_stealth_fetcher import LakeStealthFetcher
 from src.scraping.fetcher.lake_proxy_fetcher import LakeProxyFetcher
+from src.scraping.fetcher.lake_stealth_fetcher import LakeStealthFetcher
 
 
 class TestCreateFetcher:

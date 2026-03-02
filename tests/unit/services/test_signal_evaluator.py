@@ -1,6 +1,7 @@
-from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
 import pytest
 
 
@@ -51,7 +52,7 @@ class TestSendEmailNotification:
 
         with (
             patch("src.services.signal_evaluator.get_settings") as mock_s,
-            patch("src.services.signal_evaluator.httpx.AsyncClient") as MockClient,
+            patch("src.services.signal_evaluator.httpx.AsyncClient") as mock_client_cls,
         ):
             mock_s.return_value = MagicMock(
                 mail_engine_enabled=True,
@@ -65,7 +66,7 @@ class TestSendEmailNotification:
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = mock_client
+            mock_client_cls.return_value = mock_client
 
             await send_email_notification(
                 _make_signal(),

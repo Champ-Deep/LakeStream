@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -44,7 +44,11 @@ class TestLakeEscalationIntegration:
         result = FetchResult(
             url="https://example.com",
             status_code=200,
-            html="<html><head><title>Test Page</title></head><body><div>Content here with enough text to exceed 200 characters minimum requirement for blocked detection logic. Adding more text here to make sure it passes.</div></body></html>",
+            html=(
+                "<html><head><title>Test Page</title></head><body><div>Content here with enough"
+                " text to exceed 200 characters minimum requirement for blocked detection logic."
+                " Adding more text here to make sure it passes.</div></body></html>"
+            ),
             headers={},
             tier_used=ScrapingTier.BASIC_HTTP,
             cost_usd=0.0001,
@@ -89,7 +93,6 @@ class TestLakeEscalationIntegration:
         mock_pool = MagicMock()
         escalation = EscalationService(mock_pool)
 
-        mock_response_blocked = MockResponse(html_content="", status=403)
         blocked_result = FetchResult(
             url="https://example.com",
             status_code=403,
@@ -106,10 +109,6 @@ class TestLakeEscalationIntegration:
         next_tier = escalation.get_next_tier(blocked_result.tier_used)
         assert next_tier == ScrapingTier.HEADLESS_BROWSER
 
-        mock_response_captcha = MockResponse(
-            html_content='<html><body><div class="g-recaptcha"></div></body></html>',
-            status=200,
-        )
         captcha_result = FetchResult(
             url="https://example.com",
             status_code=200,
@@ -129,7 +128,11 @@ class TestLakeEscalationIntegration:
         success_result = FetchResult(
             url="https://example.com",
             status_code=200,
-            html="<html><head><title>Success Page</title></head><body><div>Content here with enough text to exceed 200 characters minimum requirement for blocked detection logic. This is a successful scrape result.</div></body></html>",
+            html=(
+                "<html><head><title>Success Page</title></head><body><div>Content here with"
+                " enough text to exceed 200 characters minimum requirement for blocked detection"
+                " logic. This is a successful scrape result.</div></body></html>"
+            ),
             headers={},
             tier_used=ScrapingTier.HEADLESS_PROXY,
             cost_usd=0.004,

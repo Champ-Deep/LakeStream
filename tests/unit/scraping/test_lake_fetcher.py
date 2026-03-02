@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -90,10 +89,10 @@ class TestLakeStealthFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
 
-            with patch("src.scraping.fetcher.lake_stealth_fetcher.StealthyFetcher") as MockFetcher:
+            with patch("src.scraping.fetcher.lake_stealth_fetcher.StealthyFetcher") as mock_sf:
                 mock_fetcher_instance = MagicMock()
                 mock_fetcher_instance.fetch.return_value = mock_response
-                MockFetcher.return_value = mock_fetcher_instance
+                mock_sf.return_value = mock_fetcher_instance
 
                 result = await fetcher.fetch("https://example.com")
 
@@ -105,10 +104,10 @@ class TestLakeStealthFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.side_effect = Exception("Browser error")
 
-            with patch("src.scraping.fetcher.lake_stealth_fetcher.StealthyFetcher") as MockFetcher:
+            with patch("src.scraping.fetcher.lake_stealth_fetcher.StealthyFetcher") as mock_sf:
                 mock_fetcher_instance = MagicMock()
                 mock_fetcher_instance.fetch.side_effect = Exception("Browser error")
-                MockFetcher.return_value = mock_fetcher_instance
+                mock_sf.return_value = mock_fetcher_instance
 
                 result = await fetcher.fetch("https://example.com")
 
@@ -132,14 +131,14 @@ class TestLakeProxyFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
 
-            with patch("src.scraping.fetcher.lake_proxy_fetcher.StealthyFetcher") as MockFetcher:
+            with patch("src.scraping.fetcher.lake_proxy_fetcher.StealthyFetcher") as mock_sf:
                 with patch("src.scraping.fetcher.lake_proxy_fetcher.get_settings") as mock_settings:
                     mock_settings.return_value.brightdata_proxy_url = "http://proxy:8080"
                     mock_settings.return_value.smartproxy_url = ""
 
                     mock_fetcher_instance = MagicMock()
                     mock_fetcher_instance.fetch.return_value = mock_response
-                    MockFetcher.return_value = mock_fetcher_instance
+                    mock_sf.return_value = mock_fetcher_instance
 
                     result = await fetcher.fetch("https://example.com")
 
@@ -153,14 +152,14 @@ class TestLakeProxyFetcher:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
 
-            with patch("src.scraping.fetcher.lake_proxy_fetcher.StealthyFetcher") as MockFetcher:
+            with patch("src.scraping.fetcher.lake_proxy_fetcher.StealthyFetcher") as mock_sf:
                 with patch("src.scraping.fetcher.lake_proxy_fetcher.get_settings") as mock_settings:
                     mock_settings.return_value.brightdata_proxy_url = ""
                     mock_settings.return_value.smartproxy_url = ""
 
                     mock_fetcher_instance = MagicMock()
                     mock_fetcher_instance.fetch.return_value = mock_response
-                    MockFetcher.return_value = mock_fetcher_instance
+                    mock_sf.return_value = mock_fetcher_instance
 
                     result = await fetcher.fetch("https://example.com")
 

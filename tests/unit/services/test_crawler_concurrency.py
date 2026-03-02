@@ -1,8 +1,4 @@
-import asyncio
-import pytest
-from unittest.mock import MagicMock
 from src.services.crawler import CrawlerService
-from src.models.scraping import FetchResult, ScrapingTier, FetchOptions
 
 
 class TestCrawlerConcurrency:

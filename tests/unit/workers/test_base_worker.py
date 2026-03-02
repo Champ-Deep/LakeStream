@@ -1,6 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
 import pytest
+
 from src.models.scraping import FetchResult, ScrapingTier
 
 
@@ -102,7 +104,7 @@ class TestBaseWorkerWithPool:
             mock_fetcher = MagicMock()
             mock_fetcher.fetch = AsyncMock(side_effect=side_effect)
             mock_factory.return_value = mock_fetcher
-            result = await worker.fetch_page("https://example.com")
+            await worker.fetch_page("https://example.com")
             assert call_count == 2
 
     @pytest.mark.asyncio
@@ -197,7 +199,7 @@ class TestBaseWorkerWithPool:
             mock_fetcher = MagicMock()
             mock_fetcher.fetch = AsyncMock(side_effect=fetch_side_effect)
             mock_factory.return_value = mock_fetcher
-            result = await worker.fetch_page("https://example.com")
+            await worker.fetch_page("https://example.com")
             assert call_count == 3
 
     @pytest.mark.asyncio
