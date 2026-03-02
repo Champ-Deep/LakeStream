@@ -15,12 +15,13 @@ async def insert_scraped_data(
     url: str | None = None,
     title: str | None = None,
     metadata: dict | None = None,
+    org_id: UUID | None = None,
 ) -> UUID:
     record_id = uuid4()
     await pool.execute(
         """
-        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata, org_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
         """,
         record_id,
         job_id,
@@ -29,6 +30,7 @@ async def insert_scraped_data(
         url,
         title,
         json.dumps(metadata or {}),
+        org_id,
     )
     return record_id
 
@@ -52,13 +54,14 @@ async def batch_insert_scraped_data(
                 rec.get("url"),
                 rec.get("title"),
                 json.dumps(rec.get("metadata", {})),
+                rec.get("org_id"),
             )
         )
 
     await pool.executemany(
         """
-        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata, org_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
         """,
         values,
     )

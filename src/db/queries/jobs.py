@@ -6,17 +6,20 @@ import asyncpg
 from src.models.job import JobStatus, ScrapeJob, ScrapeJobInput
 
 
-async def create_job(pool: asyncpg.Pool, input: ScrapeJobInput) -> ScrapeJob:
+async def create_job(
+    pool: asyncpg.Pool, input: ScrapeJobInput, org_id: UUID | None = None
+) -> ScrapeJob:
     row = await pool.fetchrow(
         """
-        INSERT INTO scrape_jobs (id, domain, template_id, status)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO scrape_jobs (id, domain, template_id, status, org_id)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
         """,
         uuid4(),
         input.domain,
         input.template_id or "auto",
         JobStatus.PENDING,
+        org_id,
     )
     assert row is not None
     return ScrapeJob(**dict(row))

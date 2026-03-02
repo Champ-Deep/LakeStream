@@ -1,0 +1,71 @@
+# Full local stack for testing. Run with:
+#   docker compose -f docker-compose.local.yml up --build
+#
+# Services:
+#   postgres  → localhost:7432
+#   redis     → localhost:7379
+#   api       → localhost:7100
+#   worker    → (no port, processes background jobs)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "7432:5432"
+    environment:
+      POSTGRES_DB: lakeb2b_scraper
+      POSTGRES_USER: scraper
+      POSTGRES_PASSWORD: scraper_dev
+    volumes:
+      - pgdata_local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scraper -d lakeb2b_scraper"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "7379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "7100:7100"
+    environment:
+      PORT: "7100"
+      DATABASE_URL: "postgresql://scraper:scraper_dev@postgres:5432/lakeb2b_scraper"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "local-dev-secret-do-not-use-in-production"
+      LAKECURRENT_ENABLED: "false"
+      LOG_LEVEL: "debug"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ./start.sh
+
+  worker:
+    build: .
+    environment:
+      DATABASE_URL: "postgresql://scraper:scraper_dev@postgres:5432/lakeb2b_scraper"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "local-dev-secret-do-not-use-in-production"
+      LAKECURRENT_ENABLED: "false"
+      LOG_LEVEL: "debug"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: arq src.queue.worker.WorkerSettings
+
+volumes:
+  pgdata_local:

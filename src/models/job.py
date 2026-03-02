@@ -27,6 +27,7 @@ class ScrapeJob(BaseModel):
     domain: str
     template_id: str
     status: JobStatus
+    org_id: UUID | None = None
     strategy_used: str | None = None
     error_message: str | None = None
     cost_usd: float = 0.0

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from src.db.pool import get_pool
 from src.db.queries import jobs as job_queries
@@ -12,11 +12,14 @@ router = APIRouter(prefix="/scrape")
 
 
 @router.post("/execute", status_code=202, response_model=ExecuteScrapeResponse)
-async def execute_scrape(input: ScrapeJobInput) -> ExecuteScrapeResponse:
+async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScrapeResponse:
     pool = await get_pool()
 
+    # Get org_id from authenticated user (set by auth middleware)
+    org_id = getattr(request.state, "org_id", None)
+
     # Create job record
-    job = await job_queries.create_job(pool, input)
+    job = await job_queries.create_job(pool, input, org_id=org_id)
 
     # Enqueue arq job
     try:

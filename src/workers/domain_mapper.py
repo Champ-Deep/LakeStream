@@ -11,9 +11,10 @@ log = structlog.get_logger()
 class DomainMapperWorker:
     """Discovers all URLs for a domain using CrawlerService, then classifies them."""
 
-    def __init__(self, domain: str, job_id: str):
+    def __init__(self, domain: str, job_id: str, org_id: str | None = None):
         self.domain = domain
         self.job_id = job_id
+        self.org_id = org_id
         self.crawler = CrawlerService()
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
 
@@ -56,6 +57,7 @@ class DomainMapperWorker:
                 "url": c["url"],
                 "title": None,
                 "metadata": {"confidence": c.get("confidence", 0)},
+                "org_id": UUID(self.org_id) if self.org_id else None,
             }
             for c in classified
         ]

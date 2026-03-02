@@ -19,11 +19,13 @@ class BaseWorker(ABC):
         job_id: str,
         template: TemplateConfig | None = None,
         pool: object | None = None,
+        org_id: str | None = None,
     ):
         self.domain = domain
         self.job_id = job_id
         self.template = template
         self._pool = pool
+        self.org_id = org_id
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
@@ -94,8 +96,16 @@ class BaseWorker(ABC):
             current_tier = next_tier
 
     async def export_results(self, data: list[dict]) -> int:
+        from uuid import UUID
+
         from src.db.pool import get_pool
         from src.db.queries.scraped_data import batch_insert_scraped_data
+
+        # Inject org_id into each record if the worker has one
+        if self.org_id:
+            org_uuid = UUID(self.org_id) if isinstance(self.org_id, str) else self.org_id
+            for rec in data:
+                rec.setdefault("org_id", org_uuid)
 
         pool = self._pool or await get_pool()
         return await batch_insert_scraped_data(pool, data)  # type: ignore[arg-type]
