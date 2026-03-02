@@ -9,6 +9,10 @@ from src.models.job import JobStatus, ScrapeJob, ScrapeJobInput
 async def create_job(
     pool: asyncpg.Pool, input: ScrapeJobInput, org_id: UUID | None = None
 ) -> ScrapeJob:
+    # Fall back to "Default Organization" for unauthenticated dashboard scrapes
+    if org_id is None:
+        org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+
     row = await pool.fetchrow(
         """
         INSERT INTO scrape_jobs (id, domain, template_id, status, org_id)
