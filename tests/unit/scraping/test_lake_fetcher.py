@@ -49,6 +49,7 @@ class TestLakeFetcher:
 
     @pytest.mark.asyncio
     async def test_fetch_captcha_detected(self, fetcher):
+        # CAPTCHA detection disabled due to false positives - now always returns False
         html_with_captcha = '<html><body><div class="g-recaptcha">Captcha</div></body></html>'
         mock_response = MockResponse(html_content=html_with_captcha, status=200)
 
@@ -58,7 +59,7 @@ class TestLakeFetcher:
 
                 result = await fetcher.fetch("https://example.com")
 
-                assert result.captcha_detected is True
+                assert result.captcha_detected is False  # Disabled to prevent false positives
 
     @pytest.mark.asyncio
     async def test_fetch_exception(self, fetcher):

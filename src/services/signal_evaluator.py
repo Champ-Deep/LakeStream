@@ -79,8 +79,6 @@ async def evaluate_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str,
         return await check_funding_signal(pool, signal, org_id)
     elif trigger_type == "tech_stack_change":
         return await check_tech_stack_signal(pool, signal, org_id)
-    elif trigger_type == "pricing_change":
-        return await check_pricing_change_signal(pool, signal, org_id)
     elif trigger_type == "hiring_spike":
         return await check_hiring_spike_signal(pool, signal, org_id)
     else:
@@ -185,33 +183,6 @@ async def check_tech_stack_signal(
             "match_count": len(matches),
             "signal_type": "tech_stack_change",
             "trigger": f"Found {len(matches)} companies using {technology}",
-        }
-
-    return None
-
-
-async def check_pricing_change_signal(
-    pool: Pool, signal: Signal, org_id: UUID
-) -> dict[str, Any] | None:
-    """Check if pricing page changes match conditions."""
-    # Query for pricing page changes
-    query = """
-        SELECT * FROM scraped_data
-        WHERE org_id = $1
-        AND data_type = 'pricing'
-        AND scraped_at > NOW() - INTERVAL '7 days'
-        LIMIT 50
-    """
-
-    rows = await pool.fetch(query, org_id)
-
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "pricing_change",
-            "trigger": f"Found {len(matches)} pricing updates",
         }
 
     return None

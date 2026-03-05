@@ -49,11 +49,11 @@
     <div class="card p-6 group hover:shadow-lg">
       <div class="flex items-center justify-between mb-3">
         <div class="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-          <i data-lucide="dollar-sign" class="w-5 h-5 text-purple-500"></i>
+          <i data-lucide="globe" class="w-5 h-5 text-purple-500"></i>
         </div>
       </div>
-      <p class="text-3xl font-bold text-navy stat-value">${{ "%.4f" | format(stats.total_cost | default(0)) }}</p>
-      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Total Spent</p>
+      <p class="text-3xl font-bold text-navy stat-value">{{ stats.total_domains | default('0') }}</p>
+      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Domains Scraped</p>
     </div>
   </div>
 

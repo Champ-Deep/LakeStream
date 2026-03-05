@@ -32,13 +32,22 @@ class EscalationService:
         return ScrapingTier.BASIC_HTTP
 
     def should_escalate(self, result: FetchResult) -> bool:
-        """Determine if the result warrants tier escalation."""
-        return (
-            result.blocked
-            or result.captcha_detected
-            or result.status_code in (403, 429, 503)
-            or (result.status_code == 200 and len(result.html) < 200)
-        )
+        """Determine if result warrants tier escalation.
+
+        Blocked detection happens at fetch layer. This just checks the flags.
+        """
+        return result.blocked or result.captcha_detected
+
+    def get_escalation_reason(self, result: FetchResult) -> str:
+        """Return human-readable reason for escalation (for logging)."""
+        reasons = []
+
+        if result.blocked:
+            reasons.append("blocked_flag")
+        if result.captcha_detected:
+            reasons.append("captcha")
+
+        return ", ".join(reasons) if reasons else "none"
 
     def get_next_tier(self, current: ScrapingTier) -> ScrapingTier | None:
         """Get the next tier in the escalation chain. Returns None if at max."""

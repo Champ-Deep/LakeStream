@@ -42,26 +42,4 @@ class DomainMapperWorker:
             },
         )
 
-        # 4. Store in database
-        from uuid import UUID
-
-        from src.db.pool import get_pool
-        from src.db.queries.scraped_data import batch_insert_scraped_data
-
-        pool = await get_pool()
-        records = [
-            {
-                "job_id": UUID(self.job_id),
-                "domain": self.domain,
-                "data_type": c["data_type"],
-                "url": c["url"],
-                "title": None,
-                "metadata": {"confidence": c.get("confidence", 0)},
-                "org_id": UUID(self.org_id) if self.org_id else None,
-            }
-            for c in classified
-        ]
-        if records:
-            await batch_insert_scraped_data(pool, records)
-
         return classified

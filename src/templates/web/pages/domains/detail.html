@@ -37,17 +37,13 @@
 
   {% if metadata %}
   <!-- Stats Grid -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div class="grid grid-cols-3 gap-4">
     <div class="bg-white rounded-xl p-5 border border-stone-200">
       <p class="text-xs text-stone-400 uppercase tracking-wide">Success Rate</p>
       {% set rate = (metadata.success_rate * 100) | int if metadata.success_rate else 0 %}
       <p class="text-2xl font-semibold mt-1 {% if rate >= 80 %}text-success{% elif rate >= 50 %}text-warning{% else %}text-error{% endif %}">
         {{ rate }}%
       </p>
-    </div>
-    <div class="bg-white rounded-xl p-5 border border-stone-200">
-      <p class="text-xs text-stone-400 uppercase tracking-wide">Avg Cost</p>
-      <p class="text-2xl font-semibold text-charcoal mt-1">${{ "%.4f" | format(metadata.avg_cost_usd or 0) }}</p>
     </div>
     <div class="bg-white rounded-xl p-5 border border-stone-200">
       <p class="text-xs text-stone-400 uppercase tracking-wide">Block Count</p>
@@ -120,7 +116,7 @@
             <div>
               <p class="font-medium text-charcoal capitalize">{{ job.status }}</p>
               <p class="text-sm text-stone-400">
-                {{ job.pages_scraped }} pages &middot; ${{ "%.4f" | format(job.cost_usd) }}
+                {{ job.pages_scraped }} pages
               </p>
             </div>
           </div>

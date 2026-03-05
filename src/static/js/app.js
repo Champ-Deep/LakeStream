@@ -197,7 +197,7 @@ document.addEventListener('alpine:init', () => {
   // Quick Scrape component (dashboard glassmorphic form)
   Alpine.data('quickScrape', () => ({
     domain: '',
-    dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource', 'pricing'],
+    dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource'],
     maxPages: 100,
     templateId: '',
     priority: 5,
@@ -211,7 +211,6 @@ document.addEventListener('alpine:init', () => {
       { value: 'contact', label: 'Contacts' },
       { value: 'tech_stack', label: 'Tech Stack' },
       { value: 'resource', label: 'Resources' },
-      { value: 'pricing', label: 'Pricing' },
     ],
 
     init() {
@@ -284,7 +283,7 @@ document.addEventListener('alpine:init', () => {
     open: false,
     domain: '',
     frequency: 'weekly',
-    dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource', 'pricing'],
+    dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource'],
     maxPages: 100,
     webhookUrl: '',
     loading: false,
@@ -294,7 +293,6 @@ document.addEventListener('alpine:init', () => {
       { value: 'contact', label: 'Contacts' },
       { value: 'tech_stack', label: 'Tech Stack' },
       { value: 'resource', label: 'Resources' },
-      { value: 'pricing', label: 'Pricing' },
     ],
 
     async submit() {
@@ -348,16 +346,6 @@ function timeAgo(dateString) {
   if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
 
   return date.toLocaleDateString();
-}
-
-// Utility: Format currency
-function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4
-  }).format(amount);
 }
 
 // Utility: Format duration

@@ -17,28 +17,25 @@ async def upsert_domain_metadata(
     last_successful_strategy: str | None = None,
     block_count_increment: int = 0,
     success_rate: float | None = None,
-    avg_cost_usd: float | None = None,
 ) -> None:
     await pool.execute(
         """
         INSERT INTO domain_metadata (
             domain, last_successful_strategy, block_count,
-            last_scraped_at, success_rate, avg_cost_usd
+            last_scraped_at, success_rate
         )
-        VALUES ($1, $2, $3, NOW(), $4, $5)
+        VALUES ($1, $2, $3, NOW(), $4)
         ON CONFLICT (domain) DO UPDATE SET
             last_successful_strategy = COALESCE($2, domain_metadata.last_successful_strategy),
             block_count = domain_metadata.block_count + $3,
             last_scraped_at = NOW(),
             success_rate = COALESCE($4, domain_metadata.success_rate),
-            avg_cost_usd = COALESCE($5, domain_metadata.avg_cost_usd),
             updated_at = NOW()
         """,
         domain,
         last_successful_strategy,
         block_count_increment,
         success_rate,
-        avg_cost_usd,
     )
 
 
@@ -49,7 +46,7 @@ async def list_domains(
     offset: int = 0,
     sort_by: str = "last_scraped_at",
 ) -> list[DomainMetadata]:
-    allowed_sorts = {"last_scraped_at", "success_rate", "domain", "avg_cost_usd"}
+    allowed_sorts = {"last_scraped_at", "success_rate", "domain"}
     if sort_by not in allowed_sorts:
         sort_by = "last_scraped_at"
 

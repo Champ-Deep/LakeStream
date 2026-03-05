@@ -73,7 +73,6 @@
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Domain</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Status</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Pages</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Cost</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Created</th>
           <th class="px-6 py-3 text-right text-xs font-medium text-slate uppercase tracking-wide"></th>
         </tr>
@@ -103,9 +102,6 @@
           </td>
           <td class="px-6 py-4 text-sm text-charcoal">
             {{ job.pages_scraped }}
-          </td>
-          <td class="px-6 py-4 text-sm text-charcoal">
-            ${{ "%.4f" | format(job.cost_usd) }}
           </td>
           <td class="px-6 py-4 text-sm text-slate">
             {{ job.created_at | timeago }}

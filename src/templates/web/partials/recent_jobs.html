@@ -27,7 +27,7 @@
             {% if job.status == 'running' %}
               {{ job.pages_scraped }} pages scraped
             {% elif job.status == 'completed' %}
-              {{ job.pages_scraped }} pages &middot; ${{ "%.4f" | format(job.cost_usd) }}
+              {{ job.pages_scraped }} pages scraped
             {% elif job.status == 'failed' %}
               Failed: {{ job.error_message | truncate(40) if job.error_message else 'Unknown error' }}
             {% else %}

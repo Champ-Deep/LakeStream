@@ -2,7 +2,6 @@
 
 import csv
 import io
-import json
 from uuid import UUID
 
 import httpx
@@ -10,7 +9,79 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.models.scraped_data import ScrapedData
+
 router = APIRouter(prefix="/export", tags=["export"])
+
+# Flattened CSV columns — metadata fields extracted into proper columns
+_CSV_FIELDNAMES = [
+    "domain", "data_type", "url", "title", "published_date", "scraped_at",
+    # Article
+    "author", "excerpt", "word_count", "categories", "content",
+    # Contact
+    "first_name", "last_name", "job_title", "email", "phone", "linkedin_url",
+    # Blog
+    "total_articles",
+    # Tech stack
+    "platform", "frameworks", "js_libraries", "analytics",
+    # Resource
+    "resource_type", "description", "download_url",
+    # Pricing
+    "plan_name", "price", "billing_cycle", "features",
+    "has_free_trial", "cta_text",
+]
+
+
+
+def _join_list(meta: dict, key: str) -> str:
+    """Join a metadata list field into a semicolon-separated string."""
+    val = meta.get(key, [])
+    return "; ".join(val) if isinstance(val, list) else ""
+
+
+def _flatten_row(item: ScrapedData) -> dict:
+    """Flatten a ScrapedData record into a CSV-friendly dict."""
+    meta = item.metadata or {}
+    return {
+        "domain": item.domain,
+        "data_type": item.data_type,
+        "url": item.url or "",
+        "title": item.title or "",
+        "published_date": str(item.published_date) if item.published_date else "",
+        "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
+        # Article fields
+        "author": meta.get("author", ""),
+        "excerpt": meta.get("excerpt", ""),
+        "word_count": meta.get("word_count", ""),
+        "categories": _join_list(meta, "categories"),
+        "content": meta.get("content", ""),
+        # Contact fields
+        "first_name": meta.get("first_name", ""),
+        "last_name": meta.get("last_name", ""),
+        "job_title": meta.get("job_title", ""),
+        "email": meta.get("email", ""),
+        "phone": meta.get("phone", ""),
+        "linkedin_url": meta.get("linkedin_url", ""),
+        # Blog fields
+        "total_articles": meta.get("total_articles", ""),
+        # Tech stack fields
+        "platform": meta.get("platform", ""),
+        "frameworks": _join_list(meta, "frameworks"),
+        "js_libraries": _join_list(meta, "js_libraries"),
+        "analytics": _join_list(meta, "analytics"),
+        # Resource fields
+        "resource_type": meta.get("resource_type", ""),
+        "description": meta.get("description", ""),
+        "download_url": meta.get("download_url", ""),
+        # Pricing fields
+        "plan_name": meta.get("plan_name", ""),
+        "price": meta.get("price", ""),
+        "billing_cycle": meta.get("billing_cycle", ""),
+        "features": _join_list(meta, "features"),
+        "has_free_trial": meta.get("has_free_trial", ""),
+        "cta_text": meta.get("cta_text", ""),
+    }
+
 
 
 class WebhookConfig(BaseModel):
@@ -33,24 +104,12 @@ async def export_job_csv(job_id: UUID):
     if not data:
         raise HTTPException(status_code=404, detail="No data found for this job")
 
-    # Create CSV in memory
+    # Create CSV in memory with flattened metadata columns
     output = io.StringIO()
-    fieldnames = ["domain", "data_type", "url", "title", "published_date", "metadata", "scraped_at"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer = csv.DictWriter(output, fieldnames=_CSV_FIELDNAMES)
     writer.writeheader()
-
     for item in data:
-        writer.writerow(
-            {
-                "domain": item.domain,
-                "data_type": item.data_type,
-                "url": item.url or "",
-                "title": item.title or "",
-                "published_date": str(item.published_date) if item.published_date else "",
-                "metadata": json.dumps(item.metadata),
-                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
-            }
-        )
+        writer.writerow(_flatten_row(item))
 
     output.seek(0)
 
@@ -83,24 +142,12 @@ async def export_all_csv(domain: str | None = Query(None)):
     if not data:
         raise HTTPException(status_code=404, detail="No data found")
 
-    # Create CSV in memory
+    # Create CSV in memory with flattened metadata columns
     output = io.StringIO()
-    fieldnames = ["domain", "data_type", "url", "title", "published_date", "metadata", "scraped_at"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer = csv.DictWriter(output, fieldnames=_CSV_FIELDNAMES)
     writer.writeheader()
-
     for item in data:
-        writer.writerow(
-            {
-                "domain": item.domain,
-                "data_type": item.data_type,
-                "url": item.url or "",
-                "title": item.title or "",
-                "published_date": str(item.published_date) if item.published_date else "",
-                "metadata": json.dumps(item.metadata),
-                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
-            }
-        )
+        writer.writerow(_flatten_row(item))
 
     output.seek(0)
     filename = f"{domain.replace('.', '_')}_export.csv" if domain else "lakeb2b_export.csv"

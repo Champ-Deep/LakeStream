@@ -7,7 +7,7 @@ from selectolax.parser import HTMLParser
 class ContactParser:
     """Extracts contact and people information from HTML pages."""
 
-    EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+    EMAIL_PATTERN = re.compile(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b")
     PHONE_PATTERN = re.compile(r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")
     LINKEDIN_PATTERN = re.compile(r"https?://(?:www\.)?linkedin\.com/in/[\w-]+")
 
@@ -140,6 +140,10 @@ class ContactParser:
 
         for email in emails:
             if any(email.lower().startswith(prefix) for prefix in self.GENERIC_EMAILS):
+                continue
+            # Reject mixed-case TLDs — sign of regex over-capture (e.g. ".inGet")
+            tld = email.rsplit(".", 1)[-1]
+            if tld != tld.lower() and tld != tld.upper():
                 continue
             people.append(
                 {

@@ -8,8 +8,13 @@ from src.workers.base import BaseWorker
 class ArticleParserWorker(BaseWorker):
     """Extracts metadata from individual article pages."""
 
-    def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None):
-        super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id)
+    def __init__(
+        self, domain: str, job_id: str,
+        pool: object | None = None, org_id: str | None = None,
+    ):
+        super().__init__(
+            domain=domain, job_id=job_id, pool=pool, org_id=org_id,
+        )
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
         if not urls:
@@ -28,20 +33,32 @@ class ArticleParserWorker(BaseWorker):
                 from src.scraping.parser.html_parser import HtmlParser
 
                 parser = HtmlParser(fetch_result.html, url)
+                title = parser.extract_title()
 
+                content = parser.extract_content()
                 metadata = ArticleMetadata(
                     author=parser.extract_meta("author"),
                     categories=parser.extract_categories(),
                     word_count=parser.count_words(),
                     excerpt=parser.extract_meta("description"),
+                    content=content,
                 )
+
+                # Skip empty/error pages
+                if metadata.word_count == 0 and metadata.excerpt is None:
+                    self.log.debug("skipping_empty_article", url=url)
+                    continue
+                error_markers = ("error", "404", "not found", "page not found")
+                if title and any(marker in title.lower() for marker in error_markers):
+                    self.log.debug("skipping_error_page", url=url, title=title)
+                    continue
 
                 record = {
                     "job_id": UUID(self.job_id),
                     "domain": self.domain,
                     "data_type": DataType.ARTICLE,
                     "url": url,
-                    "title": parser.extract_title(),
+                    "title": title,
                     "metadata": metadata.model_dump(),
                 }
                 await self.export_results([record])
@@ -53,7 +70,7 @@ class ArticleParserWorker(BaseWorker):
                         domain=self.domain,
                         data_type=DataType.ARTICLE,
                         url=url,
-                        title=parser.extract_title(),
+                        title=title,
                         metadata=metadata.model_dump(),
                         scraped_at=datetime.now(UTC),
                     )

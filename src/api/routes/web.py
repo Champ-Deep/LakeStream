@@ -32,13 +32,13 @@ async def dashboard(request: Request):
     total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
     running_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'")
     total_data = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
-    total_cost = await pool.fetchval("SELECT COALESCE(SUM(cost_usd), 0) FROM scrape_jobs")
+    total_domains = await pool.fetchval("SELECT COUNT(DISTINCT domain) FROM scraped_data")
 
     stats = {
         "total_jobs": total_jobs or 0,
         "running_jobs": running_jobs or 0,
         "total_data": total_data or 0,
-        "total_cost": float(total_cost or 0),
+        "total_domains": total_domains or 0,
     }
 
     # Templates for the Quick Start advanced options dropdown
@@ -243,14 +243,37 @@ async def results_browse(
     if domain:
         results = await get_scraped_data_by_domain(pool, domain, data_type=data_type, limit=limit)
     else:
-        query = "SELECT * FROM scraped_data ORDER BY scraped_at DESC LIMIT $1 OFFSET $2"
-        rows = await pool.fetch(query, limit, offset)
         from src.db.queries.scraped_data import _parse_row
 
+        if data_type:
+            rows = await pool.fetch(
+                "SELECT * FROM scraped_data WHERE data_type = $1 "
+                "ORDER BY scraped_at DESC LIMIT $2 OFFSET $3",
+                data_type, limit, offset,
+            )
+        else:
+            rows = await pool.fetch(
+                "SELECT * FROM scraped_data ORDER BY scraped_at DESC LIMIT $1 OFFSET $2",
+                limit, offset,
+            )
         results = [_parse_row(row) for row in rows]
 
-    # Get total count
-    total = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
+    # Get total count (respecting active filters)
+    if domain and data_type:
+        total = await pool.fetchval(
+            "SELECT COUNT(*) FROM scraped_data WHERE domain = $1 AND data_type = $2",
+            domain, data_type,
+        )
+    elif domain:
+        total = await pool.fetchval(
+            "SELECT COUNT(*) FROM scraped_data WHERE domain = $1", domain
+        )
+    elif data_type:
+        total = await pool.fetchval(
+            "SELECT COUNT(*) FROM scraped_data WHERE data_type = $1", data_type
+        )
+    else:
+        total = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
 
     return get_templates().TemplateResponse(
         "pages/results/browse.html",

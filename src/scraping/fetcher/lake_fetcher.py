@@ -5,6 +5,7 @@ import structlog
 from scrapling.fetchers import Fetcher
 
 from src.config.constants import TIER_COSTS
+from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 
 log = structlog.get_logger()
@@ -14,10 +15,11 @@ class LakeFetcher:
     """Tier 1: Fast HTTP fetcher using Lake's fetching engine."""
 
     def __init__(self):
-        self.fetcher = Fetcher(auto_match=False)
+        self.fetcher = Fetcher()
 
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         options = options or FetchOptions()
+        settings = get_settings()
         start = time.time()
 
         try:
@@ -28,8 +30,10 @@ class LakeFetcher:
             )
             html = response.html_content
             status_code = response.status
-            blocked = status_code in (403, 429, 503) or len(html) < 200
-            captcha = self._detect_captcha(html)
+            http_error = status_code in (403, 429, 503)
+            tiny_html = len(html) < settings.min_html_bytes
+            blocked = http_error or tiny_html
+            captcha = False  # Disabled: pattern detection caused false positives
         except Exception as exc:
             log.warning(
                 "lake_fetcher_error", url=url, error=str(exc), error_type=type(exc).__name__
@@ -53,14 +57,3 @@ class LakeFetcher:
             captcha_detected=captcha,
         )
 
-    def _detect_captcha(self, html: str) -> bool:
-        captcha_signals = [
-            "captcha",
-            "challenge-form",
-            "cf-browser-verification",
-            "recaptcha",
-            "hcaptcha",
-            "turnstile",
-        ]
-        html_lower = html.lower()
-        return any(signal in html_lower for signal in captcha_signals)

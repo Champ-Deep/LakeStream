@@ -95,7 +95,7 @@ def classify_url(url: str) -> dict:
     # Default: unclassified (still useful for site mapping)
     return {
         "url": url,
-        "data_type": DataType.BLOG_URL.value,  # Default to blog for discovery
+        "data_type": DataType.PAGE.value,  # Uncategorized — won't trigger content workers
         "confidence": 0.2,
     }
 

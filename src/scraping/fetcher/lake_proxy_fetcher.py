@@ -22,7 +22,7 @@ class LakeProxyFetcher:
         proxy_url = settings.brightdata_proxy_url or settings.smartproxy_url
 
         try:
-            fetcher = StealthyFetcher(auto_match=False)
+            fetcher = StealthyFetcher()
             proxy_config = {"server": proxy_url} if proxy_url else None
 
             response = await asyncio.to_thread(
@@ -35,8 +35,10 @@ class LakeProxyFetcher:
             )
             html = response.html_content
             status_code = response.status
-            blocked = status_code in (403, 429, 503) or len(html) < 200
-            captcha = self._detect_captcha(html)
+            http_error = status_code in (403, 429, 503)
+            tiny_html = len(html) < settings.min_html_bytes
+            blocked = http_error or tiny_html
+            captcha = False  # Disabled: pattern detection caused false positives
         except Exception as exc:
             log.warning(
                 "lake_proxy_fetcher_error", url=url, error=str(exc), error_type=type(exc).__name__
@@ -60,14 +62,3 @@ class LakeProxyFetcher:
             captcha_detected=captcha,
         )
 
-    def _detect_captcha(self, html: str) -> bool:
-        captcha_signals = [
-            "captcha",
-            "challenge-form",
-            "cf-browser-verification",
-            "recaptcha",
-            "hcaptcha",
-            "turnstile",
-        ]
-        html_lower = html.lower()
-        return any(signal in html_lower for signal in captcha_signals)

@@ -75,16 +75,35 @@ class HtmlParser:
                     categories.append(text.strip())
         return list(dict.fromkeys(categories))
 
-    def count_words(self) -> int:
-        """Count words in main content."""
+    def extract_content(self, max_chars: int = 50_000) -> str | None:
+        """Extract main article/page body text."""
         for selector in [
+            # Common WordPress/blog patterns
             ".entry-content",
             ".post-content",
+            ".post-body",
+            ".article-content",
+            ".blog-content",
+            # Semantic HTML5
             "article",
             "main",
+            # Generic content containers
+            "#left_content",  # fonada.com and similar sites
+            "#content",
             ".content",
+            "#main-content",
+            ".main-content",
+            # Fallback: any div with substantial text
+            "body",
         ]:
             node = self.tree.css_first(selector)
             if node and node.text():
-                return len(node.text().split())
-        return 0
+                text = " ".join(node.text().split()).strip()
+                if len(text) > 100:  # Skip trivially short matches
+                    return text[:max_chars]
+        return None
+
+    def count_words(self) -> int:
+        """Count words in main content."""
+        content = self.extract_content()
+        return len(content.split()) if content else 0

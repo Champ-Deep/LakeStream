@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class TrackedDomain(BaseModel):
     domain: str
     data_types: list[str] = Field(
-        default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]
+        default=["blog_url", "article", "contact", "tech_stack", "resource"]
     )
     scrape_frequency: str = "weekly"
     max_pages: int = 100
@@ -22,7 +22,7 @@ class TrackedDomain(BaseModel):
 class AddSiteInput(BaseModel):
     domain: str = Field(min_length=3)
     data_types: list[str] = Field(
-        default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]
+        default=["blog_url", "article", "contact", "tech_stack", "resource"]
     )
     scrape_frequency: str = Field(default="weekly")
     max_pages: int = Field(default=100, gt=0, le=500)

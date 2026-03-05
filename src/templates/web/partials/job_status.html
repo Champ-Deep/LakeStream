@@ -28,7 +28,7 @@
   {% endif %}
 
   <!-- Stats Grid -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div class="grid grid-cols-3 gap-4">
     <!-- Pages Scraped -->
     <div class="text-center p-4 bg-stone-50 rounded-lg">
       <p class="text-2xl font-semibold text-charcoal">{{ job.pages_scraped }}</p>
@@ -39,12 +39,6 @@
     <div class="text-center p-4 bg-stone-50 rounded-lg">
       <p class="text-2xl font-semibold text-charcoal">{{ data_count }}</p>
       <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Items Found</p>
-    </div>
-
-    <!-- Cost -->
-    <div class="text-center p-4 bg-stone-50 rounded-lg">
-      <p class="text-2xl font-semibold text-charcoal">${{ "%.4f" | format(job.cost_usd) }}</p>
-      <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Cost</p>
     </div>
 
     <!-- Duration -->

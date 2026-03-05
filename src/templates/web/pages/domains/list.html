@@ -92,13 +92,6 @@
         Success Rate
       </a>
       <a
-        href="/domains?sort_by=avg_cost_usd"
-        class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if sort_by == 'avg_cost_usd' %}bg-brand-red text-white{% else %}text-slate-500 hover:bg-slate-100{% endif %}"
-      >
-        Cost
-      </a>
-      <a
         href="/domains?sort_by=domain"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
           {% if sort_by == 'domain' %}bg-brand-red text-white{% else %}text-slate-500 hover:bg-slate-100{% endif %}"
@@ -116,7 +109,6 @@
         <tr>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Domain</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Success Rate</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Avg Cost</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Strategy</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Last Scraped</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Health</th>
@@ -152,9 +144,6 @@
                 {{ rate }}%
               </span>
             </div>
-          </td>
-          <td class="px-6 py-4 text-sm text-navy">
-            ${{ "%.4f" | format(domain.avg_cost_usd or 0) }}
           </td>
           <td class="px-6 py-4 text-sm text-navy">
             {% if domain.last_successful_strategy == 'basic_http' %}

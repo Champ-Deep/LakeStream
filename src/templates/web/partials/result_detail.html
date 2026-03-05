@@ -178,7 +178,7 @@
   </div>
 
   {% else %}
-  {# Fallback: pricing or unknown types #}
+  {# Fallback: unknown types #}
   <pre class="text-sm text-slate-700 bg-white p-4 rounded-lg overflow-x-auto border border-slate-200">{{ result.metadata | tojson(indent=2) }}</pre>
   {% endif %}
 

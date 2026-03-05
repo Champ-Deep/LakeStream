@@ -40,8 +40,7 @@ async def process_scrape_job(
         mapper = DomainMapperWorker(domain=domain, job_id=job_id, org_id=org_id)
         classified_urls = await mapper.execute(max_pages=max_pages)
 
-        total_data = len(classified_urls)
-        total_cost = 0.0
+        total_data = 0
         errors: list[str] = []
 
         # 3. For each requested data_type, run the appropriate worker
@@ -62,7 +61,16 @@ async def process_scrape_job(
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
                     )
-                    blog_urls = [r.url for r in result if r.url]
+                    # Extract individual article URLs discovered by BlogExtractor
+                    blog_urls = []
+                    for r in result:
+                        if r.metadata and isinstance(r.metadata, dict):
+                            article_urls = r.metadata.get("article_urls", [])
+                            if article_urls:
+                                blog_urls.extend(article_urls)
+                            elif r.url:
+                                # No article links found — page is likely an article itself
+                                blog_urls.append(r.url)
                     total_data += len(result)
 
                 elif dtype == "article":
@@ -92,7 +100,9 @@ async def process_scrape_job(
                 elif dtype == "pricing":
                     from src.workers.pricing_finder import PricingFinderWorker
 
-                    worker = PricingFinderWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id)  # type: ignore[assignment]
+                    worker = PricingFinderWorker(  # type: ignore[assignment]
+                        domain=domain, job_id=job_id, pool=pool, org_id=org_id,
+                    )
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
                     )
@@ -102,15 +112,20 @@ async def process_scrape_job(
                 log.error("worker_error", dtype=dtype, error=str(e))
                 errors.append(f"{dtype}: {str(e)}")
 
-        # 4. Mark job complete
+        # 4. Mark job complete — include the scraping strategy (tier) used
         duration_ms = int((time.time() - start_time) * 1000)
+        from src.db.queries.domains import get_domain_metadata
+
+        domain_meta = await get_domain_metadata(pool, domain)
+        strategy = domain_meta.last_successful_strategy if domain_meta else None
+
         await job_queries.update_job_status(
             pool,
             uid,
             JobStatus.COMPLETED,
+            strategy_used=strategy,
             duration_ms=duration_ms,
             pages_scraped=total_data,
-            cost_usd=total_cost,
             completed_at=datetime.now(),
         )
 

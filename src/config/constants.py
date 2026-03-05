@@ -1,3 +1,4 @@
+# Per-request cost estimates by scraping tier
 TIER_COSTS: dict[str, float] = {
     "basic_http": 0.0001,
     "headless_browser": 0.002,

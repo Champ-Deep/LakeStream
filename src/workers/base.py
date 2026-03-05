@@ -7,7 +7,6 @@ from src.models.scraped_data import ScrapedData
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
-from src.services.cost_tracker import CostTracker
 from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
 
@@ -29,7 +28,6 @@ class BaseWorker(ABC):
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
-        self._cost_tracker = CostTracker()
         self._rate_limiter = RateLimiter()
 
         if pool is not None:
@@ -58,7 +56,6 @@ class BaseWorker(ABC):
                 retry_on=(ConnectionError, TimeoutError, OSError),
             )
             self._rate_limiter.report_result(domain, result.status_code)
-            self._cost_tracker.record_cost(self.job_id, self.domain, result.tier_used.value)
             return result
 
         current_tier = await self._escalation.decide_initial_tier(self.domain)
@@ -75,14 +72,9 @@ class BaseWorker(ABC):
                 retry_on=(ConnectionError, TimeoutError, OSError),
             )
             self._rate_limiter.report_result(domain, result.status_code)
-            self._cost_tracker.record_cost(self.job_id, self.domain, result.tier_used.value)
 
             if not self._escalation.should_escalate(result):
                 await self._escalation.record_result(self.domain, result, success=True)
-                return result
-
-            if not self._cost_tracker.check_budget(self.job_id):
-                await self._escalation.record_result(self.domain, result, success=False)
                 return result
 
             next_tier = self._escalation.get_next_tier(current_tier)
@@ -90,8 +82,15 @@ class BaseWorker(ABC):
                 await self._escalation.record_result(self.domain, result, success=False)
                 return result
 
+            reason = self._escalation.get_escalation_reason(result)
             self.log.info(
-                "fetch_escalating", url=url, from_tier=current_tier.value, to_tier=next_tier.value
+                "fetch_escalating",
+                url=url,
+                from_tier=current_tier.value,
+                to_tier=next_tier.value,
+                reason=reason,
+                status=result.status_code,
+                html_size=len(result.html),
             )
             current_tier = next_tier
 

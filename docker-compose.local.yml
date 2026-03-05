@@ -60,6 +60,9 @@ services:
       JWT_SECRET: "local-dev-secret-do-not-use-in-production"
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
+      # Tier 3 proxy — uncomment and set for headless + residential proxy:
+      # BRIGHTDATA_PROXY_URL: "http://user:pass@brd.superproxy.io:22225"
+      # SMARTPROXY_URL: "http://user:pass@gate.smartproxy.com:10000"
     depends_on:
       postgres:
         condition: service_healthy

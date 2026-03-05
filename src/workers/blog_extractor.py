@@ -1,15 +1,37 @@
 from datetime import UTC
+from urllib.parse import urlparse
 from uuid import UUID
 
 from src.models.scraped_data import BlogUrlMetadata, DataType, ScrapedData
+from src.utils.url import extract_domain
 from src.workers.base import BaseWorker
 
 
 class BlogExtractorWorker(BaseWorker):
     """Extracts blog URLs and article links from blog landing pages."""
 
+    _SKIP_EXTENSIONS = frozenset({
+        ".pdf", ".doc", ".docx", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+    })
+
     def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None):
         super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id)
+
+    def _filter_article_links(self, links: list[str], source_url: str) -> list[str]:
+        """Remove homepage, non-HTML, and off-domain links from article candidates."""
+        source_domain = extract_domain(source_url)
+        filtered = []
+        for link in links:
+            parsed = urlparse(link)
+            path = parsed.path.rstrip("/")
+            if not path:
+                continue
+            if any(path.lower().endswith(ext) for ext in self._SKIP_EXTENSIONS):
+                continue
+            if extract_domain(link) != source_domain:
+                continue
+            filtered.append(link)
+        return filtered
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
         if not urls:
@@ -40,6 +62,7 @@ class BlogExtractorWorker(BaseWorker):
                     ],
                     base_url=url,
                 )
+                article_links = self._filter_article_links(article_links, url)
 
                 metadata = BlogUrlMetadata(
                     blog_landing_url=url,

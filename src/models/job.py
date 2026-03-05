@@ -30,7 +30,6 @@ class ScrapeJob(BaseModel):
     org_id: UUID | None = None
     strategy_used: str | None = None
     error_message: str | None = None
-    cost_usd: float = 0.0
     duration_ms: int | None = None
     pages_scraped: int = 0
     created_at: datetime
@@ -43,6 +42,5 @@ class JobResult(BaseModel):
     strategy_used: str
     pages_scraped: int
     data_extracted: int
-    cost_usd: float
     duration_ms: int
     errors: list[str] = []

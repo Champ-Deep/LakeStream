@@ -131,50 +131,6 @@ class TestBaseWorkerWithPool:
             assert result.blocked is True
 
     @pytest.mark.asyncio
-    async def test_records_cost(self, worker):
-        with (
-            patch.object(
-                worker._escalation,
-                "decide_initial_tier",
-                new_callable=AsyncMock,
-                return_value=ScrapingTier.BASIC_HTTP,
-            ),
-            patch.object(worker._escalation, "should_escalate", return_value=False),
-            patch.object(worker._escalation, "record_result", new_callable=AsyncMock),
-            patch("src.workers.base.create_fetcher") as mock_factory,
-        ):
-            mock_fetcher = MagicMock()
-            mock_fetcher.fetch = AsyncMock(return_value=_make_result())
-            mock_factory.return_value = mock_fetcher
-            await worker.fetch_page("https://example.com")
-            assert worker._cost_tracker.get_job_cost(worker.job_id) > 0
-
-    @pytest.mark.asyncio
-    async def test_stops_when_budget_exceeded(self, worker):
-        blocked = _make_result(status_code=403, html="", blocked=True)
-        with (
-            patch.object(
-                worker._escalation,
-                "decide_initial_tier",
-                new_callable=AsyncMock,
-                return_value=ScrapingTier.BASIC_HTTP,
-            ),
-            patch.object(worker._escalation, "should_escalate", return_value=True),
-            patch.object(
-                worker._escalation, "get_next_tier", return_value=ScrapingTier.HEADLESS_BROWSER
-            ),
-            patch.object(worker._escalation, "record_result", new_callable=AsyncMock),
-            patch.object(worker._cost_tracker, "check_budget", return_value=False),
-            patch("src.workers.base.create_fetcher") as mock_factory,
-        ):
-            mock_fetcher = MagicMock()
-            mock_fetcher.fetch = AsyncMock(return_value=blocked)
-            mock_factory.return_value = mock_fetcher
-            result = await worker.fetch_page("https://example.com")
-            assert result.blocked is True
-            assert mock_fetcher.fetch.call_count == 1
-
-    @pytest.mark.asyncio
     async def test_retry_on_transport_error_succeeds_after_2_attempts(self, worker):
         call_count = 0
 

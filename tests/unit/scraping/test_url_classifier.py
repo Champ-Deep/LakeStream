@@ -44,7 +44,7 @@ def test_classify_date_based_article():
 
 def test_classify_unknown_url():
     result = classify_url("https://example.com/some-random-page")
-    assert result["data_type"] == "blog_url"  # Default
+    assert result["data_type"] == "page"  # Uncategorized — won't trigger content workers
     assert result["confidence"] < 0.5
 
 

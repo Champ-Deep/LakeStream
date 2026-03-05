@@ -43,7 +43,6 @@ async def update_job_status(
     *,
     strategy_used: str | None = None,
     error_message: str | None = None,
-    cost_usd: float | None = None,
     duration_ms: int | None = None,
     pages_scraped: int | None = None,
     completed_at: datetime | None = None,
@@ -55,7 +54,6 @@ async def update_job_status(
     for field, value in [
         ("strategy_used", strategy_used),
         ("error_message", error_message),
-        ("cost_usd", cost_usd),
         ("duration_ms", duration_ms),
         ("pages_scraped", pages_scraped),
         ("completed_at", completed_at),
@@ -67,6 +65,21 @@ async def update_job_status(
 
     query = f"UPDATE scrape_jobs SET {', '.join(sets)} WHERE id = $1"
     await pool.execute(query, *vals)
+
+
+async def recover_stale_jobs(pool: asyncpg.Pool, stale_minutes: int = 30) -> int:
+    """Mark jobs stuck at 'running' longer than stale_minutes as failed."""
+    result = await pool.execute(
+        """
+        UPDATE scrape_jobs
+        SET status = 'failed',
+            error_message = 'Job timed out (stale recovery)'
+        WHERE status = 'running'
+          AND created_at < NOW() - INTERVAL '1 minute' * $1
+        """,
+        stale_minutes,
+    )
+    return int(result.split()[-1])
 
 
 async def list_jobs(

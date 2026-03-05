@@ -12,6 +12,8 @@ class DataType(StrEnum):
     CONTACT = "contact"
     TECH_STACK = "tech_stack"
     PRICING = "pricing"
+    PAGE = "page"  # Uncategorized pages — not sent to content workers
+
 
 
 class ScrapedData(BaseModel):
@@ -37,6 +39,7 @@ class ArticleMetadata(BaseModel):
     categories: list[str] = []
     word_count: int = 0
     excerpt: str | None = None
+    content: str | None = None
 
 
 class ContactMetadata(BaseModel):
@@ -73,3 +76,6 @@ class PricingMetadata(BaseModel):
     features: list[str] = []
     has_free_trial: bool = False
     cta_text: str | None = None
+
+
+

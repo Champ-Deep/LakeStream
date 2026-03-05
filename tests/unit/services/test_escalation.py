@@ -50,13 +50,16 @@ class TestEscalationService:
         assert svc.should_escalate(_result(captcha=True)) is True
 
     def test_should_escalate_403(self, svc):
-        assert svc.should_escalate(_result(status_code=403)) is True
+        # Fetchers set blocked=True for 403, escalation checks the flag
+        assert svc.should_escalate(_result(status_code=403, blocked=True)) is True
 
     def test_should_escalate_429(self, svc):
-        assert svc.should_escalate(_result(status_code=429)) is True
+        # Fetchers set blocked=True for 429, escalation checks the flag
+        assert svc.should_escalate(_result(status_code=429, blocked=True)) is True
 
     def test_should_escalate_tiny_200(self, svc):
-        assert svc.should_escalate(_result(status_code=200, html="tiny")) is True
+        # Fetchers set blocked=True for tiny HTML, escalation checks the flag
+        assert svc.should_escalate(_result(status_code=200, html="tiny", blocked=True)) is True
 
     def test_should_not_escalate_success(self, svc):
         assert svc.should_escalate(_result()) is False
