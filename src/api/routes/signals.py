@@ -53,7 +53,7 @@ async def create_new_signal(request: CreateSignalRequest, user: dict = Depends(g
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         signal = await create_signal(
             pool,
@@ -79,7 +79,7 @@ async def list_signals(is_active: bool | None = None, user: dict = Depends(get_c
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         signals = await get_signals_by_org(pool, UUID(user["org_id"]), is_active)
         return signals
@@ -92,7 +92,7 @@ async def get_signal_by_id(signal_id: UUID, user: dict = Depends(get_current_use
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         signal = await get_signal(pool, signal_id)
         if not signal:
@@ -117,7 +117,7 @@ async def update_signal_by_id(
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         # Verify signal exists and user has access
         existing = await get_signal(pool, signal_id)
@@ -162,7 +162,7 @@ async def delete_signal_by_id(signal_id: UUID, user: dict = Depends(get_current_
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         # Verify signal exists and user has access
         existing = await get_signal(pool, signal_id)
@@ -196,7 +196,7 @@ async def test_signal(signal_id: UUID, user: dict = Depends(get_current_user)):
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         # Verify signal exists and user has access
         signal = await get_signal(pool, signal_id)
@@ -234,7 +234,7 @@ async def get_signal_executions(
 
     # Set RLS context
     async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{user['org_id']}'")
+        await conn.execute("SELECT set_config('app.current_org_id', $1, true)", user["org_id"])
 
         # Verify signal exists and user has access
         signal = await get_signal(pool, signal_id)

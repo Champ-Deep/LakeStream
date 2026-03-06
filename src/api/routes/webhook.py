@@ -1,12 +1,40 @@
 """Webhook routes for n8n integration and external triggers."""
 
+import ipaddress
+import socket
 from uuid import UUID
+from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from src.api.middleware.auth import get_current_user
+
 router = APIRouter(prefix="/webhook", tags=["webhook"])
+
+
+def _validate_webhook_url(url: str) -> None:
+    """Reject URLs that point to private/internal network addresses (SSRF prevention)."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="URL must use http or https")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Invalid URL: missing hostname")
+
+    try:
+        ip = ipaddress.ip_address(socket.gethostbyname(hostname))
+    except (socket.gaierror, ValueError):
+        raise HTTPException(status_code=400, detail="Could not resolve hostname")
+
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        raise HTTPException(status_code=400, detail="URL resolves to a private/internal address")
 
 
 class WebhookTriggerRequest(BaseModel):
@@ -41,7 +69,7 @@ class WebhookTestResponse(BaseModel):
 
 
 @router.post("/trigger", response_model=WebhookTriggerResponse)
-async def trigger_scrape(request: WebhookTriggerRequest):
+async def trigger_scrape(request: WebhookTriggerRequest, user: dict = Depends(get_current_user)):
     """
     Trigger a scrape job via webhook.
 
@@ -113,13 +141,14 @@ async def trigger_scrape(request: WebhookTriggerRequest):
 
 
 @router.post("/test", response_model=WebhookTestResponse)
-async def test_webhook(request: WebhookTestRequest):
+async def test_webhook(request: WebhookTestRequest, user: dict = Depends(get_current_user)):
     """
     Test a webhook URL by sending a test payload.
 
     This helps verify that the webhook endpoint is reachable before
     configuring it for automatic data export.
     """
+    _validate_webhook_url(request.url)
     test_payload = {
         "source": "lake_b2b_scraper",
         "type": "test",
@@ -158,7 +187,7 @@ async def test_webhook(request: WebhookTestRequest):
 
 
 @router.post("/callback/{job_id}")
-async def webhook_callback(job_id: UUID, data: dict):
+async def webhook_callback(job_id: UUID, data: dict, user: dict = Depends(get_current_user)):
     """
     Receive callback data from external services.
 
