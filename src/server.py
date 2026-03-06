@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.router import api_router
 from src.db.pool import close_pool, get_pool
@@ -44,6 +45,11 @@ async def root_ping() -> dict:
     """Liveness probe — instant 200, no dependencies. Use for Railway healthcheck."""
     return {"status": "ok"}
 
+
+# Session middleware (must be added before other middleware)
+from src.config.settings import get_settings as _get_settings  # noqa: E402
+
+app.add_middleware(SessionMiddleware, secret_key=_get_settings().jwt_secret, session_cookie="ls_session")
 
 # Register authentication middleware for RLS context
 from src.api.middleware.auth import set_tenant_context  # noqa: E402

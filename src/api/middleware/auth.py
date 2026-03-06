@@ -9,7 +9,7 @@ This middleware:
 
 import jwt
 import structlog
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.db.pool import get_pool
@@ -19,7 +19,7 @@ security = HTTPBearer()
 log = structlog.get_logger()
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = security):  # type: ignore[call-arg]
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Extract and validate user from JWT token.
 
     This dependency can be used in route handlers to require authentication:
@@ -101,7 +101,7 @@ async def set_tenant_context(request: Request, call_next):  # type: ignore[no-un
             # Set PostgreSQL session variable for RLS
             pool = await get_pool()
             async with pool.acquire() as conn:
-                await conn.execute(f"SET LOCAL app.current_org_id = '{org_id}'")
+                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
 
             # Store user context in request.state for route access
             request.state.user_id = payload["user_id"]

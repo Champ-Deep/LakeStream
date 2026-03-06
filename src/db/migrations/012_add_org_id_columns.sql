@@ -33,12 +33,17 @@ BEGIN
     ALTER TABLE scrape_jobs ALTER COLUMN org_id SET NOT NULL;
     ALTER TABLE scraped_data ALTER COLUMN org_id SET NOT NULL;
 
-    -- Create a default user for the default org (for API access)
+    -- Create a default user for the default org (for API access).
+    -- IMPORTANT: Set a strong password_hash before running in any environment.
+    -- Generate with: python -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PASSWORD', bcrypt.gensalt(12)).decode())"
+    -- Then set the ADMIN_PASSWORD_HASH environment variable and substitute it here,
+    -- or update the hash directly after applying this migration via:
+    --   UPDATE users SET password_hash = '<new_hash>' WHERE email = 'admin@lakeb2b.internal';
     INSERT INTO users (org_id, email, password_hash, full_name, role, is_active)
     VALUES (
         default_org_id,
         'admin@lakeb2b.internal',
-        '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzS4HullRK', -- 'changeme123'
+        'REPLACE_WITH_BCRYPT_HASH',
         'Default Admin',
         'org_owner',
         TRUE

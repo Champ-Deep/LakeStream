@@ -2,8 +2,8 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter(tags=["web"])
 
@@ -15,6 +15,71 @@ def get_templates():
     return templates
 
 
+def _require_login(request: Request):
+    """Return a redirect to /login if the user is not in session, else None."""
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login", status_code=302)
+    return None
+
+
+# =============================================================================
+# AUTH PAGES
+# =============================================================================
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Login page."""
+    if request.session.get("user_id"):
+        return RedirectResponse(url="/", status_code=302)
+    return get_templates().TemplateResponse(
+        "pages/login.html", {"request": request, "error": None, "email": None}
+    )
+
+
+@router.post("/login")
+async def login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+):
+    """Handle login form submission."""
+    from src.db.pool import get_pool
+    from src.db.queries.users import get_user_by_email
+    from src.services.auth import verify_password
+
+    pool = await get_pool()
+    user = await get_user_by_email(pool, email)
+
+    if not user or not verify_password(password, user.password_hash):
+        return get_templates().TemplateResponse(
+            "pages/login.html",
+            {"request": request, "error": "Invalid email or password", "email": email},
+            status_code=401,
+        )
+
+    if not user.is_active:
+        return get_templates().TemplateResponse(
+            "pages/login.html",
+            {"request": request, "error": "Account is disabled", "email": email},
+            status_code=403,
+        )
+
+    request.session["user_id"] = str(user.id)
+    request.session["org_id"] = str(user.org_id)
+    request.session["role"] = user.role
+    request.session["email"] = user.email
+
+    return RedirectResponse(url="/", status_code=302)
+
+
+@router.get("/logout")
+async def logout(request: Request):
+    """Log out and clear session."""
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=302)
+
+
 # =============================================================================
 # DASHBOARD
 # =============================================================================
@@ -22,6 +87,9 @@ def get_templates():
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Main dashboard page."""
     from src.db.pool import get_pool
     from src.templates.registry import list_templates
@@ -84,6 +152,9 @@ async def dashboard(request: Request):
 
 @router.get("/partials/health", response_class=HTMLResponse)
 async def health_partial(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Health status partial for HTMX polling."""
     from src.db.pool import get_pool
 
@@ -119,6 +190,9 @@ async def health_partial(request: Request):
 
 @router.get("/partials/recent-jobs", response_class=HTMLResponse)
 async def recent_jobs_partial(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Recent jobs partial for HTMX polling."""
     from src.db.pool import get_pool
     from src.db.queries.jobs import list_jobs
@@ -133,6 +207,9 @@ async def recent_jobs_partial(request: Request):
 
 @router.get("/partials/top-domains", response_class=HTMLResponse)
 async def top_domains_partial(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Top domains partial for dashboard."""
     from src.db.pool import get_pool
     from src.db.queries.domains import list_domains
@@ -152,6 +229,9 @@ async def top_domains_partial(request: Request):
 
 @router.get("/jobs", response_class=HTMLResponse)
 async def jobs_list(request: Request, status: str | None = None):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """List all jobs page."""
     from src.db.pool import get_pool
     from src.db.queries.jobs import list_jobs
@@ -175,6 +255,9 @@ async def new_job_form(request: Request):
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
 async def job_status_page(request: Request, job_id: UUID):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Job status detail page."""
     from src.db.pool import get_pool
     from src.db.queries.jobs import get_job
@@ -200,6 +283,9 @@ async def job_status_page(request: Request, job_id: UUID):
 
 @router.get("/partials/job/{job_id}/status", response_class=HTMLResponse)
 async def job_status_partial(request: Request, job_id: UUID):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Job status partial for HTMX polling."""
     from src.db.pool import get_pool
     from src.db.queries.jobs import get_job
@@ -227,6 +313,9 @@ async def results_browse(
     data_type: str | None = None,
     page: int = 1,
 ):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Results browser page."""
     from src.db.pool import get_pool
     from src.db.queries.scraped_data import get_scraped_data_by_domain
@@ -298,6 +387,9 @@ async def results_browse(
 
 @router.get("/domains", response_class=HTMLResponse)
 async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Domains analytics page."""
     from src.db.pool import get_pool
     from src.db.queries.domains import list_domains
@@ -331,6 +423,9 @@ async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
 
 @router.get("/domains/{domain}", response_class=HTMLResponse)
 async def domain_detail(request: Request, domain: str):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Domain detail page."""
     from src.db.pool import get_pool
     from src.db.queries.domains import get_domain_metadata
@@ -372,6 +467,9 @@ async def domain_detail(request: Request, domain: str):
 
 @router.get("/help", response_class=HTMLResponse)
 async def help_index(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Help and documentation page."""
     return get_templates().TemplateResponse(
         "pages/help/index.html", {"request": request, "active_page": "help"}
@@ -385,6 +483,9 @@ async def help_index(request: Request):
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
     """Settings and webhook configuration page."""
     from src.config.settings import get_settings
 
