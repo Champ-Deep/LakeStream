@@ -13,6 +13,11 @@ build/
 
 .firecrawl/
 
+# Playwright CLI debugging artifacts
+playwright-state.json
+trace.zip
+*.har
+
 .venv/
 venv/
 env/
