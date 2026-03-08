@@ -6,6 +6,8 @@ from pydantic import BaseModel
 class ScrapingTier(StrEnum):
     BASIC_HTTP = "basic_http"
     HEADLESS_BROWSER = "headless_browser"
+    PLAYWRIGHT = "playwright"
+    PLAYWRIGHT_PROXY = "playwright_proxy"
     HEADLESS_PROXY = "headless_proxy"
 
 

@@ -15,6 +15,11 @@ class JobStatus(StrEnum):
 class ScrapeJobInput(BaseModel):
     domain: str = Field(min_length=3)
     template_id: str | None = None
+    tier: str | None = Field(
+        default=None,
+        description="Optional tier override (basic_http, playwright, playwright_proxy). "
+        "If not specified, uses automatic escalation.",
+    )
     max_pages: int = Field(default=100, gt=0, le=500)
     data_types: list[str] = Field(
         default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]

@@ -19,12 +19,14 @@ class BaseWorker(ABC):
         template: TemplateConfig | None = None,
         pool: object | None = None,
         org_id: str | None = None,
+        tier_override: str | None = None,
     ):
         self.domain = domain
         self.job_id = job_id
         self.template = template
         self._pool = pool
         self.org_id = org_id
+        self._tier_override = ScrapingTier(tier_override) if tier_override else None
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
@@ -41,8 +43,32 @@ class BaseWorker(ABC):
     async def execute(self, urls: list[str]) -> list[ScrapedData]: ...
 
     async def fetch_page(self, url: str, options: FetchOptions | None = None) -> FetchResult:
-        """Fetch a page with automatic tier escalation, rate limiting, and cost tracking."""
+        """Fetch a page with automatic tier escalation, rate limiting, and cost tracking.
+
+        If tier_override is set, uses that tier directly (no escalation).
+        """
         domain = urlparse(url).netloc or self.domain
+
+        # If tier override is set, use it directly (no escalation)
+        if self._tier_override:
+            await self._rate_limiter.wait(domain)
+            fetcher = create_fetcher(self._tier_override)
+            result = await retry_async(
+                fetcher.fetch,
+                url,
+                options,
+                max_retries=2,
+                base_delay=2.0,
+                retry_on=(ConnectionError, TimeoutError, OSError),
+            )
+            self._rate_limiter.report_result(domain, result.status_code)
+            self.log.info(
+                "fetch_tier_override",
+                url=url,
+                tier=self._tier_override.value,
+                status=result.status_code,
+            )
+            return result
 
         if self._escalation is None:
             await self._rate_limiter.wait(domain)

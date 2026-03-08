@@ -48,6 +48,12 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (requires DB/Redis)",
+    "slow: marks tests as slow (>5 seconds)",
+    "linkedin: marks tests requiring LinkedIn credentials",
+    "quality: marks tests for content quality validation",
+]
 
 [tool.mypy]
 python_version = "3.12"

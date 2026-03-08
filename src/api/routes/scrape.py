@@ -37,6 +37,7 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             template_id=input.template_id or "auto",
             max_pages=input.max_pages,
             data_types=input.data_types,
+            tier=input.tier,
         )
         await redis.aclose()
     except Exception as e:

@@ -60,3 +60,53 @@ class TestRateLimiter:
         for _ in range(10):
             r.report_result("ex.com", 429)
         assert r._current_delay["ex.com"] == 5.0
+
+    def test_domain_specific_linkedin(self):
+        """LinkedIn domain should get 5 second rate limit."""
+        r = RateLimiter()
+        assert r.get_rate_limit("linkedin.com") == 5000
+
+    def test_domain_specific_linkedin_subdomain(self):
+        """LinkedIn subdomains should match *.linkedin.com pattern."""
+        r = RateLimiter()
+        assert r.get_rate_limit("www.linkedin.com") == 5000
+        assert r.get_rate_limit("sales.linkedin.com") == 5000
+
+    def test_domain_specific_hubspot_subdomain(self):
+        """HubSpot subdomains should match *.hubspot.com pattern."""
+        r = RateLimiter()
+        assert r.get_rate_limit("blog.hubspot.com") == 2000
+        assert r.get_rate_limit("www.hubspot.com") == 2000
+
+    def test_domain_specific_wordpress_subdomain(self):
+        """WordPress subdomains should match *.wordpress.com pattern."""
+        r = RateLimiter()
+        assert r.get_rate_limit("myblog.wordpress.com") == 1500
+
+    def test_domain_specific_unknown_default(self):
+        """Unknown domains should fall back to default."""
+        r = RateLimiter()
+        assert r.get_rate_limit("example.com") == 1000
+        assert r.get_rate_limit("random-site.org") == 1000
+
+    def test_domain_specific_decay_respects_domain_default(self):
+        """Decay should stop at domain-specific default, not global default."""
+        r = RateLimiter(default_delay_ms=1000)
+        # LinkedIn starts at 5s default
+        r.report_result("linkedin.com", 429)  # 5s -> 10s
+        r.report_result("linkedin.com", 429)  # 10s -> 20s
+        # Now decay with success
+        for _ in range(20):
+            r.report_result("linkedin.com", 200)  # Should decay to 5s, not 1s
+        # After many successes, should stabilize at LinkedIn's 5s default
+        assert r._current_delay["linkedin.com"] == 5.0
+
+    def test_domain_specific_backoff_from_domain_default(self):
+        """Rate limit backoff should start from domain-specific default."""
+        r = RateLimiter()
+        # First 429 should double from LinkedIn's 5s default to 10s
+        r.report_result("linkedin.com", 429)
+        assert r._current_delay["linkedin.com"] == 10.0
+        # First 429 for generic domain should double from 1s to 2s
+        r.report_result("example.com", 429)
+        assert r._current_delay["example.com"] == 2.0
