@@ -38,6 +38,17 @@ async def run_migrations() -> None:
         else:
             print(f"Skipped (already applied): {name}")
 
+    # Fix admin password if it's still the placeholder
+    admin_hash = await pool.fetchval(
+        "SELECT password_hash FROM users WHERE email = 'admin@lakeb2b.internal'"
+    )
+    if admin_hash and admin_hash == "REPLACE_WITH_BCRYPT_HASH":
+        await pool.execute(
+            "UPDATE users SET password_hash = $1 WHERE email = 'admin@lakeb2b.internal'",
+            "$2b$12$oRRGzeJzpJ4hmIHm/dCWQukJLmOkA3T5RtbwXRTvrO98u5AiL1jJe",
+        )
+        print("Fixed admin password (was placeholder).")
+
     await pool.close()
     print("Migrations complete.")
 
