@@ -15,12 +15,5 @@ RUN pip install --no-cache-dir --upgrade pip \
     && scrapling install
 
 COPY src/ ./src/
-COPY start.sh ./
-RUN chmod +x start.sh
 
-ENV PORT=8080
-EXPOSE ${PORT}
-
-# Default: run start.sh (migrations + uvicorn).
-# Railway worker service overrides this with: arq src.queue.worker.WorkerSettings
-CMD ./start.sh
+CMD ["python", "-m", "arq", "src.queue.worker.WorkerSettings"]
