@@ -15,12 +15,11 @@ RUN pip install --no-cache-dir --upgrade pip \
     && scrapling install
 
 COPY src/ ./src/
-COPY start.sh ./
-RUN chmod +x start.sh
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 ENV PORT=8080
+ENV SERVICE_MODE=api
 EXPOSE ${PORT}
 
-# Default: run start.sh (migrations + uvicorn).
-# Railway worker service overrides this with: arq src.queue.worker.WorkerSettings
-CMD ./start.sh
+CMD ["./entrypoint.sh"]
