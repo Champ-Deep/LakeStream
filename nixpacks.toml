@@ -4,7 +4,10 @@ nixPkgs = ["python312", "postgresql"]
 [phases.install]
 cmds = [
   "pip install --upgrade pip",
-  "pip install -e ."
+  "pip install -e .",
+  "pip install 'scrapling[fetchers]'",
+  "python -m playwright install-deps || true",
+  "scrapling install || true"
 ]
 
 [start]

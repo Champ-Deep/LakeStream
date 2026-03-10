@@ -16,7 +16,8 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
     pool = await get_pool()
 
     # Get org_id and user_id from authenticated user (set by auth middleware)
-    org_id = getattr(request.state, "org_id", None)
+    org_id_str = getattr(request.state, "org_id", None)
+    org_id = UUID(org_id_str) if org_id_str else None
     user_id_str = getattr(request.state, "user_id", None)
     user_id = UUID(user_id_str) if user_id_str else None
 
