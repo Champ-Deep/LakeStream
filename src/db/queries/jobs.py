@@ -7,7 +7,7 @@ from src.models.job import JobStatus, ScrapeJob, ScrapeJobInput
 
 
 async def create_job(
-    pool: asyncpg.Pool, input: ScrapeJobInput, org_id: UUID | None = None
+    pool: asyncpg.Pool, input: ScrapeJobInput, org_id: UUID | None = None, user_id: UUID | None = None
 ) -> ScrapeJob:
     # Fall back to "Default Organization" for unauthenticated dashboard scrapes
     if org_id is None:
@@ -15,8 +15,8 @@ async def create_job(
 
     row = await pool.fetchrow(
         """
-        INSERT INTO scrape_jobs (id, domain, template_id, status, org_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO scrape_jobs (id, domain, template_id, status, org_id, user_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
         """,
         uuid4(),
@@ -24,6 +24,7 @@ async def create_job(
         input.template_id or "auto",
         JobStatus.PENDING,
         org_id,
+        user_id,
     )
     assert row is not None
     return ScrapeJob(**dict(row))
@@ -87,6 +88,7 @@ async def list_jobs(
     *,
     domain: str | None = None,
     status: str | None = None,
+    user_id: UUID | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[ScrapeJob]:
@@ -101,6 +103,10 @@ async def list_jobs(
     if status:
         conditions.append(f"status = ${idx}")
         vals.append(status)
+        idx += 1
+    if user_id:
+        conditions.append(f"user_id = ${idx}")
+        vals.append(user_id)
         idx += 1
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""

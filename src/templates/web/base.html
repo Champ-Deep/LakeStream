@@ -116,10 +116,27 @@
                {% if active_page == 'settings' %}bg-slate-100 text-navy{% else %}text-slate-500 hover:text-navy hover:bg-slate-50{% endif %}">
             Settings
           </a>
+          {% if request.session.get('is_admin') %}
+          <a href="/users"
+             class="px-4 py-2 text-sm font-medium rounded-xl transition-all
+               {% if active_page == 'users' %}bg-slate-100 text-navy{% else %}text-slate-500 hover:text-navy hover:bg-slate-50{% endif %}">
+            <span class="flex items-center gap-1">
+              <i data-lucide="users" class="w-4 h-4"></i>
+              Users
+            </span>
+          </a>
+          {% endif %}
         </div>
 
-        <!-- Help + Logout -->
+        <!-- User Info + Help + Logout -->
         <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl">
+            <i data-lucide="user" class="w-4 h-4 text-slate-400"></i>
+            <span class="text-xs font-medium text-slate-600">{{ request.session.get('email', '') }}</span>
+            {% if request.session.get('is_admin') %}
+            <span class="text-[9px] font-bold uppercase tracking-wide bg-brand-red text-white px-1.5 py-0.5 rounded-md">Admin</span>
+            {% endif %}
+          </div>
           <a href="/help"
              class="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 hover:border-brand-red transition-colors
                {% if active_page == 'help' %}border-brand-red text-brand-red{% else %}text-slate-500{% endif %}">

@@ -53,10 +53,11 @@
         View Results
       </a>
       <a
-        href="/api/export/csv/{{ job.id }}"
-        class="py-3 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors"
+        href="/download/job/{{ job.id }}"
+        class="py-3 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors flex items-center gap-2"
       >
-        Export CSV
+        <i data-lucide="download" class="w-4 h-4"></i>
+        Download CSV
       </a>
     {% elif job.status == 'running' %}
       <button

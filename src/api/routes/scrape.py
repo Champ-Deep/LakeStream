@@ -15,11 +15,13 @@ router = APIRouter(prefix="/scrape")
 async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScrapeResponse:
     pool = await get_pool()
 
-    # Get org_id from authenticated user (set by auth middleware)
+    # Get org_id and user_id from authenticated user (set by auth middleware)
     org_id = getattr(request.state, "org_id", None)
+    user_id_str = getattr(request.state, "user_id", None)
+    user_id = UUID(user_id_str) if user_id_str else None
 
     # Create job record
-    job = await job_queries.create_job(pool, input, org_id=org_id)
+    job = await job_queries.create_job(pool, input, org_id=org_id, user_id=user_id)
 
     # Enqueue arq job
     try:

@@ -55,13 +55,14 @@ async def batch_insert_scraped_data(
                 rec.get("title"),
                 json.dumps(rec.get("metadata", {})),
                 rec.get("org_id"),
+                rec.get("user_id"),
             )
         )
 
     await pool.executemany(
         """
-        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata, org_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata, org_id, user_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
         """,
         values,
     )

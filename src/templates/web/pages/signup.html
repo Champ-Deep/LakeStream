@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login — LakeB2B Scraper</title>
+  <title>Sign Up — LakeB2B Scraper</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -44,7 +44,7 @@
           <div class="text-[9px] uppercase tracking-[0.15em] font-bold text-slate-400">Scraper</div>
         </div>
       </div>
-      <p class="text-slate-500 text-sm">Sign in to your account</p>
+      <p class="text-slate-500 text-sm">Create your account</p>
     </div>
 
     <!-- Card -->
@@ -57,7 +57,37 @@
       </div>
       {% endif %}
 
-      <form method="POST" action="/login" class="space-y-5">
+      <form method="POST" action="/signup" class="space-y-4">
+
+        <div>
+          <label class="block text-sm font-semibold text-navy mb-2">Full Name</label>
+          <div class="relative">
+            <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input
+              type="text"
+              name="full_name"
+              required
+              value="{{ full_name or '' }}"
+              placeholder="John Doe"
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy text-sm transition-all"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-navy mb-2">Organization Name</label>
+          <div class="relative">
+            <i data-lucide="building" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input
+              type="text"
+              name="org_name"
+              required
+              value="{{ org_name or '' }}"
+              placeholder="Acme Corp"
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy text-sm transition-all"
+            >
+          </div>
+        </div>
 
         <div>
           <label class="block text-sm font-semibold text-navy mb-2">Email</label>
@@ -67,9 +97,8 @@
               type="email"
               name="email"
               required
-              autofocus
               value="{{ email or '' }}"
-              placeholder="admin@lakeb2b.internal"
+              placeholder="you@example.com"
               class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy text-sm transition-all"
             >
           </div>
@@ -83,7 +112,8 @@
               type="password"
               name="password"
               required
-              placeholder="••••••••"
+              minlength="8"
+              placeholder="Minimum 8 characters"
               class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy text-sm transition-all"
             >
           </div>
@@ -93,16 +123,16 @@
           type="submit"
           class="w-full brand-gradient text-white py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all text-sm flex items-center justify-center gap-2"
         >
-          <i data-lucide="log-in" class="w-4 h-4"></i>
-          Sign In
+          <i data-lucide="user-plus" class="w-4 h-4"></i>
+          Create Account
         </button>
 
       </form>
     </div>
 
     <p class="text-center text-xs text-slate-400 mt-6">
-      Don't have an account?
-      <a href="/signup" class="text-navy font-semibold hover:underline">Sign up</a>
+      Already have an account?
+      <a href="/login" class="text-navy font-semibold hover:underline">Sign in</a>
     </p>
 
   </div>

@@ -92,7 +92,7 @@ async def signup(request: SignupRequest):
     await update_last_login(pool, user.id)
 
     # Generate JWT token
-    token = create_access_token(user.id, org.id, user.role)
+    token = create_access_token(user.id, org.id, user.role, is_admin=user.is_admin)
 
     return LoginResponse(
         access_token=token,
@@ -104,6 +104,7 @@ async def signup(request: SignupRequest):
             org_name=org.name,
             role=user.role,
             team_id=user.team_id,
+            is_admin=user.is_admin,
         ),
     )
 
@@ -151,7 +152,7 @@ async def login(request: LoginRequest):
     await update_last_login(pool, user.id)
 
     # Generate JWT token
-    token = create_access_token(user.id, user.org_id, user.role)
+    token = create_access_token(user.id, user.org_id, user.role, is_admin=user.is_admin)
 
     # Get organization details
     org = await get_organization(pool, user.org_id)
@@ -170,6 +171,7 @@ async def login(request: LoginRequest):
             org_name=org.name,
             role=user.role,
             team_id=user.team_id,
+            is_admin=user.is_admin,
         ),
     )
 
@@ -224,4 +226,5 @@ async def get_current_user_profile(user=Depends(get_current_user)):
         org_name=org.name,
         role=db_user.role,
         team_id=db_user.team_id,
+        is_admin=db_user.is_admin,
     )

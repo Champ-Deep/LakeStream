@@ -28,6 +28,7 @@ class ScrapeJob(BaseModel):
     template_id: str
     status: JobStatus
     org_id: UUID | None = None
+    user_id: UUID | None = None
     strategy_used: str | None = None
     error_message: str | None = None
     duration_ms: int | None = None

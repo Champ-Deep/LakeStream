@@ -22,6 +22,24 @@ def _require_login(request: Request):
     return None
 
 
+def _require_admin(request: Request):
+    """Return a redirect if user is not admin, else None."""
+    redir = _require_login(request)
+    if redir:
+        return redir
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/", status_code=302)
+    return None
+
+
+def _get_user_filter(request: Request) -> UUID | None:
+    """Return user_id for filtering data, or None if admin (sees all)."""
+    if request.session.get("is_admin"):
+        return None  # Admin sees everything
+    uid = request.session.get("user_id")
+    return UUID(uid) if uid else None
+
+
 # =============================================================================
 # AUTH PAGES
 # =============================================================================
@@ -69,6 +87,85 @@ async def login_submit(
     request.session["org_id"] = str(user.org_id)
     request.session["role"] = user.role
     request.session["email"] = user.email
+    request.session["is_admin"] = user.is_admin
+    request.session["full_name"] = user.full_name or user.email
+
+    return RedirectResponse(url="/", status_code=302)
+
+
+@router.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    """Signup page."""
+    if request.session.get("user_id"):
+        return RedirectResponse(url="/", status_code=302)
+    return get_templates().TemplateResponse(
+        "pages/signup.html",
+        {"request": request, "error": None, "email": None, "full_name": None, "org_name": None},
+    )
+
+
+@router.post("/signup")
+async def signup_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    org_name: str = Form(...),
+):
+    """Handle signup form submission."""
+    from src.db.pool import get_pool
+    from src.db.queries.users import create_organization, create_user, get_user_by_email
+    from src.services.auth import hash_password
+
+    pool = await get_pool()
+
+    # Check if email already exists
+    existing = await get_user_by_email(pool, email)
+    if existing:
+        return get_templates().TemplateResponse(
+            "pages/signup.html",
+            {
+                "request": request,
+                "error": "Email already registered",
+                "email": email,
+                "full_name": full_name,
+                "org_name": org_name,
+            },
+            status_code=400,
+        )
+
+    if len(password) < 8:
+        return get_templates().TemplateResponse(
+            "pages/signup.html",
+            {
+                "request": request,
+                "error": "Password must be at least 8 characters",
+                "email": email,
+                "full_name": full_name,
+                "org_name": org_name,
+            },
+            status_code=400,
+        )
+
+    # Create org + user
+    org = await create_organization(pool, org_name)
+    password_hash = hash_password(password)
+    user = await create_user(
+        pool,
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        org_id=org.id,
+        role="org_owner",
+    )
+
+    # Log them in
+    request.session["user_id"] = str(user.id)
+    request.session["org_id"] = str(user.org_id)
+    request.session["role"] = user.role
+    request.session["email"] = user.email
+    request.session["is_admin"] = user.is_admin
+    request.session["full_name"] = user.full_name or user.email
 
     return RedirectResponse(url="/", status_code=302)
 
@@ -95,12 +192,27 @@ async def dashboard(request: Request):
     from src.templates.registry import list_templates
 
     pool = await get_pool()
+    user_filter = _get_user_filter(request)
 
-    # Get job stats
-    total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
-    running_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'")
-    total_data = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
-    total_domains = await pool.fetchval("SELECT COUNT(DISTINCT domain) FROM scraped_data")
+    # Get job stats — filtered by user for non-admins
+    if user_filter:
+        total_jobs = await pool.fetchval(
+            "SELECT COUNT(*) FROM scrape_jobs WHERE user_id = $1", user_filter
+        )
+        running_jobs = await pool.fetchval(
+            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running' AND user_id = $1", user_filter
+        )
+        total_data = await pool.fetchval(
+            "SELECT COUNT(*) FROM scraped_data WHERE user_id = $1", user_filter
+        )
+        total_domains = await pool.fetchval(
+            "SELECT COUNT(DISTINCT domain) FROM scraped_data WHERE user_id = $1", user_filter
+        )
+    else:
+        total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
+        running_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'")
+        total_data = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
+        total_domains = await pool.fetchval("SELECT COUNT(DISTINCT domain) FROM scraped_data")
 
     stats = {
         "total_jobs": total_jobs or 0,
@@ -198,7 +310,8 @@ async def recent_jobs_partial(request: Request):
     from src.db.queries.jobs import list_jobs
 
     pool = await get_pool()
-    jobs = await list_jobs(pool, limit=5, offset=0)
+    user_filter = _get_user_filter(request)
+    jobs = await list_jobs(pool, user_id=user_filter, limit=5, offset=0)
 
     return get_templates().TemplateResponse(
         "partials/recent_jobs.html", {"request": request, "jobs": jobs}
@@ -237,7 +350,8 @@ async def jobs_list(request: Request, status: str | None = None):
     from src.db.queries.jobs import list_jobs
 
     pool = await get_pool()
-    jobs = await list_jobs(pool, status=status, limit=50)
+    user_filter = _get_user_filter(request)
+    jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
 
     return get_templates().TemplateResponse(
         "pages/jobs/list.html",
@@ -267,6 +381,15 @@ async def job_status_page(request: Request, job_id: UUID):
     job = await get_job(pool, job_id)
 
     if not job:
+        return get_templates().TemplateResponse(
+            "pages/jobs/not_found.html",
+            {"request": request, "active_page": "jobs", "job_id": job_id},
+            status_code=404,
+        )
+
+    # Non-admin can only see their own jobs
+    user_filter = _get_user_filter(request)
+    if user_filter and job.user_id != user_filter:
         return get_templates().TemplateResponse(
             "pages/jobs/not_found.html",
             {"request": request, "active_page": "jobs", "job_id": job_id},
@@ -318,51 +441,64 @@ async def results_browse(
         return redirect
     """Results browser page."""
     from src.db.pool import get_pool
-    from src.db.queries.scraped_data import get_scraped_data_by_domain
+    from src.db.queries.scraped_data import _parse_row
 
     pool = await get_pool()
     limit = 50
     offset = (page - 1) * limit
+    user_filter = _get_user_filter(request)
 
-    # Get unique domains for filter dropdown
-    domains_rows = await pool.fetch("SELECT DISTINCT domain FROM scraped_data ORDER BY domain")
+    # Build user filter clause
+    if user_filter:
+        user_clause = "AND user_id = $%d"
+        user_val = [user_filter]
+    else:
+        user_clause = ""
+        user_val = []
+
+    # Get unique domains for filter dropdown (scoped to user)
+    if user_filter:
+        domains_rows = await pool.fetch(
+            "SELECT DISTINCT domain FROM scraped_data WHERE user_id = $1 ORDER BY domain",
+            user_filter,
+        )
+    else:
+        domains_rows = await pool.fetch("SELECT DISTINCT domain FROM scraped_data ORDER BY domain")
     domains = [row["domain"] for row in domains_rows]
 
-    # Get results with filters
+    # Build dynamic query for results
+    conditions = []
+    vals: list = []
+    idx = 1
+
+    if user_filter:
+        conditions.append(f"user_id = ${idx}")
+        vals.append(user_filter)
+        idx += 1
     if domain:
-        results = await get_scraped_data_by_domain(pool, domain, data_type=data_type, limit=limit)
-    else:
-        from src.db.queries.scraped_data import _parse_row
+        conditions.append(f"domain = ${idx}")
+        vals.append(domain)
+        idx += 1
+    if data_type:
+        conditions.append(f"data_type = ${idx}")
+        vals.append(data_type)
+        idx += 1
 
-        if data_type:
-            rows = await pool.fetch(
-                "SELECT * FROM scraped_data WHERE data_type = $1 "
-                "ORDER BY scraped_at DESC LIMIT $2 OFFSET $3",
-                data_type, limit, offset,
-            )
-        else:
-            rows = await pool.fetch(
-                "SELECT * FROM scraped_data ORDER BY scraped_at DESC LIMIT $1 OFFSET $2",
-                limit, offset,
-            )
-        results = [_parse_row(row) for row in rows]
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    vals.extend([limit, offset])
 
-    # Get total count (respecting active filters)
-    if domain and data_type:
-        total = await pool.fetchval(
-            "SELECT COUNT(*) FROM scraped_data WHERE domain = $1 AND data_type = $2",
-            domain, data_type,
-        )
-    elif domain:
-        total = await pool.fetchval(
-            "SELECT COUNT(*) FROM scraped_data WHERE domain = $1", domain
-        )
-    elif data_type:
-        total = await pool.fetchval(
-            "SELECT COUNT(*) FROM scraped_data WHERE data_type = $1", data_type
-        )
-    else:
-        total = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
+    rows = await pool.fetch(
+        f"SELECT * FROM scraped_data {where} ORDER BY scraped_at DESC LIMIT ${idx} OFFSET ${idx + 1}",
+        *vals,
+    )
+    results = [_parse_row(row) for row in rows]
+
+    # Get total count with same filters
+    count_vals = vals[:-2]  # exclude limit/offset
+    total = await pool.fetchval(
+        f"SELECT COUNT(*) FROM scraped_data {where}".replace(f" LIMIT ${idx} OFFSET ${idx + 1}", ""),
+        *count_vals,
+    ) if count_vals else await pool.fetchval(f"SELECT COUNT(*) FROM scraped_data {where}")
 
     return get_templates().TemplateResponse(
         "pages/results/browse.html",
@@ -432,19 +568,31 @@ async def domain_detail(request: Request, domain: str):
     from src.db.queries.jobs import list_jobs
 
     pool = await get_pool()
+    user_filter = _get_user_filter(request)
     domain_meta = await get_domain_metadata(pool, domain)
-    jobs = await list_jobs(pool, domain=domain, limit=10)
+    jobs = await list_jobs(pool, domain=domain, user_id=user_filter, limit=10)
 
-    # Get data type breakdown
-    breakdown_rows = await pool.fetch(
-        """
-        SELECT data_type, COUNT(*) as count
-        FROM scraped_data
-        WHERE domain = $1
-        GROUP BY data_type
-        """,
-        domain,
-    )
+    # Get data type breakdown (scoped to user)
+    if user_filter:
+        breakdown_rows = await pool.fetch(
+            """
+            SELECT data_type, COUNT(*) as count
+            FROM scraped_data
+            WHERE domain = $1 AND user_id = $2
+            GROUP BY data_type
+            """,
+            domain, user_filter,
+        )
+    else:
+        breakdown_rows = await pool.fetch(
+            """
+            SELECT data_type, COUNT(*) as count
+            FROM scraped_data
+            WHERE domain = $1
+            GROUP BY data_type
+            """,
+            domain,
+        )
     breakdown = {row["data_type"]: row["count"] for row in breakdown_rows}
 
     return get_templates().TemplateResponse(
@@ -500,3 +648,373 @@ async def settings_page(request: Request):
             "webhook_trigger_url": webhook_trigger_url,
         },
     )
+
+
+# =============================================================================
+# DOWNLOADS (CSV export from browser session)
+# =============================================================================
+
+
+@router.get("/download/job/{job_id}")
+async def download_job_csv(request: Request, job_id: UUID):
+    """Download scraped data for a job as CSV (session-based auth)."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import get_job
+    from src.db.queries.scraped_data import get_scraped_data_by_job
+
+    pool = await get_pool()
+    job = await get_job(pool, job_id)
+    if not job:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Non-admin can only download their own jobs
+    user_filter = _get_user_filter(request)
+    if user_filter and job.user_id != user_filter:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    data = await get_scraped_data_by_job(pool, job_id)
+    if not data:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="No data found for this job")
+
+    # Flatten to CSV
+    fieldnames = [
+        "domain", "data_type", "url", "title", "published_date", "scraped_at",
+        "author", "excerpt", "word_count", "categories", "content",
+        "first_name", "last_name", "job_title", "email", "phone", "linkedin_url",
+        "total_articles",
+        "platform", "frameworks", "js_libraries", "analytics",
+        "resource_type", "description", "download_url",
+        "plan_name", "price", "billing_cycle", "features",
+        "has_free_trial", "cta_text",
+    ]
+
+    def _join_list(meta, key):
+        val = meta.get(key, [])
+        return "; ".join(val) if isinstance(val, list) else ""
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for item in data:
+        meta = item.metadata or {}
+        writer.writerow({
+            "domain": item.domain,
+            "data_type": item.data_type,
+            "url": item.url or "",
+            "title": item.title or "",
+            "published_date": str(item.published_date) if item.published_date else "",
+            "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
+            "author": meta.get("author", ""),
+            "excerpt": meta.get("excerpt", ""),
+            "word_count": meta.get("word_count", ""),
+            "categories": _join_list(meta, "categories"),
+            "content": meta.get("content", ""),
+            "first_name": meta.get("first_name", ""),
+            "last_name": meta.get("last_name", ""),
+            "job_title": meta.get("job_title", ""),
+            "email": meta.get("email", ""),
+            "phone": meta.get("phone", ""),
+            "linkedin_url": meta.get("linkedin_url", ""),
+            "total_articles": meta.get("total_articles", ""),
+            "platform": meta.get("platform", ""),
+            "frameworks": _join_list(meta, "frameworks"),
+            "js_libraries": _join_list(meta, "js_libraries"),
+            "analytics": _join_list(meta, "analytics"),
+            "resource_type": meta.get("resource_type", ""),
+            "description": meta.get("description", ""),
+            "download_url": meta.get("download_url", ""),
+            "plan_name": meta.get("plan_name", ""),
+            "price": meta.get("price", ""),
+            "billing_cycle": meta.get("billing_cycle", ""),
+            "features": _join_list(meta, "features"),
+            "has_free_trial": meta.get("has_free_trial", ""),
+            "cta_text": meta.get("cta_text", ""),
+        })
+
+    output.seek(0)
+    domain = job.domain.replace(".", "_")
+    filename = f"{domain}_{str(job_id)[:8]}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/download/all")
+async def download_all_csv(request: Request):
+    """Download all user's scraped data as CSV."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    from src.db.pool import get_pool
+    from src.db.queries.scraped_data import _parse_row
+
+    pool = await get_pool()
+    user_filter = _get_user_filter(request)
+
+    if user_filter:
+        rows = await pool.fetch(
+            "SELECT * FROM scraped_data WHERE user_id = $1 ORDER BY scraped_at DESC LIMIT 10000",
+            user_filter,
+        )
+    else:
+        rows = await pool.fetch("SELECT * FROM scraped_data ORDER BY scraped_at DESC LIMIT 10000")
+
+    data = [_parse_row(row) for row in rows]
+
+    if not data:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="No data found")
+
+    fieldnames = [
+        "domain", "data_type", "url", "title", "published_date", "scraped_at",
+        "author", "excerpt", "word_count", "categories", "content",
+        "first_name", "last_name", "job_title", "email", "phone", "linkedin_url",
+        "total_articles",
+        "platform", "frameworks", "js_libraries", "analytics",
+        "resource_type", "description", "download_url",
+        "plan_name", "price", "billing_cycle", "features",
+        "has_free_trial", "cta_text",
+    ]
+
+    def _join_list(meta, key):
+        val = meta.get(key, [])
+        return "; ".join(val) if isinstance(val, list) else ""
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for item in data:
+        meta = item.metadata or {}
+        writer.writerow({
+            "domain": item.domain,
+            "data_type": item.data_type,
+            "url": item.url or "",
+            "title": item.title or "",
+            "published_date": str(item.published_date) if item.published_date else "",
+            "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
+            "author": meta.get("author", ""),
+            "excerpt": meta.get("excerpt", ""),
+            "word_count": meta.get("word_count", ""),
+            "categories": _join_list(meta, "categories"),
+            "content": meta.get("content", ""),
+            "first_name": meta.get("first_name", ""),
+            "last_name": meta.get("last_name", ""),
+            "job_title": meta.get("job_title", ""),
+            "email": meta.get("email", ""),
+            "phone": meta.get("phone", ""),
+            "linkedin_url": meta.get("linkedin_url", ""),
+            "total_articles": meta.get("total_articles", ""),
+            "platform": meta.get("platform", ""),
+            "frameworks": _join_list(meta, "frameworks"),
+            "js_libraries": _join_list(meta, "js_libraries"),
+            "analytics": _join_list(meta, "analytics"),
+            "resource_type": meta.get("resource_type", ""),
+            "description": meta.get("description", ""),
+            "download_url": meta.get("download_url", ""),
+            "plan_name": meta.get("plan_name", ""),
+            "price": meta.get("price", ""),
+            "billing_cycle": meta.get("billing_cycle", ""),
+            "features": _join_list(meta, "features"),
+            "has_free_trial": meta.get("has_free_trial", ""),
+            "cta_text": meta.get("cta_text", ""),
+        })
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="lakestream_export.csv"'},
+    )
+
+
+# =============================================================================
+# USER MANAGEMENT (Admin only)
+# =============================================================================
+
+
+@router.get("/users", response_class=HTMLResponse)
+async def users_list(request: Request):
+    """User management page (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+
+    pool = await get_pool()
+
+    # Get all users with their job counts
+    rows = await pool.fetch(
+        """
+        SELECT u.*,
+               o.name as org_name,
+               COALESCE(j.job_count, 0) as job_count,
+               COALESCE(d.data_count, 0) as data_count
+        FROM users u
+        JOIN organizations o ON u.org_id = o.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as job_count FROM scrape_jobs GROUP BY user_id
+        ) j ON j.user_id = u.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as data_count FROM scraped_data GROUP BY user_id
+        ) d ON d.user_id = u.id
+        ORDER BY u.created_at DESC
+        """
+    )
+
+    users = []
+    for row in rows:
+        users.append({
+            "id": row["id"],
+            "email": row["email"],
+            "full_name": row["full_name"],
+            "role": row["role"],
+            "is_admin": row["is_admin"],
+            "is_active": row["is_active"],
+            "org_name": row["org_name"],
+            "job_count": row["job_count"],
+            "data_count": row["data_count"],
+            "last_login_at": row["last_login_at"],
+            "created_at": row["created_at"],
+        })
+
+    return get_templates().TemplateResponse(
+        "pages/users/list.html",
+        {
+            "request": request,
+            "active_page": "users",
+            "users": users,
+        },
+    )
+
+
+@router.post("/users/create")
+async def create_user_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    role: str = Form(default="member"),
+    is_admin: bool = Form(default=False),
+):
+    """Create a new user (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.db.queries.users import create_user, get_user_by_email
+    from src.services.auth import hash_password
+
+    pool = await get_pool()
+
+    # Check if email already exists
+    existing = await get_user_by_email(pool, email)
+    if existing:
+        # Re-render with error
+        return RedirectResponse(url="/users?error=email_exists", status_code=302)
+
+    # Use the admin's org_id
+    org_id = UUID(request.session["org_id"])
+
+    password_hash = hash_password(password)
+    await create_user(
+        pool,
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        org_id=org_id,
+        role=role,
+    )
+
+    # Set is_admin flag if needed
+    if is_admin:
+        user = await get_user_by_email(pool, email)
+        if user:
+            await pool.execute("UPDATE users SET is_admin = TRUE WHERE id = $1", user.id)
+
+    return RedirectResponse(url="/users?success=created", status_code=302)
+
+
+@router.post("/users/{user_id}/toggle-active")
+async def toggle_user_active(request: Request, user_id: UUID):
+    """Enable/disable a user (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+
+    pool = await get_pool()
+
+    # Don't allow disabling yourself
+    if str(user_id) == request.session.get("user_id"):
+        return RedirectResponse(url="/users?error=cannot_disable_self", status_code=302)
+
+    await pool.execute(
+        "UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+    return RedirectResponse(url="/users", status_code=302)
+
+
+@router.post("/users/{user_id}/toggle-admin")
+async def toggle_user_admin(request: Request, user_id: UUID):
+    """Toggle admin status for a user (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+
+    pool = await get_pool()
+
+    # Don't allow removing your own admin
+    if str(user_id) == request.session.get("user_id"):
+        return RedirectResponse(url="/users?error=cannot_change_self", status_code=302)
+
+    await pool.execute(
+        "UPDATE users SET is_admin = NOT is_admin, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+    return RedirectResponse(url="/users", status_code=302)
+
+
+@router.post("/users/{user_id}/delete")
+async def delete_user(request: Request, user_id: UUID):
+    """Delete a user (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+
+    pool = await get_pool()
+
+    # Don't allow deleting yourself
+    if str(user_id) == request.session.get("user_id"):
+        return RedirectResponse(url="/users?error=cannot_delete_self", status_code=302)
+
+    await pool.execute("DELETE FROM users WHERE id = $1", user_id)
+    return RedirectResponse(url="/users", status_code=302)
