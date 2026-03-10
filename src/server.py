@@ -22,6 +22,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     import structlog
 
     log = structlog.get_logger()
+
+    # Run database migrations on startup
+    try:
+        from src.db.migrate import run_migrations
+        await run_migrations()
+        log.info("migrations_complete")
+    except Exception as e:
+        log.warning("migrations_failed", error=str(e))
+
     try:
         await get_pool()
         log.info("database_connected")
