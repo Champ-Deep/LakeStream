@@ -7,18 +7,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt ./
+COPY requirements.txt pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir gunicorn \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install "scrapling[fetchers]" \
     && python -m playwright install-deps \
     && scrapling install
 
-COPY start.sh ./
 COPY src/ ./src/
+COPY start.sh ./
+RUN chmod +x start.sh
 
-ENV PORT=8000
+ENV PORT=3001
 EXPOSE ${PORT}
 
-CMD gunicorn src.server:app -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT} --timeout 120
+CMD ["./start.sh"]

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     default_max_users_per_org: int = 5
     default_max_domains_per_org: int = 10
 
+    # Default admin credentials (used on first boot to seed admin user)
+    admin_email: str = "admin@lakeb2b.internal"
+    admin_password: str = "LakeB2B_admin!"
+
     # Email notifications (ChampMail engine)
     mail_engine_url: str = "http://localhost:8025"
     mail_engine_api_key: str = ""
