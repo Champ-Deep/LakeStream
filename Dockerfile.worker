@@ -15,11 +15,5 @@ RUN pip install --no-cache-dir --upgrade pip \
     && scrapling install
 
 COPY src/ ./src/
-COPY entrypoint.sh ./
-RUN chmod +x entrypoint.sh
 
-ENV PORT=8080
-ENV SERVICE_MODE=api
-EXPOSE ${PORT}
-
-CMD ["./entrypoint.sh"]
+CMD ["python", "-m", "arq", "src.queue.worker.WorkerSettings"]

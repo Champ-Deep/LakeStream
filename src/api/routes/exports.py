@@ -5,10 +5,12 @@ import io
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.api.middleware.auth import get_current_user
+from src.api.routes.webhook import _validate_webhook_url
 from src.models.scraped_data import ScrapedData
 
 router = APIRouter(prefix="/export", tags=["export"])
@@ -93,7 +95,7 @@ class WebhookConfig(BaseModel):
 
 
 @router.get("/csv/{job_id}")
-async def export_job_csv(job_id: UUID):
+async def export_job_csv(job_id: UUID, user: dict = Depends(get_current_user)):
     """Export all scraped data from a job as CSV."""
     from src.db.pool import get_pool
     from src.db.queries.scraped_data import get_scraped_data_by_job
@@ -126,7 +128,7 @@ async def export_job_csv(job_id: UUID):
 
 
 @router.get("/csv")
-async def export_all_csv(domain: str | None = Query(None)):
+async def export_all_csv(domain: str | None = Query(None), user: dict = Depends(get_current_user)):
     """Export all scraped data as CSV, optionally filtered by domain."""
     from src.db.pool import get_pool
     from src.db.queries.scraped_data import _parse_row, get_scraped_data_by_domain
@@ -160,8 +162,9 @@ async def export_all_csv(domain: str | None = Query(None)):
 
 
 @router.post("/webhook")
-async def export_to_webhook(config: WebhookConfig):
+async def export_to_webhook(config: WebhookConfig, user: dict = Depends(get_current_user)):
     """Send scraped data to a webhook URL."""
+    _validate_webhook_url(config.url)
     from src.db.pool import get_pool
     from src.db.queries.scraped_data import get_scraped_data_by_domain, get_scraped_data_by_job
 

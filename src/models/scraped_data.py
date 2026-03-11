@@ -17,10 +17,14 @@ class DataType(StrEnum):
 
 
 class ScrapedData(BaseModel):
+    model_config = {"extra": "ignore"}
+
     id: UUID
     job_id: UUID
     domain: str
     data_type: DataType
+    org_id: UUID | None = None
+    user_id: UUID | None = None
     url: str | None = None
     title: str | None = None
     published_date: date | None = None

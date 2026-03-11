@@ -9,8 +9,9 @@ This middleware:
 
 import jwt
 import structlog
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.db.pool import get_pool
 from src.services.auth import decode_access_token
@@ -19,7 +20,7 @@ security = HTTPBearer()
 log = structlog.get_logger()
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = security):  # type: ignore[call-arg]
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Extract and validate user from JWT token.
 
     This dependency can be used in route handlers to require authentication:
@@ -54,72 +55,50 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = security)
         )
 
 
-async def set_tenant_context(request: Request, call_next):  # type: ignore[no-untyped-def]
-    """Middleware to set PostgreSQL RLS context from JWT token.
+class TenantContextMiddleware(BaseHTTPMiddleware):
+    """Middleware to set request.state from JWT or session.
 
-    This middleware:
-    1. Extracts JWT from Authorization header (if present)
-    2. Decodes token to get org_id
-    3. Acquires database connection from pool
-    4. Sets PostgreSQL session variable: SET app.current_org_id = '<org_id>'
-    5. Stores user context in request.state for route access
-    6. Calls next middleware/route handler
-    7. Returns response
-
-    For public endpoints (no Authorization header):
-    - Skips token extraction
-    - No RLS context set (current_setting returns NULL)
-    - RLS policies won't match any rows (expected behavior)
-
-    Args:
-        request: FastAPI request object
-        call_next: Next middleware/route handler
-
-    Returns:
-        Response from downstream handlers
-
-    Example:
-        # In server.py:
-        app.middleware("http")(set_tenant_context)
-
-        # In route:
-        @router.get("/tracked/")
-        async def list_domains(request: Request):
-            org_id = request.state.org_id  # Available from middleware
-            # Database queries automatically filtered by RLS
+    Registered AFTER SessionMiddleware so request.session is available.
     """
-    # Extract token from Authorization header
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else None
 
-    if token:
-        try:
-            # Decode JWT to get user claims
-            payload = decode_access_token(token)
-            org_id = payload["org_id"]
+    async def dispatch(self, request: Request, call_next):
+        # Extract token from Authorization header
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else None
 
-            # Set PostgreSQL session variable for RLS
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute(f"SET LOCAL app.current_org_id = '{org_id}'")
+        if token:
+            try:
+                payload = decode_access_token(token)
+                org_id = payload["org_id"]
 
-            # Store user context in request.state for route access
-            request.state.user_id = payload["user_id"]
-            request.state.org_id = org_id
-            request.state.role = payload["role"]
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
 
-        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
-            # Invalid token - don't set context, let routes handle auth
-            pass
-        except Exception as exc:
-            # Database connection error or other issue
-            # Log error but don't fail request (public endpoints still work)
-            log.warning(
-                "tenant_context_error",
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
+                request.state.user_id = payload["user_id"]
+                request.state.org_id = org_id
+                request.state.role = payload["role"]
+                request.state.is_admin = payload.get("is_admin", False)
 
-    # Call next middleware/route handler
-    response = await call_next(request)
-    return response
+            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
+                pass
+            except Exception as exc:
+                log.warning(
+                    "tenant_context_error",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+        else:
+            # Fall back to session-based auth (web UI + API calls from browser)
+            try:
+                session = request.session
+                if session and session.get("user_id"):
+                    request.state.user_id = session["user_id"]
+                    request.state.org_id = session.get("org_id")
+                    request.state.role = session.get("role")
+                    request.state.is_admin = session.get("is_admin", False)
+            except (AssertionError, AttributeError):
+                pass
+
+        response = await call_next(request)
+        return response

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — LakeB2B Scraper</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { DEFAULT: '#011A6B', light: '#1a3a8f', dark: '#000d3d' },
+            brand: { yellow: '#FFB703', red: '#E8033A', purple: '#6D08BE' },
+          },
+          fontFamily: {
+            sans: ['Montserrat', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+
+<body class="bg-slate-50 font-sans min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md px-6">
+
+    <!-- Logo -->
+    <div class="text-center mb-10">
+      <div class="inline-flex items-center gap-3 mb-4">
+        <div class="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center shadow-lg">
+          <i data-lucide="globe" class="w-6 h-6 text-white"></i>
+        </div>
+        <div class="text-left">
+          <div class="text-2xl font-extrabold tracking-tight text-navy">
+            Lake<span class="brand-text-gradient">B2B</span>
+          </div>
+          <div class="text-[9px] uppercase tracking-[0.15em] font-bold text-slate-400">Scraper</div>
+        </div>
+      </div>
+      <p class="text-slate-500 text-sm">Sign in to your account</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
+
+      {% if error %}
+      <div class="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+        <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+        <span>{{ error }}</span>
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/login" class="space-y-5">
+
+        <div>
+          <label class="block text-sm font-semibold text-navy mb-2">Email</label>
+          <div class="relative">
+            <i data-lucide="mail" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input
+              type="email"
+              name="email"
+              required
+              autofocus
+              value="{{ email or '' }}"
+              placeholder="admin@lakeb2b.internal"
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy text-sm transition-all"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-navy mb-2">Password</label>
+          <div class="relative">
+            <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input
+              type="password"
+              name="password"
+              required
+              placeholder="••••••••"
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy text-sm transition-all"
+            >
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full brand-gradient text-white py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all text-sm flex items-center justify-center gap-2"
+        >
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          Sign In
+        </button>
+
+      </form>
+    </div>
+
+    <p class="text-center text-xs text-slate-400 mt-6">
+      Don't have an account?
+      <a href="/signup" class="text-navy font-semibold hover:underline">Sign up</a>
+    </p>
+
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -46,6 +46,7 @@ class UserProfile(BaseModel):
     org_name: str
     role: str  # org_owner, team_admin, member
     team_id: UUID | None
+    is_admin: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -94,6 +95,7 @@ class User(BaseModel):
     full_name: str | None
     role: str  # org_owner, team_admin, member
     is_active: bool
+    is_admin: bool = False
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime

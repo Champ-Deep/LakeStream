@@ -15,7 +15,8 @@ async def run_migrations() -> None:
     # Railway/Heroku provide postgres:// but asyncpg requires postgresql://
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-    pool = await asyncpg.create_pool(database_url)
+
+    pool = await asyncpg.create_pool(database_url, min_size=1, max_size=3, command_timeout=30)
     assert pool is not None
 
     await pool.execute("""
@@ -38,8 +39,55 @@ async def run_migrations() -> None:
         else:
             print(f"Skipped (already applied): {name}")
 
+    # Ensure admin user has a working password.
+    # Uses ADMIN_PASSWORD env var (or default from settings).
+    await _ensure_admin_password(pool)
+
     await pool.close()
     print("Migrations complete.")
+
+
+async def _ensure_admin_password(pool: asyncpg.Pool) -> None:
+    """Set/fix admin password from ADMIN_PASSWORD env var on every boot."""
+    import bcrypt
+
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@lakeb2b.internal")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "LakeB2B_admin!")
+
+    row = await pool.fetchrow(
+        "SELECT id, password_hash, is_admin FROM users WHERE email = $1", admin_email
+    )
+    if not row:
+        print(f"Admin user '{admin_email}' not found in DB — skipping password fix.")
+        return
+
+    current_hash = row["password_hash"]
+
+    # Always re-hash if it's the placeholder, or if the stored hash doesn't
+    # match the configured password (i.e. ADMIN_PASSWORD was changed).
+    needs_update = current_hash == "REPLACE_WITH_BCRYPT_HASH"
+    if not needs_update:
+        try:
+            needs_update = not bcrypt.checkpw(
+                admin_password.encode(), current_hash.encode()
+            )
+        except (ValueError, TypeError):
+            needs_update = True
+
+    if needs_update:
+        new_hash = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt(12)).decode()
+        await pool.execute(
+            "UPDATE users SET password_hash = $1 WHERE email = $2",
+            new_hash, admin_email,
+        )
+        print(f"Admin password updated for {admin_email}.")
+
+    # Ensure admin flag is set
+    if not row["is_admin"]:
+        await pool.execute(
+            "UPDATE users SET is_admin = TRUE WHERE email = $1", admin_email
+        )
+        print(f"Admin flag set for {admin_email}.")
 
 
 if __name__ == "__main__":

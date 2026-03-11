@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.middleware.auth import get_current_user
 from src.db.pool import get_pool
 from src.db.queries import domains as domain_queries
 from src.models.domain_metadata import DomainMetadata
@@ -12,13 +13,14 @@ async def list_domains(
     limit: int = 50,
     offset: int = 0,
     sort_by: str = "last_scraped_at",
+    user: dict = Depends(get_current_user),
 ) -> list[DomainMetadata]:
     pool = await get_pool()
     return await domain_queries.list_domains(pool, limit=limit, offset=offset, sort_by=sort_by)
 
 
 @router.get("/{domain}/stats")
-async def get_domain_stats(domain: str) -> DomainMetadata:
+async def get_domain_stats(domain: str, user: dict = Depends(get_current_user)) -> DomainMetadata:
     pool = await get_pool()
     meta = await domain_queries.get_domain_metadata(pool, domain)
     if meta is None:

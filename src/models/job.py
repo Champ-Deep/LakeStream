@@ -28,13 +28,17 @@ class ScrapeJobInput(BaseModel):
 
 
 class ScrapeJob(BaseModel):
+    model_config = {"extra": "ignore"}
+
     id: UUID
     domain: str
     template_id: str
     status: JobStatus
     org_id: UUID | None = None
+    user_id: UUID | None = None
     strategy_used: str | None = None
     error_message: str | None = None
+    cost_usd: float = 0.0
     duration_ms: int | None = None
     pages_scraped: int = 0
     created_at: datetime

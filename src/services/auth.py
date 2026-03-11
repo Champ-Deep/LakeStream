@@ -54,7 +54,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode(), password_hash.encode())
 
 
-def create_access_token(user_id: UUID, org_id: UUID, role: str) -> str:
+def create_access_token(user_id: UUID, org_id: UUID, role: str, is_admin: bool = False) -> str:
     """Generate JWT access token with user claims.
 
     Token contains:
@@ -83,6 +83,7 @@ def create_access_token(user_id: UUID, org_id: UUID, role: str) -> str:
         "user_id": str(user_id),
         "org_id": str(org_id),
         "role": role,
+        "is_admin": is_admin,
         "exp": datetime.now(UTC) + timedelta(hours=settings.access_token_expire_hours),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
