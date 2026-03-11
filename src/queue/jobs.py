@@ -18,13 +18,19 @@ async def process_scrape_job(
     template_id: str,
     max_pages: int,
     data_types: list[str],
+    tier: str | None = None,
 ) -> dict:
-    """Main scrape job processor. Orchestrates all workers for a domain."""
+    """Main scrape job processor. Orchestrates all workers for a domain.
+
+    Args:
+        tier: Optional tier override (e.g., "playwright", "playwright_proxy").
+              If provided, bypasses automatic escalation and uses this tier for all fetches.
+    """
     pool = ctx["pool"]
     start_time = time.time()
     uid = UUID(job_id)
 
-    log.info("job_started", job_id=job_id, domain=domain, data_types=data_types)
+    log.info("job_started", job_id=job_id, domain=domain, data_types=data_types, tier_override=tier)
 
     # 1. Update job status to running
     await job_queries.update_job_status(pool, uid, JobStatus.RUNNING)
@@ -38,7 +44,7 @@ async def process_scrape_job(
         # 2. Domain mapping — discover and classify URLs
         from src.workers.domain_mapper import DomainMapperWorker
 
-        mapper = DomainMapperWorker(domain=domain, job_id=job_id, org_id=org_id)
+        mapper = DomainMapperWorker(domain=domain, job_id=job_id, org_id=org_id, tier_override=tier)
         classified_urls = await mapper.execute(max_pages=max_pages)
 
         total_data = 0
@@ -58,6 +64,7 @@ async def process_scrape_job(
                 if dtype == "blog_url":
                     worker = BlogExtractorWorker(
                         domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id
+
                     )
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
@@ -75,6 +82,7 @@ async def process_scrape_job(
                     total_data += len(result)
 
                 elif dtype == "article":
+
                     worker = ArticleParserWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)  # type: ignore[assignment]
                     result = await worker.execute(blog_urls)
                     total_data += len(result)

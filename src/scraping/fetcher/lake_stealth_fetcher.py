@@ -1,5 +1,6 @@
 import asyncio
 import time
+import warnings
 
 import structlog
 from scrapling.fetchers import StealthyFetcher
@@ -12,7 +13,21 @@ log = structlog.get_logger()
 
 
 class LakeStealthFetcher:
-    """Tier 2: Stealth headless browser fetcher."""
+    """Tier 2: Stealth headless browser fetcher.
+
+    DEPRECATED: This tier is deprecated in favor of PLAYWRIGHT tier which provides
+    session persistence and better anti-bot evasion. Use LakePlaywrightFetcher instead.
+
+    Existing domain_metadata entries will be automatically migrated to PLAYWRIGHT tier.
+    """
+
+    def __init__(self):
+        warnings.warn(
+            "LakeStealthFetcher (HEADLESS_BROWSER tier) is deprecated. "
+            "Use LakePlaywrightFetcher (PLAYWRIGHT tier) instead for better session persistence.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         options = options or FetchOptions()

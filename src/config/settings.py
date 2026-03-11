@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     brightdata_proxy_url: str = ""
     smartproxy_url: str = ""
+    custom_proxy_url: str = ""
+    custom_proxy_username: str = ""
+    custom_proxy_password: str = ""
 
     max_concurrent_jobs: int = 10
     max_scrape_pages_per_job: int = 500
@@ -53,6 +56,12 @@ class Settings(BaseSettings):
     mail_engine_api_key: str = ""
     mail_engine_from_address: str = "LakeStream <notifications@lakeb2b.com>"
     mail_engine_enabled: bool = False
+
+    # Playwright session-based scraping
+    playwright_session_ttl_seconds: int = 3600  # Session expiration (1 hour)
+    playwright_headless: bool = True  # False for debugging
+    playwright_timeout_ms: int = 30000  # Page load timeout (30 seconds)
+    linkedin_session_cookies: str = ""  # Pre-authenticated cookies as JSON
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
