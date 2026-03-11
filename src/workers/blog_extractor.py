@@ -14,8 +14,8 @@ class BlogExtractorWorker(BaseWorker):
         ".pdf", ".doc", ".docx", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
     })
 
-    def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None):
-        super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id)
+    def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None, user_id: str | None = None):
+        super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)
 
     def _filter_article_links(self, links: list[str], source_url: str) -> list[str]:
         """Remove homepage, non-HTML, and off-domain links from article candidates."""
