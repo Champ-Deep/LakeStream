@@ -11,14 +11,15 @@ log = structlog.get_logger()
 class DomainMapperWorker:
     """Discovers all URLs for a domain using CrawlerService, then classifies them."""
 
-    def __init__(self, domain: str, job_id: str, org_id: str | None = None):
+    def __init__(self, domain: str, job_id: str, org_id: str | None = None, tier_override: str | None = None):
         self.domain = domain
         self.job_id = job_id
         self.org_id = org_id
+        self.tier_override = tier_override
         self.crawler = CrawlerService()
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
 
-    async def execute(self, max_pages: int = 100) -> list[dict]:
+    async def execute(self, max_pages: int = 500) -> list[dict]:
         """Map a domain and return classified URLs."""
         self.log.info("mapping_domain", max_pages=max_pages)
 

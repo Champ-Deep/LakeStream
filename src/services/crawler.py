@@ -36,7 +36,7 @@ class CrawlerService:
         async with sem:
             return await fetcher.fetch(url, options)
 
-    async def map_domain(self, domain: str, limit: int = 100) -> list[str]:
+    async def map_domain(self, domain: str, limit: int = 500) -> list[str]:
         """Discover all valid URLs on a domain."""
         base_url = ensure_scheme(domain)
         self.log.info("mapping_domain", domain=domain, limit=limit)
@@ -74,7 +74,7 @@ class CrawlerService:
         to_crawl: list[str] = [base_url]
         crawled: set[str] = set()
 
-        fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
+        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
         options = FetchOptions(timeout=self.timeout)
         sem = self._get_semaphore(base_domain)
 

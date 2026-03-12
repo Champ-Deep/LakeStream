@@ -11,13 +11,13 @@ from src.models.scraping import FetchResult, ScrapingTier
 log = structlog.get_logger()
 
 _TIER_ORDER = [
-    ScrapingTier.BASIC_HTTP,
     ScrapingTier.PLAYWRIGHT,
     ScrapingTier.PLAYWRIGHT_PROXY,
 ]
 
 # Backward compatibility: map deprecated tier names to new equivalents
 _TIER_MIGRATION_MAP = {
+    "basic_http": ScrapingTier.PLAYWRIGHT,
     "headless_browser": ScrapingTier.PLAYWRIGHT,
     "headless_proxy": ScrapingTier.PLAYWRIGHT_PROXY,
 }
@@ -143,7 +143,7 @@ class EscalationService:
             except ValueError:
                 pass
 
-        return ScrapingTier.BASIC_HTTP
+        return ScrapingTier.PLAYWRIGHT
 
     def should_escalate(self, result: FetchResult) -> bool:
         """Determine if result warrants tier escalation.

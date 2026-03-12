@@ -20,6 +20,7 @@ class BaseWorker(ABC):
         pool: object | None = None,
         org_id: str | None = None,
         user_id: str | None = None,
+        tier_override: str | None = None,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -27,6 +28,7 @@ class BaseWorker(ABC):
         self._pool = pool
         self.org_id = org_id
         self.user_id = user_id
+        self._tier_override = ScrapingTier(tier_override) if tier_override else None
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
@@ -72,7 +74,7 @@ class BaseWorker(ABC):
 
         if self._escalation is None:
             await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
+            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
             result = await retry_async(
                 fetcher.fetch,
                 url,

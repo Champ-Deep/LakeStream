@@ -20,7 +20,7 @@ async def add_tracked_domain(
     *,
     data_types: list[str] | None = None,
     scrape_frequency: str = "weekly",
-    max_pages: int = 100,
+    max_pages: int = 500,
     template_id: str = "auto",
     webhook_url: str | None = None,
 ) -> TrackedDomain:

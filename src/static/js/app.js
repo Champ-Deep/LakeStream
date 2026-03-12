@@ -198,7 +198,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('quickScrape', () => ({
     domain: '',
     dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource'],
-    maxPages: 100,
+    maxPages: 500,
     templateId: '',
     priority: 5,
     showPanel: false,
@@ -284,7 +284,7 @@ document.addEventListener('alpine:init', () => {
     domain: '',
     frequency: 'weekly',
     dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource'],
-    maxPages: 100,
+    maxPages: 500,
     webhookUrl: '',
     loading: false,
     allDataTypes: [
