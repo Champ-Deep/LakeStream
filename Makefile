@@ -1,4 +1,4 @@
-.PHONY: dev worker test lint format typecheck migrate seed docker-up docker-down install install-dev
+.PHONY: dev worker test lint format typecheck migrate seed docker-up docker-down install install-dev mcp mcp-http
 
 dev:
 	uvicorn src.server:app --reload --host 0.0.0.0 --port 8000
@@ -38,3 +38,9 @@ install:
 
 install-dev:
 	pip install -e ".[dev]"
+
+mcp:
+	python -m src.mcp_server
+
+mcp-http:
+	python -m src.mcp_server --transport http

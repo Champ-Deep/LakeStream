@@ -22,7 +22,12 @@ dependencies = [
     "bcrypt>=4.2.0",
     "pyjwt>=2.10.0",
     "scrapling>=0.2.0",
+    "typer[all]>=0.12.0",
+    "mcp[cli]>=1.0.0",
 ]
+
+[project.scripts]
+lakestream = "src.cli.app:app"
 
 [project.optional-dependencies]
 dev = [
@@ -37,6 +42,9 @@ dev = [
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
 
 [tool.ruff]
 target-version = "py312"
