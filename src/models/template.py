@@ -18,7 +18,7 @@ class PaginationStrategy(BaseModel):
     type: str = "none"  # numbered, load_more, infinite_scroll, next_link, none
     next_selector: str | None = None
     page_param_name: str | None = None
-    max_pages: int = 50
+    max_pages: int = 10000
 
 
 class TemplateConfig(BaseModel):

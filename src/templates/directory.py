@@ -45,7 +45,7 @@ class DirectoryTemplate(BaseTemplate):
                 type="numbered",
                 next_selector=".next, a[rel='next']",
                 page_param_name="page",
-                max_pages=100,
+                max_pages=10000,
             ),
             blog_path_patterns=[],
             article_path_patterns=[],

@@ -39,7 +39,7 @@ class GenericTemplate(BaseTemplate):
                 type="next_link",
                 next_selector="a[rel='next'], .next, .pagination a:last-child",
                 page_param_name="page",
-                max_pages=20,
+                max_pages=10000,
             ),
             blog_path_patterns=[
                 r"/blog/?",

@@ -37,7 +37,7 @@ class HubSpotTemplate(BaseTemplate):
                 type="numbered",
                 next_selector=".blog-pagination a.next",
                 page_param_name=None,
-                max_pages=30,
+                max_pages=10000,
             ),
             blog_path_patterns=[r"/blog/?", r"/resources/?", r"/knowledge/?"],
             article_path_patterns=[r"/blog/"],

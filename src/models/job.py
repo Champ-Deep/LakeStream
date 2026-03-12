@@ -20,7 +20,7 @@ class ScrapeJobInput(BaseModel):
         description="Optional tier override (basic_http, playwright, playwright_proxy). "
         "If not specified, uses automatic escalation.",
     )
-    max_pages: int = Field(default=500, gt=0, le=500)
+    max_pages: int = Field(default=10000, gt=0)
     data_types: list[str] = Field(
         default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]
     )

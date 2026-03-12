@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS tracked_domains (
         DEFAULT ARRAY['blog_url','article','contact','tech_stack','resource','pricing'],
     scrape_frequency TEXT NOT NULL DEFAULT 'weekly'
         CHECK (scrape_frequency IN ('daily', 'weekly', 'biweekly', 'monthly')),
-    max_pages INTEGER NOT NULL DEFAULT 100,
+    max_pages INTEGER NOT NULL DEFAULT 10000,
     template_id TEXT DEFAULT 'auto',
     webhook_url TEXT,
     is_active BOOLEAN DEFAULT true,

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS discovery_jobs (
     results_per_page INT NOT NULL DEFAULT 10,
     data_types TEXT[] NOT NULL,
     template_id TEXT NOT NULL DEFAULT 'generic',
-    max_pages_per_domain INT NOT NULL DEFAULT 50,
+    max_pages_per_domain INT NOT NULL DEFAULT 10000,
     status TEXT NOT NULL DEFAULT 'searching'
         CHECK (status IN ('searching', 'scraping', 'completed', 'failed')),
     domains_found INT NOT NULL DEFAULT 0,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS tracked_searches (
     results_per_page INT NOT NULL DEFAULT 10,
     data_types TEXT[] NOT NULL,
     template_id TEXT NOT NULL DEFAULT 'generic',
-    max_pages_per_domain INT NOT NULL DEFAULT 50,
+    max_pages_per_domain INT NOT NULL DEFAULT 10000,
     scrape_frequency TEXT NOT NULL DEFAULT 'weekly'
         CHECK (scrape_frequency IN ('daily', 'weekly', 'biweekly', 'monthly')),
     webhook_url TEXT,

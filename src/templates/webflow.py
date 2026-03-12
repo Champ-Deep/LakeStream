@@ -30,7 +30,7 @@ class WebflowTemplate(BaseTemplate):
                 type="next_link",
                 next_selector=".w-pagination-next",
                 page_param_name=None,
-                max_pages=20,
+                max_pages=10000,
             ),
             blog_path_patterns=[r"/blog/?", r"/posts/?", r"/articles/?"],
             article_path_patterns=[r"/blog/", r"/posts/"],

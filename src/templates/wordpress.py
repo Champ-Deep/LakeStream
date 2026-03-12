@@ -76,7 +76,7 @@ class WordPressTemplate(BaseTemplate):
                 type="numbered",
                 next_selector="a.next.page-numbers",
                 page_param_name="page",
-                max_pages=50,
+                max_pages=10000,
             ),
             blog_path_patterns=[
                 r"/blog/?",

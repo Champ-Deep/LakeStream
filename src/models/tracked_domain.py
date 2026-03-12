@@ -9,7 +9,7 @@ class TrackedDomain(BaseModel):
         default=["blog_url", "article", "contact", "tech_stack", "resource"]
     )
     scrape_frequency: str = "weekly"
-    max_pages: int = 500
+    max_pages: int = 10000
     template_id: str = "auto"
     webhook_url: str | None = None
     is_active: bool = True
@@ -25,5 +25,5 @@ class AddSiteInput(BaseModel):
         default=["blog_url", "article", "contact", "tech_stack", "resource"]
     )
     scrape_frequency: str = Field(default="weekly")
-    max_pages: int = Field(default=500, gt=0, le=500)
+    max_pages: int = Field(default=10000, gt=0)
     webhook_url: str | None = None

@@ -42,7 +42,7 @@ class WebhookTriggerRequest(BaseModel):
 
     domain: str
     data_types: list[str] | None = None
-    max_pages: int = 500
+    max_pages: int = 10000
     template_id: str | None = None
 
 

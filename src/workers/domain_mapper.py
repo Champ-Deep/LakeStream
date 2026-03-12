@@ -19,7 +19,7 @@ class DomainMapperWorker:
         self.crawler = CrawlerService()
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
 
-    async def execute(self, max_pages: int = 500) -> list[dict]:
+    async def execute(self, max_pages: int = 10000) -> list[dict]:
         """Map a domain and return classified URLs."""
         self.log.info("mapping_domain", max_pages=max_pages)
 

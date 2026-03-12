@@ -24,7 +24,7 @@ class DiscoveryJobInput(BaseModel):
     results_per_page: int = Field(default=10, ge=1, le=50)
     data_types: list[str] = Field(min_length=1)
     template_id: str = Field(default="generic")
-    max_pages_per_domain: int = Field(default=50, ge=1, le=500)
+    max_pages_per_domain: int = Field(default=10000, ge=1)
     priority: int = Field(default=5, ge=1, le=10)
 
 
@@ -35,7 +35,7 @@ class TrackedSearchInput(BaseModel):
     results_per_page: int = Field(default=10, ge=1, le=50)
     data_types: list[str] = Field(min_length=1)
     template_id: str = Field(default="generic")
-    max_pages_per_domain: int = Field(default=50, ge=1, le=500)
+    max_pages_per_domain: int = Field(default=10000, ge=1)
     scrape_frequency: str = Field(default="weekly", pattern=r"^(daily|weekly|biweekly|monthly)$")
     webhook_url: str | None = None
 
