@@ -51,19 +51,50 @@ class CrawlerService:
         return await self._crawl_recursive(base_url, limit)
 
     async def _try_sitemap(self, base_url: str) -> set[str]:
-        """Attempt to find and parse sitemap.xml."""
-        sitemap_url = urljoin(base_url, "/sitemap.xml")
-        try:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                r = await client.get(sitemap_url)
-                if r.status_code == 200:
-                    import re
+        """Attempt to find and parse sitemap.xml, including sitemap index files."""
+        import re
 
-                    urls = re.findall(r"<loc>(.*?)</loc>", r.text)
-                    return {u for u in urls if is_valid_scrape_url(u)}
+        sitemap_url = urljoin(base_url, "/sitemap.xml")
+        all_urls: set[str] = set()
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                r = await client.get(sitemap_url)
+                if r.status_code != 200:
+                    return set()
+
+                content = r.text
+
+                # Check if this is a sitemap index (contains <sitemapindex> or links to other sitemaps)
+                if "<sitemapindex" in content or "sitemap.xml" in content.lower():
+                    # This is a sitemap index - extract all child sitemap URLs
+                    child_sitemaps = re.findall(r"<loc>(.*?)</loc>", content)
+                    child_sitemaps = [s for s in child_sitemaps if "sitemap" in s.lower() and s.endswith(".xml")]
+
+                    self.log.info("sitemap_index_found", child_count=len(child_sitemaps))
+
+                    # Fetch all child sitemaps concurrently
+                    for child_url in child_sitemaps:
+                        try:
+                            child_r = await client.get(child_url)
+                            if child_r.status_code == 200:
+                                child_urls = re.findall(r"<loc>(.*?)</loc>", child_r.text)
+                                valid_urls = {u for u in child_urls if is_valid_scrape_url(u) and not u.endswith(".xml")}
+                                all_urls.update(valid_urls)
+                                self.log.debug("child_sitemap_parsed", url=child_url, urls_found=len(valid_urls))
+                        except Exception as e:
+                            self.log.debug("child_sitemap_error", url=child_url, error=str(e))
+                            continue
+                else:
+                    # Regular sitemap - extract URLs directly
+                    urls = re.findall(r"<loc>(.*?)</loc>", content)
+                    all_urls = {u for u in urls if is_valid_scrape_url(u)}
+
         except Exception as e:
             self.log.debug("sitemap_not_found", url=sitemap_url, error=str(e))
-        return set()
+
+        self.log.info("sitemap_total_urls", count=len(all_urls))
+        return all_urls
 
     async def _crawl_recursive(self, base_url: str, limit: int) -> list[str]:
         """Recursively crawl the domain up to the limit."""
