@@ -117,7 +117,7 @@
       <div class="flex-1">
         <h2 class="text-xl font-bold text-navy mb-1">n8n Integration</h2>
         <p class="text-slate-500 text-sm">
-          Connect your LakeStream to n8n workflows via webhooks. Trigger scrapes from n8n or send results to your workflows.
+          Connect LakeStream to n8n workflows via webhooks. Trigger scrapes from n8n or send results to your workflows.
         </p>
       </div>
     </div>
@@ -389,6 +389,14 @@
           <code class="text-sm font-mono text-slate-700">/api/export/csv/{`{job_id}`}</code>
         </div>
         <span class="text-xs text-slate-400">Download CSV</span>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="badge badge-info">GET</span>
+          <code class="text-sm font-mono text-slate-700">/api/export/json/{`{job_id}`}</code>
+        </div>
+        <span class="text-xs text-slate-400">Download JSON (with rich metadata)</span>
       </div>
 
       <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">

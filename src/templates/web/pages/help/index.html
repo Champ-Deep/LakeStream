@@ -62,7 +62,7 @@
         <div>
           <p class="font-medium text-charcoal">Export your data</p>
           <p class="text-sm text-slate mt-1">
-            Once complete, browse your results and export them as CSV or send to a webhook.
+            Once complete, browse your results and export as CSV, JSON, or send to a webhook.
           </p>
         </div>
       </div>
@@ -235,11 +235,12 @@
         </button>
         <div x-show="open === 3" x-collapse class="mt-2 text-sm text-slate">
           <p>
-            You have two export options:
+            You have three export options:
           </p>
           <ul class="list-disc list-inside mt-2 space-y-1">
-            <li><strong>CSV Download</strong> - Click "Export CSV" on the job status page or results page to download a spreadsheet.</li>
-            <li><strong>Webhook</strong> - Send data to your own endpoint automatically.</li>
+            <li><strong>CSV Download</strong> - Click "Export CSV" on the job status page to download a spreadsheet with flattened columns.</li>
+            <li><strong>JSON Download</strong> - Click "Export JSON" for structured data with full rich metadata (og:tags, social handles, etc.).</li>
+            <li><strong>Webhook</strong> - Send data to your own endpoint (e.g. n8n) automatically.</li>
           </ul>
         </div>
       </div>
