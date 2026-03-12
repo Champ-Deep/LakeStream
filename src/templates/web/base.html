@@ -72,6 +72,7 @@
 
 <body class="bg-slate-50 text-navy font-sans min-h-screen flex flex-col" x-data>
 
+  {% if layout != 'auth' %}
   <!-- Navigation -->
   <nav class="bg-white border-b border-slate-200 sticky top-0 z-30">
     <div class="max-w-7xl mx-auto px-6 py-4">
@@ -149,21 +150,41 @@
           >
             <i data-lucide="help-circle" class="w-5 h-5 text-slate-500"></i>
           </button>
-          <a href="/logout"
-             class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-red-50 hover:text-brand-red flex items-center justify-center transition-colors text-slate-500"
-             title="Sign out">
-            <i data-lucide="log-out" class="w-5 h-5"></i>
-          </a>
+          <div x-data="{ open: false }" class="relative">
+            <button
+              @click="open = !open"
+              class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+              title="Account"
+            >
+              <i data-lucide="user" class="w-5 h-5 text-slate-500"></i>
+            </button>
+            <div
+              x-show="open"
+              @click.away="open = false"
+              x-transition
+              class="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg py-2 z-50"
+            >
+              <button
+                onclick="document.cookie='access_token=; path=/; max-age=0'; window.location.href='/login';"
+                class="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-error flex items-center gap-2"
+              >
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                Sign Out
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </nav>
+  {% endif %}
 
   <!-- Main Content -->
   <main id="main-content" class="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
     {% block content %}{% endblock %}
   </main>
 
+  {% if layout != 'auth' %}
   <!-- Footer -->
   <footer class="border-t border-slate-200 bg-white">
     <div class="max-w-7xl mx-auto px-6 py-6">
@@ -178,6 +199,7 @@
       </div>
     </div>
   </footer>
+  {% endif %}
 
   <!-- Toast Notifications -->
   <div

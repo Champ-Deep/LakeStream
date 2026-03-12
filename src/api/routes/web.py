@@ -187,7 +187,7 @@ async def login_page(request: Request):
     """Login page."""
     return get_templates().TemplateResponse(
         "pages/login.html",
-        {"request": request}
+        {"request": request, "layout": "auth"}
     )
 
 
@@ -196,7 +196,7 @@ async def signup_page(request: Request):
     """Signup page."""
     return get_templates().TemplateResponse(
         "pages/signup.html",
-        {"request": request}
+        {"request": request, "layout": "auth"}
     )
 
 
