@@ -11,15 +11,15 @@ from src.models.scraping import FetchResult, ScrapingTier
 log = structlog.get_logger()
 
 _TIER_ORDER = [
-    ScrapingTier.PLAYWRIGHT,
     ScrapingTier.PLAYWRIGHT_PROXY,
 ]
 
 # Backward compatibility: map deprecated tier names to new equivalents
 _TIER_MIGRATION_MAP = {
-    "basic_http": ScrapingTier.PLAYWRIGHT,
-    "headless_browser": ScrapingTier.PLAYWRIGHT,
+    "basic_http": ScrapingTier.PLAYWRIGHT_PROXY,
+    "headless_browser": ScrapingTier.PLAYWRIGHT_PROXY,
     "headless_proxy": ScrapingTier.PLAYWRIGHT_PROXY,
+    "playwright": ScrapingTier.PLAYWRIGHT_PROXY,
 }
 
 
@@ -98,27 +98,15 @@ class EscalationService:
                 authenticated = session.get("authenticated", False)
                 request_count = session.get("request_count", 0)
 
-                # Session is healthy and fresh - use PLAYWRIGHT without proxy
-                if authenticated and request_count < 50:
-                    log.info(
-                        "session_health_tier_decision",
-                        domain=domain,
-                        decision="playwright",
-                        reason="healthy_session",
-                        request_count=request_count,
-                    )
-                    return ScrapingTier.PLAYWRIGHT
-
-                # Session is aging - preemptively use proxy to avoid ban
-                if authenticated and request_count >= 50:
-                    log.info(
-                        "session_health_tier_decision",
-                        domain=domain,
-                        decision="playwright_proxy",
-                        reason="aging_session",
-                        request_count=request_count,
-                    )
-                    return ScrapingTier.PLAYWRIGHT_PROXY
+                # Always use PLAYWRIGHT_PROXY for better success rate
+                log.info(
+                    "session_health_tier_decision",
+                    domain=domain,
+                    decision="playwright_proxy",
+                    reason="default_proxy",
+                    request_count=request_count,
+                )
+                return ScrapingTier.PLAYWRIGHT_PROXY
 
         # Normal domain history-based tier selection
         meta = await get_domain_metadata(self.pool, domain)  # type: ignore[arg-type]
@@ -143,7 +131,7 @@ class EscalationService:
             except ValueError:
                 pass
 
-        return ScrapingTier.PLAYWRIGHT
+        return ScrapingTier.PLAYWRIGHT_PROXY
 
     def should_escalate(self, result: FetchResult) -> bool:
         """Determine if result warrants tier escalation.

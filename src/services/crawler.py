@@ -74,7 +74,7 @@ class CrawlerService:
         to_crawl: list[str] = [base_url]
         crawled: set[str] = set()
 
-        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT_PROXY)
         options = FetchOptions(timeout=self.timeout)
         sem = self._get_semaphore(base_domain)
 

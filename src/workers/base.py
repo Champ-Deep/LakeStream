@@ -74,7 +74,7 @@ class BaseWorker(ABC):
 
         if self._escalation is None:
             await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT_PROXY)
             result = await retry_async(
                 fetcher.fetch,
                 url,
