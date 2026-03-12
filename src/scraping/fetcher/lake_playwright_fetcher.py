@@ -81,6 +81,15 @@ class LakePlaywrightFetcher:
                 page = await context.new_page()
                 response = await page.goto(url, timeout=options.timeout or settings.playwright_timeout_ms)
 
+                # Wait for network to be idle (ensures JS content is loaded)
+                # This is critical for SPAs (React, Vue, Angular) that load content after page load
+                try:
+                    await page.wait_for_load_state('networkidle', timeout=10000)  # 10s max
+                    log.debug("playwright_networkidle_complete", url=url, domain=domain)
+                except Exception as e:
+                    # If timeout, continue anyway (better partial content than nothing)
+                    log.debug("playwright_networkidle_timeout", url=url, domain=domain, error=str(e))
+
                 # Extract content
                 html = await page.content()
                 status_code = response.status if response else 0

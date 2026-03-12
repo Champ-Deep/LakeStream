@@ -178,6 +178,29 @@ async def logout(request: Request):
 
 
 # =============================================================================
+# AUTH PAGES
+# =============================================================================
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Login page."""
+    return get_templates().TemplateResponse(
+        "pages/login.html",
+        {"request": request}
+    )
+
+
+@router.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    """Signup page."""
+    return get_templates().TemplateResponse(
+        "pages/signup.html",
+        {"request": request}
+    )
+
+
+# =============================================================================
 # DASHBOARD
 # =============================================================================
 
@@ -636,9 +659,22 @@ async def settings_page(request: Request):
         return redirect
     """Settings and webhook configuration page."""
     from src.config.settings import get_settings
+    from src.db.pool import get_pool
 
     settings = get_settings()
     webhook_trigger_url = f"{settings.base_url}/api/webhook/trigger"
+
+    # Load org proxy settings for initial render
+    proxy_url = ""
+    try:
+        pool = await get_pool()
+        org_id = getattr(request.state, "org_id", None)
+        if not org_id:
+            org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+        if org_id:
+            proxy_url = await pool.fetchval("SELECT proxy_url FROM organizations WHERE id = $1", org_id) or ""
+    except Exception:
+        pass  # Settings page works without proxy info
 
     return get_templates().TemplateResponse(
         "pages/settings/index.html",
@@ -646,6 +682,7 @@ async def settings_page(request: Request):
             "request": request,
             "active_page": "settings",
             "webhook_trigger_url": webhook_trigger_url,
+            "proxy_url": proxy_url,
         },
     )
 

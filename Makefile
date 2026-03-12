@@ -1,7 +1,7 @@
 .PHONY: dev worker test lint format typecheck migrate seed docker-up docker-down install install-dev
 
 dev:
-	uvicorn src.server:app --reload --port 3001
+	portless api.lakestream uvicorn src.server:app --reload --host 0.0.0.0 --port '$${PORT:-8000}'
 
 worker:
 	arq src.queue.worker.WorkerSettings

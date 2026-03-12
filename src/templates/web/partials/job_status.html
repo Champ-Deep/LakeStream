@@ -71,15 +71,27 @@
           <span class="w-2 h-2 rounded-full bg-success"></span>
           Basic HTTP
         </span>
-      {% elif job.strategy_used == 'headless_browser' %}
+      {% elif job.strategy_used == 'playwright' %}
         <span class="inline-flex items-center gap-1">
           <span class="w-2 h-2 rounded-full bg-warning"></span>
-          Headless Browser
+          Playwright
         </span>
-      {% elif job.strategy_used == 'headless_proxy' %}
+      {% elif job.strategy_used == 'playwright_proxy' %}
         <span class="inline-flex items-center gap-1">
           <span class="w-2 h-2 rounded-full bg-error"></span>
-          Headless + Proxy
+          Playwright + Proxy
+        </span>
+      {% elif job.strategy_used == 'headless_browser' %}
+        <!-- Legacy support -->
+        <span class="inline-flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-warning"></span>
+          Playwright (legacy)
+        </span>
+      {% elif job.strategy_used == 'headless_proxy' %}
+        <!-- Legacy support -->
+        <span class="inline-flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-error"></span>
+          Playwright + Proxy (legacy)
         </span>
       {% else %}
         {{ job.strategy_used }}

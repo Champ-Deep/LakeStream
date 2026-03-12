@@ -37,6 +37,77 @@
     </div>
   </div>
 
+  <!-- Proxy Configuration Card -->
+  <div class="card p-8" x-data="proxySettings()">
+    <div class="flex items-start gap-6">
+      <div class="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+        <i data-lucide="shield" class="w-7 h-7 text-white"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy mb-1">Proxy Configuration</h2>
+        <p class="text-slate-500 text-sm">
+          Add a proxy URL to enable Tier 3 scraping (headless browser + proxy).
+          Without a proxy, scraping uses Tier 1 (HTTP) and Tier 2 (headless browser) only.
+        </p>
+      </div>
+      <span x-show="proxyEnabled" x-cloak class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold whitespace-nowrap">Active</span>
+      <span x-show="!proxyEnabled" x-cloak class="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold whitespace-nowrap">Not configured</span>
+    </div>
+
+    <div class="bg-slate-50 rounded-2xl p-6 mt-6 space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Proxy URL</label>
+        <input
+          type="text"
+          x-model="proxyUrl"
+          placeholder="socks5://user:pass@proxy.example.com:1080"
+          class="input flex-1 font-mono text-sm"
+        >
+        <p class="text-xs text-slate-400 mt-2">Supports HTTP, HTTPS, and SOCKS5 proxy URLs. Scrape jobs will route through this proxy when Tier 3 is needed.</p>
+      </div>
+
+      <!-- Save Result -->
+      <div x-show="saveResult" x-cloak>
+        <div
+          :class="saveResult === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
+          class="border rounded-xl p-4 flex items-center gap-3"
+        >
+          <template x-if="saveResult === 'success'">
+            <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+          </template>
+          <template x-if="saveResult === 'error'">
+            <i data-lucide="x-circle" class="w-5 h-5 text-red-600"></i>
+          </template>
+          <span
+            :class="saveResult === 'success' ? 'text-green-700' : 'text-red-700'"
+            class="text-sm font-medium"
+            x-text="saveMessage"
+          ></span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-4 border-t border-slate-200">
+        <button
+          x-show="proxyUrl"
+          @click="clearProxy()"
+          class="text-sm text-red-500 hover:text-red-700 font-medium"
+          x-cloak
+        >
+          Remove Proxy
+        </button>
+        <div class="ml-auto">
+          <button
+            @click="saveProxy()"
+            class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2"
+          >
+            <i data-lucide="save" class="w-4 h-4"></i>
+            Save Proxy
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- n8n Integration Card -->
   <div class="card p-8">
     <div class="flex items-start gap-6">
@@ -341,6 +412,44 @@
 </div>
 
 <script>
+function proxySettings() {
+  return {
+    proxyUrl: '{{ proxy_url or "" }}',
+    proxyEnabled: {{ 'true' if proxy_url else 'false' }},
+    saveResult: null,
+    saveMessage: '',
+
+    async saveProxy() {
+      this.saveResult = null;
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proxy_url: this.proxyUrl })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.proxyEnabled = data.proxy_enabled;
+          this.saveResult = 'success';
+          this.saveMessage = this.proxyUrl ? 'Proxy saved — Tier 3 scraping enabled' : 'Proxy removed — Tier 3 disabled';
+        } else {
+          this.saveResult = 'error';
+          this.saveMessage = 'Failed to save proxy settings';
+        }
+      } catch (e) {
+        this.saveResult = 'error';
+        this.saveMessage = 'Network error: ' + e.message;
+      }
+      setTimeout(() => this.saveResult = null, 5000);
+    },
+
+    async clearProxy() {
+      this.proxyUrl = '';
+      await this.saveProxy();
+    }
+  }
+}
+
 function copyToClipboard(inputId, button) {
   const input = document.getElementById(inputId);
   navigator.clipboard.writeText(input.value).then(() => {

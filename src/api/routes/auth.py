@@ -6,7 +6,7 @@ Endpoints:
 - GET /auth/me - Get current user profile
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from src.api.middleware.auth import get_current_user
 from src.db.pool import get_pool
@@ -228,3 +228,26 @@ async def get_current_user_profile(user=Depends(get_current_user)):
         team_id=db_user.team_id,
         is_admin=db_user.is_admin,
     )
+
+
+@router.post("/logout")
+async def logout():
+    """Logout user by clearing JWT cookie.
+
+    This endpoint clears the access_token cookie, effectively logging out the user.
+    The client should redirect to /login after successful logout.
+
+    Returns:
+        Response with deleted cookie and success message
+
+    Example:
+        POST /api/auth/logout
+
+        Response:
+        {
+            "message": "Logged out successfully"
+        }
+    """
+    response = Response(content='{"message": "Logged out successfully"}', media_type="application/json")
+    response.delete_cookie("access_token", path="/")
+    return response

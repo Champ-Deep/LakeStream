@@ -124,10 +124,14 @@
         <dd class="text-charcoal">
           {% if job.strategy_used == 'basic_http' %}
             Basic HTTP
+          {% elif job.strategy_used == 'playwright' %}
+            Playwright
+          {% elif job.strategy_used == 'playwright_proxy' %}
+            Playwright + Proxy
           {% elif job.strategy_used == 'headless_browser' %}
-            Headless Browser
+            Playwright (legacy)
           {% elif job.strategy_used == 'headless_proxy' %}
-            Headless + Proxy
+            Playwright + Proxy (legacy)
           {% else %}
             {{ job.strategy_used }}
           {% endif %}
