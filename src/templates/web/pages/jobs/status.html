@@ -59,6 +59,12 @@
         <i data-lucide="download" class="w-4 h-4"></i>
         Download CSV
       </a>
+      <a
+        href="/api/export/json/{{ job.id }}"
+        class="py-3 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors"
+      >
+        Export JSON
+      </a>
     {% elif job.status == 'running' %}
       <button
         class="flex-1 py-3 px-4 bg-stone-100 text-stone-400 font-medium rounded-lg cursor-not-allowed"
@@ -124,10 +130,14 @@
         <dd class="text-charcoal">
           {% if job.strategy_used == 'basic_http' %}
             Basic HTTP
+          {% elif job.strategy_used == 'playwright' %}
+            Playwright
+          {% elif job.strategy_used == 'playwright_proxy' %}
+            Playwright + Proxy
           {% elif job.strategy_used == 'headless_browser' %}
-            Headless Browser
+            Playwright (legacy)
           {% elif job.strategy_used == 'headless_proxy' %}
-            Headless + Proxy
+            Playwright + Proxy (legacy)
           {% else %}
             {{ job.strategy_used }}
           {% endif %}

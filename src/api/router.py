@@ -7,6 +7,7 @@ from src.api.routes import (
     exports,
     health,
     scrape,
+    settings,
     signals,
     templates,
     tracked,
@@ -24,4 +25,5 @@ api_router.include_router(templates.router, tags=["templates"])
 api_router.include_router(exports.router)
 api_router.include_router(webhook.router)
 api_router.include_router(tracked.router)
+api_router.include_router(settings.router)
 api_router.include_router(signals.router)

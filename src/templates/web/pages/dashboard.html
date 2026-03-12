@@ -172,6 +172,15 @@
               </select>
             </div>
             <div class="flex items-center gap-4">
+              <label class="text-xs text-slate-500 w-24">Scraping Tier</label>
+              <select x-model="scrapingTier" class="select text-sm flex-1">
+                <option value="auto">Auto (Adaptive - Recommended)</option>
+                <option value="basic">Basic HTTP (Fastest, ~$0.0001/req)</option>
+                <option value="headless">Headless Browser (~$0.002/req)</option>
+                <option value="proxy">Headless + Proxy (~$0.004/req)</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-4">
               <label class="text-xs text-slate-500 w-24">Priority</label>
               <select x-model.number="priority" class="select text-sm flex-1">
                 <option value="1">Low</option>

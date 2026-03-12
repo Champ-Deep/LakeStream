@@ -11,11 +11,21 @@ class PricingFinderWorker(BaseWorker):
     """Discovers and extracts pricing plans from pricing pages."""
 
     def __init__(
-        self, domain: str, job_id: str,
-        pool: object | None = None, org_id: str | None = None,
+        self,
+        domain: str,
+        job_id: str,
+        pool: object | None = None,
+        org_id: str | None = None,
+        tier_override: str | None = None,
+        proxy_url: str | None = None,
     ):
         super().__init__(
-            domain=domain, job_id=job_id, pool=pool, org_id=org_id,
+            domain=domain,
+            job_id=job_id,
+            pool=pool,
+            org_id=org_id,
+            tier_override=tier_override,
+            proxy_url=proxy_url,
         )
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
@@ -32,6 +42,10 @@ class PricingFinderWorker(BaseWorker):
                 if fetch_result.blocked:
                     continue
 
+                # Extract rich metadata (og:, twitter:, meta: tags) - once per page
+                from src.scraping.parser.html_parser import extract_rich_metadata
+                rich_meta = extract_rich_metadata(fetch_result.html, url)
+
                 from src.scraping.parser.pricing_parser import PricingParser
 
                 parser = PricingParser(fetch_result.html, url)
@@ -39,13 +53,18 @@ class PricingFinderWorker(BaseWorker):
 
                 for plan in plans:
                     metadata = PricingMetadata(**plan)
+                    # Merge rich metadata with pricing-specific metadata
+                    combined_metadata = {
+                        **rich_meta,  # Rich metadata (og:, twitter:, etc.)
+                        **metadata.model_dump(),  # Pricing metadata
+                    }
                     record = {
                         "job_id": UUID(self.job_id),
                         "domain": self.domain,
                         "data_type": DataType.PRICING,
                         "url": url,
                         "title": plan.get("plan_name"),
-                        "metadata": metadata.model_dump(),
+                        "metadata": combined_metadata,
                     }
                     await self.export_results([record])
 
@@ -57,7 +76,7 @@ class PricingFinderWorker(BaseWorker):
                             data_type=DataType.PRICING,
                             url=url,
                             title=plan.get("plan_name"),
-                            metadata=metadata.model_dump(),
+                            metadata=combined_metadata,
                             scraped_at=datetime.now(UTC),
                         )
                     )

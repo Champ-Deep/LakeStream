@@ -8,8 +8,25 @@ from src.workers.base import BaseWorker
 class ResourceFinderWorker(BaseWorker):
     """Discovers whitepapers, case studies, webinars, and other resources."""
 
-    def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None, user_id: str | None = None):
-        super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)
+    def __init__(
+        self,
+        domain: str,
+        job_id: str,
+        pool: object | None = None,
+        org_id: str | None = None,
+        user_id: str | None = None,
+        tier_override: str | None = None,
+        proxy_url: str | None = None,
+    ):
+        super().__init__(
+            domain=domain,
+            job_id=job_id,
+            pool=pool,
+            org_id=org_id,
+            user_id=user_id,
+            tier_override=tier_override,
+            proxy_url=proxy_url,
+        )
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
         if not urls:
@@ -25,6 +42,10 @@ class ResourceFinderWorker(BaseWorker):
                 if fetch_result.blocked:
                     continue
 
+                # Extract rich metadata (og:, twitter:, meta: tags) - once per page
+                from src.scraping.parser.html_parser import extract_rich_metadata
+                rich_meta = extract_rich_metadata(fetch_result.html, url)
+
                 from src.scraping.parser.resource_parser import ResourceParser
 
                 parser = ResourceParser(fetch_result.html, url)
@@ -32,13 +53,18 @@ class ResourceFinderWorker(BaseWorker):
 
                 for resource in resources:
                     metadata = ResourceMetadata(**resource)
+                    # Merge rich metadata with resource-specific metadata
+                    combined_metadata = {
+                        **rich_meta,  # Rich metadata (og:, twitter:, etc.)
+                        **metadata.model_dump(),  # Resource metadata
+                    }
                     record = {
                         "job_id": UUID(self.job_id),
                         "domain": self.domain,
                         "data_type": DataType.RESOURCE,
                         "url": resource.get("url", url),
                         "title": resource.get("title"),
-                        "metadata": metadata.model_dump(),
+                        "metadata": combined_metadata,
                     }
                     await self.export_results([record])
 
@@ -50,7 +76,7 @@ class ResourceFinderWorker(BaseWorker):
                             data_type=DataType.RESOURCE,
                             url=resource.get("url", url),
                             title=resource.get("title"),
-                            metadata=metadata.model_dump(),
+                            metadata=combined_metadata,
                             scraped_at=datetime.now(UTC),
                         )
                     )

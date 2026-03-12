@@ -2,6 +2,8 @@
 
 import csv
 import io
+import json
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
@@ -157,6 +159,52 @@ async def export_all_csv(domain: str | None = Query(None), user: dict = Depends(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/json/{job_id}")
+async def export_job_json(job_id: UUID):
+    """Export all scraped data from a job as JSON."""
+    from src.db.pool import get_pool
+    from src.db.queries.scraped_data import get_scraped_data_by_job
+
+    pool = await get_pool()
+    data = await get_scraped_data_by_job(pool, job_id)
+
+    if not data:
+        raise HTTPException(status_code=404, detail="No data found for this job")
+
+    # Get job info for metadata
+    job_row = await pool.fetchrow("SELECT domain, created_at FROM scrape_jobs WHERE id = $1", job_id)
+    domain = job_row["domain"] if job_row else "unknown"
+
+    # Build JSON response
+    payload = {
+        "job_id": str(job_id),
+        "domain": domain,
+        "exported_at": datetime.now(UTC).isoformat(),
+        "total_records": len(data),
+        "data": [
+            {
+                "id": str(item.id),
+                "domain": item.domain,
+                "data_type": item.data_type,
+                "url": item.url,
+                "title": item.title,
+                "published_date": str(item.published_date) if item.published_date else None,
+                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else None,
+                "metadata": item.metadata or {},
+            }
+            for item in data
+        ],
+    }
+
+    filename = f"{domain.replace('.', '_')}_{str(job_id)[:8]}.json"
+
+    return StreamingResponse(
+        iter([json.dumps(payload, indent=2)]),
+        media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

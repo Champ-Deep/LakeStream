@@ -40,11 +40,30 @@ async def process_scrape_job(
     org_id = str(job_record.org_id) if job_record and job_record.org_id else None
     user_id = str(job_record.user_id) if job_record and job_record.user_id else None
 
+    # Look up org-level proxy URL (configured via settings UI)
+    proxy_url = ""
+    if org_id:
+        proxy_row = await pool.fetchval(
+            "SELECT proxy_url FROM organizations WHERE id = $1", job_record.org_id
+        )
+        proxy_url = proxy_row or ""
+
     try:
         # 2. Domain mapping — discover and classify URLs
         from src.workers.domain_mapper import DomainMapperWorker
 
-        mapper = DomainMapperWorker(domain=domain, job_id=job_id, org_id=org_id, tier_override=tier)
+        # Common kwargs for BaseWorker subclasses
+        worker_kwargs = dict(
+            domain=domain, job_id=job_id, pool=pool,
+            org_id=org_id, user_id=user_id, tier_override=tier, proxy_url=proxy_url,
+        )
+
+        # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
+        mapper = DomainMapperWorker(
+            domain=domain,
+            job_id=job_id,
+            org_id=org_id
+        )
         classified_urls = await mapper.execute(max_pages=max_pages)
 
         total_data = 0
@@ -62,10 +81,7 @@ async def process_scrape_job(
         for dtype in data_types:
             try:
                 if dtype == "blog_url":
-                    worker = BlogExtractorWorker(
-                        domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id
-
-                    )
+                    worker = BlogExtractorWorker(**worker_kwargs)
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
                     )
@@ -82,25 +98,24 @@ async def process_scrape_job(
                     total_data += len(result)
 
                 elif dtype == "article":
-
-                    worker = ArticleParserWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)  # type: ignore[assignment]
+                    worker = ArticleParserWorker(**worker_kwargs)  # type: ignore[assignment]
                     result = await worker.execute(blog_urls)
                     total_data += len(result)
 
                 elif dtype == "contact":
-                    worker = ContactFinderWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)  # type: ignore[assignment]
+                    worker = ContactFinderWorker(**worker_kwargs)  # type: ignore[assignment]
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "contact"]
                     )
                     total_data += len(result)
 
                 elif dtype == "tech_stack":
-                    worker = TechDetectorWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)  # type: ignore[assignment]
+                    worker = TechDetectorWorker(**worker_kwargs)  # type: ignore[assignment]
                     result = await worker.execute([f"https://{domain}"])
                     total_data += len(result)
 
                 elif dtype == "resource":
-                    worker = ResourceFinderWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)  # type: ignore[assignment]
+                    worker = ResourceFinderWorker(**worker_kwargs)  # type: ignore[assignment]
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "resource"]
                     )
@@ -109,9 +124,7 @@ async def process_scrape_job(
                 elif dtype == "pricing":
                     from src.workers.pricing_finder import PricingFinderWorker
 
-                    worker = PricingFinderWorker(  # type: ignore[assignment]
-                        domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id,
-                    )
+                    worker = PricingFinderWorker(**worker_kwargs)  # type: ignore[assignment]
                     result = await worker.execute(
                         [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
                     )
@@ -121,47 +134,78 @@ async def process_scrape_job(
                 log.error("worker_error", dtype=dtype, error=str(e))
                 errors.append(f"{dtype}: {str(e)}")
 
-        # 4. Mark job complete — include the scraping strategy (tier) used
+        # 4. Mark job complete or failed based on data extracted
         duration_ms = int((time.time() - start_time) * 1000)
         from src.db.queries.domains import get_domain_metadata
 
         domain_meta = await get_domain_metadata(pool, domain)
         strategy = domain_meta.last_successful_strategy if domain_meta else None
 
-        await job_queries.update_job_status(
-            pool,
-            uid,
-            JobStatus.COMPLETED,
-            strategy_used=strategy,
-            duration_ms=duration_ms,
-            pages_scraped=total_data,
-            completed_at=datetime.now(),
-        )
-
-        # 5. Check if domain is tracked and has webhook configured
-        from src.db.queries.tracked_domains import get_tracked_domain
-        from src.services.webhook_export import export_job_to_webhook
-
-        tracked = await get_tracked_domain(pool, domain)
-        if tracked and tracked.webhook_url:
-            try:
-                success = await export_job_to_webhook(uid, tracked.webhook_url)
-                log.info(
-                    "webhook_export_completed",
-                    job_id=job_id,
-                    domain=domain,
-                    webhook_url=tracked.webhook_url,
-                    success=success,
+        # Check if any data was extracted before marking as completed
+        if total_data == 0:
+            # No data extracted - mark as FAILED
+            if len(errors) > 0:
+                # Errors occurred during scraping
+                error_msg = f"No data extracted. Errors: {'; '.join(errors)}"
+                await job_queries.update_job_status(
+                    pool,
+                    uid,
+                    JobStatus.FAILED,
+                    error_message=error_msg,
+                    duration_ms=duration_ms,
+                    pages_scraped=0,
+                    completed_at=datetime.now(),
                 )
-            except Exception as e:
-                # Don't fail job if webhook export fails
-                log.error(
-                    "webhook_export_error",
-                    job_id=job_id,
-                    domain=domain,
-                    webhook_url=tracked.webhook_url,
-                    error=str(e),
+                log.warning("job_failed_no_data", job_id=job_id, domain=domain, errors=errors)
+            else:
+                # No errors but no data - domain might be empty or blocked
+                error_msg = "No data extracted from domain (empty site or blocked)"
+                await job_queries.update_job_status(
+                    pool,
+                    uid,
+                    JobStatus.FAILED,
+                    error_message=error_msg,
+                    duration_ms=duration_ms,
+                    pages_scraped=0,
+                    completed_at=datetime.now(),
                 )
+                log.warning("job_failed_empty_site", job_id=job_id, domain=domain)
+        else:
+            # Data extracted successfully - mark as COMPLETED
+            await job_queries.update_job_status(
+                pool,
+                uid,
+                JobStatus.COMPLETED,
+                strategy_used=strategy,
+                duration_ms=duration_ms,
+                pages_scraped=total_data,
+                completed_at=datetime.now(),
+            )
+
+            # 5. Check if domain is tracked and has webhook configured (only for successful jobs)
+            from src.db.queries.tracked_domains import get_tracked_domain
+            from src.services.webhook_export import export_job_to_webhook
+
+            tracked = await get_tracked_domain(pool, domain)
+            if tracked and tracked.webhook_url:
+                try:
+                    success = await export_job_to_webhook(uid, tracked.webhook_url)
+                    log.info(
+                        "webhook_export_completed",
+                        job_id=job_id,
+                        domain=domain,
+                        webhook_url=tracked.webhook_url,
+                        success=success,
+                    )
+                except Exception as e:
+                    # Don't fail job if webhook export fails
+                    log.error(
+                        "webhook_export_error",
+                        job_id=job_id,
+                        domain=domain,
+                        webhook_url=tracked.webhook_url,
+                        error=str(e),
+                    )
 
         log.info(
             "job_completed",

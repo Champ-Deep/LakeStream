@@ -20,6 +20,8 @@ class BaseWorker(ABC):
         pool: object | None = None,
         org_id: str | None = None,
         user_id: str | None = None,
+        tier_override: str | None = None,
+        proxy_url: str | None = None,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -27,6 +29,8 @@ class BaseWorker(ABC):
         self._pool = pool
         self.org_id = org_id
         self.user_id = user_id
+        self._tier_override = ScrapingTier(tier_override) if tier_override else None
+        self.proxy_url = proxy_url or ""
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
@@ -46,7 +50,12 @@ class BaseWorker(ABC):
         """Fetch a page with automatic tier escalation, rate limiting, and cost tracking.
 
         If tier_override is set, uses that tier directly (no escalation).
+        Injects org-level proxy_url into options when available.
         """
+        options = options or FetchOptions()
+        if self.proxy_url:
+            options.proxy_url = self.proxy_url
+
         domain = urlparse(url).netloc or self.domain
 
         # If tier override is set, use it directly (no escalation)
@@ -85,6 +94,7 @@ class BaseWorker(ABC):
             return result
 
         current_tier = await self._escalation.decide_initial_tier(self.domain)
+        proxy_available = bool(self.proxy_url)
 
         while True:
             await self._rate_limiter.wait(domain)
@@ -103,7 +113,9 @@ class BaseWorker(ABC):
                 await self._escalation.record_result(self.domain, result, success=True)
                 return result
 
-            next_tier = self._escalation.get_next_tier(current_tier)
+            next_tier = self._escalation.get_next_tier(
+                current_tier, proxy_available=proxy_available,
+            )
             if next_tier is None:
                 await self._escalation.record_result(self.domain, result, success=False)
                 return result

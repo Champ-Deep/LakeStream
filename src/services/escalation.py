@@ -163,8 +163,17 @@ class EscalationService:
 
         return ", ".join(reasons) if reasons else "none"
 
-    def get_next_tier(self, current: ScrapingTier) -> ScrapingTier | None:
-        """Get the next tier in the escalation chain. Returns None if at max."""
+    def get_next_tier(
+        self, current: ScrapingTier, proxy_available: bool = True,
+    ) -> ScrapingTier | None:
+        """Get the next tier in the escalation chain. Returns None if at max.
+
+        If proxy_available is False, escalation stops at PLAYWRIGHT (no proxy tier).
+        """
+        if current == ScrapingTier.PLAYWRIGHT and not proxy_available:
+            log.info("escalation_blocked_no_proxy", current=current.value)
+            return None
+
         try:
             idx = _TIER_ORDER.index(current)
             if idx < len(_TIER_ORDER) - 1:

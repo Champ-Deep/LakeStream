@@ -200,6 +200,7 @@ document.addEventListener('alpine:init', () => {
     dataTypes: ['blog_url', 'article', 'contact', 'tech_stack', 'resource'],
     maxPages: 100,
     templateId: '',
+    scrapingTier: 'auto',
     priority: 5,
     showPanel: false,
     showAdvanced: false,
@@ -249,6 +250,15 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       this.loading = true;
+
+      // Map frontend tier values to backend enum values
+      const tierMap = {
+        'auto': null,              // null triggers adaptive escalation
+        'basic': 'basic_http',     // maps to ScrapingTier.BASIC_HTTP
+        'headless': 'playwright',  // maps to ScrapingTier.PLAYWRIGHT
+        'proxy': 'playwright_proxy' // maps to ScrapingTier.PLAYWRIGHT_PROXY
+      };
+
       const payload = {
         domain: this.domain,
         data_types: this.dataTypes,
@@ -256,6 +266,12 @@ document.addEventListener('alpine:init', () => {
         priority: this.priority,
       };
       if (this.templateId) payload.template_id = this.templateId;
+
+      // Only include tier if not 'auto' (null triggers adaptive escalation)
+      const backendTier = tierMap[this.scrapingTier];
+      if (backendTier !== null) {
+        payload.tier = backendTier;
+      }
 
       try {
         const response = await fetch('/api/scrape/execute', {

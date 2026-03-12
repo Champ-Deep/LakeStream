@@ -28,3 +28,4 @@ class FetchOptions(BaseModel):
     timeout: int = 30000
     wait_for_selector: str | None = None
     headers: dict[str, str] = {}
+    proxy_url: str | None = None  # Org-level proxy override from settings UI

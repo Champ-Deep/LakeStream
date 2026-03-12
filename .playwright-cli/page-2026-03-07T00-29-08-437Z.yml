@@ -1,0 +1,364 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - text: We use cookies to ensure that we give you the best experience on our website. If you continue to use this site we will assume that you are happy with it.
+      - link "Privacy Policy" [ref=e4] [cursor=pointer]:
+        - /url: https://www.fonada.com/privacy-policy/
+    - button "Got it!" [ref=e6] [cursor=pointer]
+  - generic [ref=e9]:
+    - generic [ref=e10]:
+      - list:
+        - listitem [ref=e11]:
+          - generic [ref=e13]: 
+          - link "74795 74795" [ref=e14] [cursor=pointer]:
+            - /url: tel:7479574795
+        - listitem [ref=e15]:
+          - generic [ref=e17]: 
+          - link "info@fonada.com" [ref=e18] [cursor=pointer]:
+            - /url: mailto:info@fonada.com
+    - list [ref=e20]:
+      - listitem [ref=e21]:
+        - link "Follow us on Twitter" [ref=e22] [cursor=pointer]:
+          - /url: https://twitter.com/Fonada_com
+          - generic [ref=e23]: 
+      - listitem [ref=e24]:
+        - link "Follow us on Facebook" [ref=e25] [cursor=pointer]:
+          - /url: https://www.facebook.com/Fonadaa/
+          - generic [ref=e26]: 
+      - listitem [ref=e27]:
+        - link "Follow us on LinkedIn" [ref=e28] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/fonada/mycompany/?viewAsMember=true
+          - generic [ref=e29]: 
+      - listitem [ref=e30]:
+        - link "Follow us on Instagram" [ref=e31] [cursor=pointer]:
+          - /url: https://www.instagram.com/fonada_com/
+          - generic [ref=e32]: 
+      - listitem [ref=e33]:
+        - link "Follow us on YouTube" [ref=e34] [cursor=pointer]:
+          - /url: https://www.youtube.com/channel/UCpzxqj1IZfOBP1akf23pW2w
+          - generic [ref=e35]: 
+  - text:                                                                         
+  - generic [ref=e38]:
+    - link "Fonada logo" [ref=e40] [cursor=pointer]:
+      - /url: /
+      - img "Fonada logo" [ref=e41]
+    - navigation [ref=e43]:
+      - generic [ref=e44]:
+        - list [ref=e45]:
+          - listitem [ref=e46]:
+            - link "Product" [ref=e47] [cursor=pointer]:
+              - /url: "#"
+            - text:                 
+          - listitem [ref=e48]:
+            - link "Solutions" [ref=e49] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e50]:
+            - link "Resources" [ref=e51] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e52]:
+            - link "Partnership" [ref=e53] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e54]:
+            - link "Contact Us" [ref=e55] [cursor=pointer]:
+              - /url: /contact-us/
+        - link "Request Demo" [ref=e57] [cursor=pointer]:
+          - /url: /request-a-demo/
+  - generic [ref=e58]:
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - heading "LATEST UPDATES FROM FONADA" [level=1] [ref=e63]:
+          - text: LATEST UPDATES FROM
+          - text: FONADA
+        - paragraph [ref=e64]: Discover how Fonada is reshaping growth for businesses. Dive into our latest blogs for insights on elevating your business.
+      - generic [ref=e67]:
+        - link "ai-transforming-collections-payment-automation" [ref=e68] [cursor=pointer]:
+          - /url: ../blog/ai-transforming-collections-payment-automation/
+          - img "ai-transforming-collections-payment-automation" [ref=e69]
+        - generic [ref=e70]:
+          - paragraph [ref=e71]: Feb 18, 2026
+          - 'link "How AI is Transforming Collections & Payment Automation: The 2026 Guide" [ref=e72] [cursor=pointer]':
+            - /url: ../blog/ai-transforming-collections-payment-automation/
+            - 'heading "How AI is Transforming Collections & Payment Automation: The 2026 Guide" [level=2] [ref=e73]'
+          - text: "Let’s start with a hard truth that nobody likes to talk about at dinner parties: Debt collecti..."
+          - paragraph
+          - link "Read More" [ref=e74] [cursor=pointer]:
+            - /url: ../blog/ai-transforming-collections-payment-automation/
+    - generic [ref=e77]:
+      - combobox [ref=e79]:
+        - option "All Categories" [disabled] [selected]
+        - option "Artificial Intelligence"
+        - option "Auto Dialer"
+        - option "Automated Outbound Calling"
+        - option "Business"
+        - option "Calling API"
+        - option "ChatBot/VoiceBot"
+        - option "Cloud call center"
+        - option "Cloud Telephony"
+        - option "IVR Solution"
+        - option "Marketing"
+        - option "Messaging"
+        - option "Missed Call"
+        - option "Previous Webinar"
+        - option "Promotional SMS"
+        - option "RCS"
+        - option "Text to Speech"
+        - option "Toll Free Number"
+        - option "Virtual Number"
+        - option "Voice"
+        - option "WhatsApp Business API"
+        - option "Others"
+      - generic [ref=e82]:
+        - generic [ref=e83]: 
+        - searchbox "Search" [ref=e84]
+    - generic [ref=e85]:
+      - generic [ref=e86]:
+        - generic [ref=e88]:
+          - link "ai-voice-bots-real-estate" [ref=e89] [cursor=pointer]:
+            - /url: ../blog/ai-voice-bots-real-estate/
+            - img "ai-voice-bots-real-estate" [ref=e90]
+          - generic [ref=e91]:
+            - paragraph [ref=e92]: Feb 12, 2026
+            - link "How AI Voice Bots for Real Estate Are Automating Site Visit Bookings in 2026" [ref=e93] [cursor=pointer]:
+              - /url: ../blog/ai-voice-bots-real-estate/
+              - heading "How AI Voice Bots for Real Estate Are Automating Site Visit Bookings in 2026" [level=2] [ref=e94]
+            - text: The real estate landscape in 2026 has officially moved past the "...
+            - paragraph
+            - link "Read More" [ref=e95] [cursor=pointer]:
+              - /url: ../blog/ai-voice-bots-real-estate/
+        - generic [ref=e97]:
+          - link "whatsapp-automation-hotels-lodging" [ref=e98] [cursor=pointer]:
+            - /url: ../blog/whatsapp-automation-hotels-lodging/
+            - img "whatsapp-automation-hotels-lodging" [ref=e99]
+          - generic [ref=e100]:
+            - paragraph [ref=e101]: Feb 06, 2026
+            - 'link "WhatsApp Automation for Hotels & Lodging: The Ultimate Guide to 2026 Guest Experiences" [ref=e102] [cursor=pointer]':
+              - /url: ../blog/whatsapp-automation-hotels-lodging/
+              - 'heading "WhatsApp Automation for Hotels & Lodging: The Ultimate Guide to 2026 Guest Experiences" [level=2] [ref=e103]'
+            - text: Running a hotel today feels like a high-stakes balancing act. Between...
+            - paragraph
+            - link "Read More" [ref=e104] [cursor=pointer]:
+              - /url: ../blog/whatsapp-automation-hotels-lodging/
+        - generic [ref=e106]:
+          - link "ai-whatsapp-automation-travel-tourism-industry" [ref=e107] [cursor=pointer]:
+            - /url: ../blog/ai-whatsapp-automation-travel-tourism-industry/
+            - img "ai-whatsapp-automation-travel-tourism-industry" [ref=e108]
+          - generic [ref=e109]:
+            - paragraph [ref=e110]: Feb 03, 2026
+            - link "AI WhatsApp Automation for Travel & Tourism Industry | Fonada" [ref=e111] [cursor=pointer]:
+              - /url: ../blog/ai-whatsapp-automation-travel-tourism-industry/
+              - heading "AI WhatsApp Automation for Travel & Tourism Industry | Fonada" [level=2] [ref=e112]
+            - text: AI WhatsApp Automation for Travel & Tourism Industry The travel industry is waking up to a ne...
+            - paragraph
+            - link "Read More" [ref=e113] [cursor=pointer]:
+              - /url: ../blog/ai-whatsapp-automation-travel-tourism-industry/
+        - generic [ref=e115]:
+          - link "abandoned-cart-completed-order-shopify-automation" [ref=e116] [cursor=pointer]:
+            - /url: ../blog/abandoned-cart-completed-order-shopify-automation/
+            - img "abandoned-cart-completed-order-shopify-automation" [ref=e117]
+          - generic [ref=e118]:
+            - paragraph [ref=e119]: Jan 23, 2026
+            - 'link "From Abandoned Cart to Completed Order: Shopify WhatsApp Automation with Fonada" [ref=e120] [cursor=pointer]':
+              - /url: ../blog/abandoned-cart-completed-order-shopify-automation/
+              - 'heading "From Abandoned Cart to Completed Order: Shopify WhatsApp Automation with Fonada" [level=2] [ref=e121]'
+            - text: Every owner of an automated ecommerce store hates losing sales. Learni...
+            - paragraph
+            - link "Read More" [ref=e122] [cursor=pointer]:
+              - /url: ../blog/abandoned-cart-completed-order-shopify-automation/
+        - generic [ref=e124]:
+          - link "whatsapp-automation-for-insurance-agent" [ref=e125] [cursor=pointer]:
+            - /url: ../blog/whatsapp-automation-for-insurance-agent/
+            - img "whatsapp-automation-for-insurance-agent" [ref=e126]
+          - generic [ref=e127]:
+            - paragraph [ref=e128]: Jan 19, 2026
+            - 'link "WhatsApp Automation for Insurance Agent: Automate Renewals & Sales" [ref=e129] [cursor=pointer]':
+              - /url: ../blog/whatsapp-automation-for-insurance-agent/
+              - 'heading "WhatsApp Automation for Insurance Agent: Automate Renewals & Sales" [level=2] [ref=e130]'
+            - text: If you are an insurance agent, you know the struggle. Your phone is constantly buzzing, emails are p...
+            - paragraph
+            - link "Read More" [ref=e131] [cursor=pointer]:
+              - /url: ../blog/whatsapp-automation-for-insurance-agent/
+        - generic [ref=e133]:
+          - link "whatsapp-business-for-automobile-industry" [ref=e134] [cursor=pointer]:
+            - /url: ../blog/whatsapp-business-for-automobile-industry/
+            - img "whatsapp-business-for-automobile-industry" [ref=e135]
+          - generic [ref=e136]:
+            - paragraph [ref=e137]: Jan 14, 2026
+            - 'link "WhatsApp Business for Automobile Industry: The Ultimate Engine for Sales and Service in 2026" [ref=e138] [cursor=pointer]':
+              - /url: ../blog/whatsapp-business-for-automobile-industry/
+              - 'heading "WhatsApp Business for Automobile Industry: The Ultimate Engine for Sales and Service in 2026" [level=2] [ref=e139]'
+            - text: The world of buying and selling cars has changed forever. Remember the...
+            - paragraph
+            - link "Read More" [ref=e140] [cursor=pointer]:
+              - /url: ../blog/whatsapp-business-for-automobile-industry/
+      - link "Load more" [ref=e143] [cursor=pointer]:
+        - /url: javascript:void(0)
+    - generic [ref=e148]:
+      - generic [ref=e149]:
+        - paragraph [ref=e150]: Convert Leads Into Sales With Fonada
+        - separator [ref=e151]
+        - paragraph [ref=e152]: Trusted CPaaS Solution Provider
+      - generic [ref=e156]:
+        - textbox "Recipient's username" [ref=e157]:
+          - /placeholder: Enter Email Address
+        - button "Start Free Trial Today" [ref=e158] [cursor=pointer]
+  - contentinfo [ref=e159]:
+    - generic [ref=e161]:
+      - generic [ref=e163]:
+        - paragraph [ref=e164]: Awards & Achievements
+        - generic [ref=e165]:
+          - img "Awards & Achievements" [ref=e167]
+          - img "Awarded Fintech Festival India" [ref=e169]
+        - paragraph [ref=e170]: Awarded Comprehensive Implementation of Customer Experience Designs in FinTech
+        - list:
+          - listitem [ref=e171]:
+            - link "Follow us on Instagram" [ref=e172] [cursor=pointer]:
+              - /url: https://www.instagram.com/fonada_com/
+              - generic [ref=e173]: 
+          - listitem [ref=e174]:
+            - link "Follow us on Facebook" [ref=e175] [cursor=pointer]:
+              - /url: https://www.facebook.com/Fonadaa/
+              - generic [ref=e176]: 
+          - listitem [ref=e177]:
+            - link "Follow us on Twitter" [ref=e178] [cursor=pointer]:
+              - /url: https://twitter.com/Fonada_com
+              - generic [ref=e179]: 
+          - listitem [ref=e180]:
+            - link "Follow us on LinkedIn" [ref=e181] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/fonada/mycompany/?viewAsMember=true
+              - generic [ref=e182]: 
+          - listitem [ref=e183]:
+            - link "Follow us on YouTube" [ref=e184] [cursor=pointer]:
+              - /url: https://www.youtube.com/@fonada-telecommunicationse5708
+              - generic [ref=e185]: 
+      - generic [ref=e186]:
+        - paragraph [ref=e187]: Our Products
+        - list [ref=e188]:
+          - listitem [ref=e189]:
+            - generic [ref=e190]: 
+            - link "Bulk SMS Solution" [ref=e191] [cursor=pointer]:
+              - /url: /sms-solutions/
+          - listitem [ref=e192]:
+            - generic [ref=e193]: 
+            - link "Outbound Calls (OBD)" [ref=e194] [cursor=pointer]:
+              - /url: /outbound-calls/
+          - listitem [ref=e195]:
+            - generic [ref=e196]: 
+            - link "Call Center Dialer" [ref=e197] [cursor=pointer]:
+              - /url: /call-center-dialer/
+          - listitem [ref=e198]:
+            - generic [ref=e199]: 
+            - link "Virtual Phone Number" [ref=e200] [cursor=pointer]:
+              - /url: /virtual-phone-number/
+          - listitem [ref=e201]:
+            - generic [ref=e202]: 
+            - link "Number Masking Solution" [ref=e203] [cursor=pointer]:
+              - /url: /number-masking/
+          - listitem [ref=e204]:
+            - generic [ref=e205]: 
+            - link "Toll Free Number" [ref=e206] [cursor=pointer]:
+              - /url: /toll-free-number/
+          - listitem [ref=e207]:
+            - generic [ref=e208]: 
+            - link "RCS Business Messaging" [ref=e209] [cursor=pointer]:
+              - /url: /rcs-business-messaging/
+          - listitem [ref=e210]:
+            - generic [ref=e211]: 
+            - link "CPaaS Solutions" [ref=e212] [cursor=pointer]:
+              - /url: /cpaas-solutions/
+          - listitem [ref=e213]:
+            - generic [ref=e214]: 
+            - link "Cloud Telephony" [ref=e215] [cursor=pointer]:
+              - /url: /cloud-telephony/
+      - generic [ref=e216]:
+        - paragraph [ref=e217]: Company
+        - list [ref=e218]:
+          - listitem [ref=e219]:
+            - generic [ref=e220]: 
+            - link "About Us" [ref=e221] [cursor=pointer]:
+              - /url: /about-us/
+          - listitem [ref=e222]:
+            - generic [ref=e223]: 
+            - link "Careers" [ref=e224] [cursor=pointer]:
+              - /url: /careers/
+          - listitem [ref=e225]:
+            - generic [ref=e226]: 
+            - link "Contact Us" [ref=e227] [cursor=pointer]:
+              - /url: /contact-us/
+          - listitem [ref=e228]:
+            - generic [ref=e229]: 
+            - link "Partner With Fonada" [ref=e230] [cursor=pointer]:
+              - /url: /partner-with-fonada/
+        - paragraph [ref=e231]: Resources
+        - list [ref=e232]:
+          - listitem [ref=e233]:
+            - generic [ref=e234]: 
+            - link "Blog" [ref=e235] [cursor=pointer]:
+              - /url: /blog/
+          - listitem [ref=e236]:
+            - generic [ref=e237]: 
+            - link "WhatsApp Link Generator" [ref=e238] [cursor=pointer]:
+              - /url: /whatsapp-link-generator/
+          - listitem [ref=e239]:
+            - generic [ref=e240]: 
+            - link "Sitemap" [ref=e241] [cursor=pointer]:
+              - /url: /sitemap/
+      - generic [ref=e242]:
+        - paragraph [ref=e243]: Get In Touch
+        - generic [ref=e244]:
+          - generic [ref=e245]:
+            - img "location" [ref=e246]
+            - paragraph [ref=e247]: "Address:"
+          - paragraph [ref=e248]:
+            - link "First Floor, ADD India Tower, Plot No. A-6A, Sector-125, Noida, 201303 Uttar Pradesh" [ref=e249] [cursor=pointer]:
+              - /url: https://goo.gl/maps/e3EAB9yUpUjX9rbp6
+        - generic [ref=e250]:
+          - generic [ref=e251]:
+            - img "phone" [ref=e252]
+            - paragraph [ref=e253]:
+              - text: "Support:"
+              - link "1800 120 0081" [ref=e254] [cursor=pointer]:
+                - /url: tel:18001200081
+          - paragraph [ref=e255]:
+            - text: "Sales:"
+            - link "74795 74795" [ref=e256] [cursor=pointer]:
+              - /url: tel:7479574795
+        - generic [ref=e257]:
+          - img "email" [ref=e258]
+          - paragraph [ref=e259]:
+            - text: "Email:"
+            - link "info@fonada.com" [ref=e260] [cursor=pointer]:
+              - /url: mailto:info@fonada.com
+  - generic [ref=e263]:
+    - paragraph [ref=e265]: © Copyright 2024 Shivtel Communications Pvt. Ltd. (AKA Rhythmus Technologies Pvt. Ltd.) All Rights Reserved
+    - generic [ref=e266]:
+      - list:
+        - listitem [ref=e267]:
+          - link "Terms & Conditions" [ref=e268] [cursor=pointer]:
+            - /url: /terms-conditions/
+        - listitem [ref=e269]:
+          - link "Privacy Policy" [ref=e270] [cursor=pointer]:
+            - /url: /privacy-policy/
+        - listitem [ref=e271]:
+          - link "Copyright" [ref=e272] [cursor=pointer]:
+            - /url: /copyright/
+        - listitem [ref=e273]:
+          - link "Disclaimer" [ref=e274] [cursor=pointer]:
+            - /url: /disclaimer/
+  - text:      
+  - link "GDPR-compliant Web Analytics":
+    - /url: https://clicky.com/101360920
+  - generic [ref=e275]:
+    - generic:
+      - generic [ref=e276]:
+        - generic:
+          - img "img"
+        - generic [ref=e277]:
+          - generic [ref=e278]: Fonada
+          - generic [ref=e279]: online
+        - img [ref=e281] [cursor=pointer]
+      - generic [ref=e285]:
+        - generic: Fonada
+        - generic [ref=e286]: Hi, How can I help you ?
+      - generic [ref=e287]:
+        - generic: Start chat
+    - img [ref=e289] [cursor=pointer]

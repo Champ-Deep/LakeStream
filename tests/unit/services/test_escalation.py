@@ -124,6 +124,18 @@ class TestEscalationService:
             await svc.record_result("ex.com", _result(blocked=True), success=False)
             assert mock.call_args[1]["last_successful_strategy"] is None
 
+    def test_next_tier_playwright_no_proxy_blocks(self, svc):
+        """Escalation from PLAYWRIGHT should be blocked when no proxy is available."""
+        assert svc.get_next_tier(ScrapingTier.PLAYWRIGHT, proxy_available=False) is None
+
+    def test_next_tier_playwright_with_proxy_allows(self, svc):
+        """Escalation from PLAYWRIGHT should proceed when proxy is available."""
+        assert svc.get_next_tier(ScrapingTier.PLAYWRIGHT, proxy_available=True) == ScrapingTier.PLAYWRIGHT_PROXY
+
+    def test_next_tier_basic_unaffected_by_proxy_flag(self, svc):
+        """Escalation from BASIC_HTTP to PLAYWRIGHT is unaffected by proxy flag."""
+        assert svc.get_next_tier(ScrapingTier.BASIC_HTTP, proxy_available=False) == ScrapingTier.PLAYWRIGHT
+
     @pytest.mark.asyncio
     async def test_linkedin_healthy_session_uses_playwright(self, svc):
         """LinkedIn with healthy session (<50 requests) should use PLAYWRIGHT (no proxy)."""

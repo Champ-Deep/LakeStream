@@ -9,13 +9,23 @@ class ArticleParserWorker(BaseWorker):
     """Extracts metadata from individual article pages."""
 
     def __init__(
-        self, domain: str, job_id: str,
-        pool: object | None = None, org_id: str | None = None,
+        self,
+        domain: str,
+        job_id: str,
+        pool: object | None = None,
+        org_id: str | None = None,
         user_id: str | None = None,
+        tier_override: str | None = None,
+        proxy_url: str | None = None,
     ):
         super().__init__(
-            domain=domain, job_id=job_id, pool=pool, org_id=org_id,
+            domain=domain,
+            job_id=job_id,
+            pool=pool,
+            org_id=org_id,
             user_id=user_id,
+            tier_override=tier_override,
+            proxy_url=proxy_url,
         )
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
@@ -32,7 +42,10 @@ class ArticleParserWorker(BaseWorker):
                 if fetch_result.blocked:
                     continue
 
-                from src.scraping.parser.html_parser import HtmlParser
+                from src.scraping.parser.html_parser import HtmlParser, extract_rich_metadata
+
+                # Extract rich metadata (og:, twitter:, meta: tags)
+                rich_meta = extract_rich_metadata(fetch_result.html, url)
 
                 parser = HtmlParser(fetch_result.html, url)
                 title = parser.extract_title()
@@ -45,6 +58,12 @@ class ArticleParserWorker(BaseWorker):
                     excerpt=parser.extract_meta("description"),
                     content=content,
                 )
+
+                # Merge rich metadata with article-specific metadata
+                combined_metadata = {
+                    **rich_meta,  # Rich metadata (og:, twitter:, etc.)
+                    **metadata.model_dump(),  # Existing article metadata
+                }
 
                 # Skip empty/error pages
                 if metadata.word_count == 0 and metadata.excerpt is None:
@@ -61,7 +80,7 @@ class ArticleParserWorker(BaseWorker):
                     "data_type": DataType.ARTICLE,
                     "url": url,
                     "title": title,
-                    "metadata": metadata.model_dump(),
+                    "metadata": combined_metadata,
                 }
                 await self.export_results([record])
 
@@ -73,7 +92,7 @@ class ArticleParserWorker(BaseWorker):
                         data_type=DataType.ARTICLE,
                         url=url,
                         title=title,
-                        metadata=metadata.model_dump(),
+                        metadata=combined_metadata,
                         scraped_at=datetime.now(UTC),
                     )
                 )

@@ -5,9 +5,11 @@ import glob
 import os
 
 import asyncpg
+import bcrypt
 
 
-async def run_migrations() -> None:
+def get_db_url() -> str:
+    """Get database URL with postgres:// to postgresql:// conversion."""
     database_url = os.environ.get(
         "DATABASE_URL",
         "postgresql://scraper:scraper_dev@localhost:5433/lakeb2b_scraper",
@@ -15,7 +17,11 @@ async def run_migrations() -> None:
     # Railway/Heroku provide postgres:// but asyncpg requires postgresql://
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
+    return database_url
 
+
+async def run_migrations() -> None:
+    database_url = get_db_url()
     pool = await asyncpg.create_pool(database_url, min_size=1, max_size=3, command_timeout=30)
     assert pool is not None
 
@@ -49,8 +55,6 @@ async def run_migrations() -> None:
 
 async def _ensure_admin_password(pool: asyncpg.Pool) -> None:
     """Set/fix admin password from ADMIN_PASSWORD env var on every boot."""
-    import bcrypt
-
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lakeb2b.internal")
     admin_password = os.environ.get("ADMIN_PASSWORD", "LakeB2B_admin!")
 
