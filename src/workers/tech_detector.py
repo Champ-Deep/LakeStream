@@ -8,8 +8,25 @@ from src.workers.base import BaseWorker
 class TechDetectorWorker(BaseWorker):
     """Detects technology stack from page source code."""
 
-    def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None, user_id: str | None = None):
-        super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)
+    def __init__(
+        self,
+        domain: str,
+        job_id: str,
+        pool: object | None = None,
+        org_id: str | None = None,
+        user_id: str | None = None,
+        tier_override: str | None = None,
+        proxy_url: str | None = None,
+    ):
+        super().__init__(
+            domain=domain,
+            job_id=job_id,
+            pool=pool,
+            org_id=org_id,
+            user_id=user_id,
+            tier_override=tier_override,
+            proxy_url=proxy_url,
+        )
 
     async def execute(self, urls: list[str]) -> list[ScrapedData]:
         if not urls:
@@ -25,6 +42,10 @@ class TechDetectorWorker(BaseWorker):
                 self.log.warning("blocked", url=url)
                 return []
 
+            # Extract rich metadata (og:, twitter:, meta: tags)
+            from src.scraping.parser.html_parser import extract_rich_metadata
+            rich_meta = extract_rich_metadata(fetch_result.html, url)
+
             from src.scraping.parser.tech_parser import TechParser
 
             parser = TechParser(fetch_result.html, fetch_result.headers)
@@ -38,13 +59,19 @@ class TechDetectorWorker(BaseWorker):
                 frameworks=detected.get("frameworks", []),
             )
 
+            # Merge rich metadata with tech stack metadata
+            combined_metadata = {
+                **rich_meta,  # Rich metadata (og:, twitter:, etc.)
+                **metadata.model_dump(),  # Tech stack metadata
+            }
+
             record = {
                 "job_id": UUID(self.job_id),
                 "domain": self.domain,
                 "data_type": DataType.TECH_STACK,
                 "url": url,
                 "title": f"Tech Stack: {self.domain}",
-                "metadata": metadata.model_dump(),
+                "metadata": combined_metadata,
             }
             await self.export_results([record])
 
@@ -56,7 +83,7 @@ class TechDetectorWorker(BaseWorker):
                     data_type=DataType.TECH_STACK,
                     url=url,
                     title=record["title"],
-                    metadata=metadata.model_dump(),
+                    metadata=combined_metadata,
                     scraped_at=datetime.now(UTC),
                 )
             ]

@@ -14,8 +14,25 @@ class BlogExtractorWorker(BaseWorker):
         ".pdf", ".doc", ".docx", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
     })
 
-    def __init__(self, domain: str, job_id: str, pool: object | None = None, org_id: str | None = None, user_id: str | None = None):
-        super().__init__(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id)
+    def __init__(
+        self,
+        domain: str,
+        job_id: str,
+        pool: object | None = None,
+        org_id: str | None = None,
+        user_id: str | None = None,
+        tier_override: str | None = None,
+        proxy_url: str | None = None,
+    ):
+        super().__init__(
+            domain=domain,
+            job_id=job_id,
+            pool=pool,
+            org_id=org_id,
+            user_id=user_id,
+            tier_override=tier_override,
+            proxy_url=proxy_url,
+        )
 
     def _filter_article_links(self, links: list[str], source_url: str) -> list[str]:
         """Remove homepage, non-HTML, and off-domain links from article candidates."""
@@ -49,7 +66,10 @@ class BlogExtractorWorker(BaseWorker):
                     continue
 
                 # Parse blog page for article links
-                from src.scraping.parser.html_parser import HtmlParser
+                from src.scraping.parser.html_parser import HtmlParser, extract_rich_metadata
+
+                # Extract rich metadata (og:, twitter:, meta: tags)
+                rich_meta = extract_rich_metadata(fetch_result.html, url)
 
                 parser = HtmlParser(fetch_result.html, url)
                 article_links = parser.extract_links(
@@ -70,6 +90,12 @@ class BlogExtractorWorker(BaseWorker):
                     total_articles=len(article_links),
                 )
 
+                # Merge rich metadata with blog-specific metadata
+                combined_metadata = {
+                    **rich_meta,  # Rich metadata (og:, twitter:, etc.)
+                    **metadata.model_dump(),  # Existing blog metadata
+                }
+
                 # Store result
                 from datetime import datetime
 
@@ -79,7 +105,7 @@ class BlogExtractorWorker(BaseWorker):
                     "data_type": DataType.BLOG_URL,
                     "url": url,
                     "title": parser.extract_title(),
-                    "metadata": metadata.model_dump(),
+                    "metadata": combined_metadata,
                 }
                 await self.export_results([record])
 
@@ -91,7 +117,7 @@ class BlogExtractorWorker(BaseWorker):
                         data_type=DataType.BLOG_URL,
                         url=url,
                         title=parser.extract_title(),
-                        metadata=metadata.model_dump(),
+                        metadata=combined_metadata,
                         scraped_at=datetime.now(UTC),
                     )
                 )

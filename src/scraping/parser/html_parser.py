@@ -107,3 +107,69 @@ class HtmlParser:
         """Count words in main content."""
         content = self.extract_content()
         return len(content.split()) if content else 0
+
+
+def extract_rich_metadata(html: str, url: str = "") -> dict:
+    """
+    Extract rich metadata (og:, twitter:, meta: tags) for B2B enrichment.
+
+    Returns dict with keys:
+    - title: Page title
+    - description: Meta description
+    - og_title, og_description, og_image, og_url, og_type, og_site_name
+    - twitter_card, twitter_site, twitter_creator, twitter_title, twitter_description, twitter_image
+    - favicon: Favicon URL
+    - canonical_url: Canonical URL
+    """
+    parser = HTMLParser(html)
+    metadata = {}
+
+    # Title
+    title_tag = parser.css_first("title")
+    if title_tag:
+        metadata["title"] = title_tag.text().strip()
+
+    # Meta tags
+    for meta in parser.css("meta"):
+        attrs = meta.attributes
+
+        # og:* tags (Open Graph)
+        if "property" in attrs and attrs["property"].startswith("og:"):
+            key = attrs["property"].replace("og:", "").replace(":", "_")
+            metadata[f"og_{key}"] = attrs.get("content", "")
+
+        # twitter:* tags
+        elif "name" in attrs and attrs["name"].startswith("twitter:"):
+            key = attrs["name"].replace("twitter:", "").replace(":", "_")
+            metadata[f"twitter_{key}"] = attrs.get("content", "")
+
+        # Standard meta tags
+        elif "name" in attrs:
+            if attrs["name"] == "description":
+                metadata["description"] = attrs.get("content", "")
+            elif attrs["name"] == "keywords":
+                metadata["keywords"] = attrs.get("content", "")
+            elif attrs["name"] == "author":
+                metadata["author"] = attrs.get("content", "")
+
+    # Favicon (prefer PNG/SVG, fallback to ICO)
+    favicon = (
+        parser.css_first("link[rel='icon'][type='image/png']")
+        or parser.css_first("link[rel='icon'][type='image/svg+xml']")
+        or parser.css_first("link[rel='icon']")
+        or parser.css_first("link[rel='shortcut icon']")
+    )
+    if favicon and "href" in favicon.attributes:
+        favicon_url = favicon.attributes["href"]
+        # Make absolute URL
+        if url and not favicon_url.startswith("http"):
+            favicon_url = urljoin(url, favicon_url)
+        metadata["favicon"] = favicon_url
+
+    # Canonical URL
+    canonical = parser.css_first("link[rel='canonical']")
+    if canonical and "href" in canonical.attributes:
+        metadata["canonical_url"] = canonical.attributes["href"]
+
+    # Clean empty strings
+    return {k: v for k, v in metadata.items() if v}
