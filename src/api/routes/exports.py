@@ -164,7 +164,7 @@ async def export_all_csv(domain: str | None = Query(None), user: dict = Depends(
 
 
 @router.get("/json/{job_id}")
-async def export_job_json(job_id: UUID):
+async def export_job_json(job_id: UUID, user: dict = Depends(get_current_user)):
     """Export all scraped data from a job as JSON."""
     from src.db.pool import get_pool
     from src.db.queries.scraped_data import get_scraped_data_by_job
@@ -176,7 +176,9 @@ async def export_job_json(job_id: UUID):
         raise HTTPException(status_code=404, detail="No data found for this job")
 
     # Get job info for metadata
-    job_row = await pool.fetchrow("SELECT domain, created_at FROM scrape_jobs WHERE id = $1", job_id)
+    job_row = await pool.fetchrow(
+        "SELECT domain, created_at FROM scrape_jobs WHERE id = $1", job_id
+    )
     domain = job_row["domain"] if job_row else "unknown"
 
     # Build JSON response

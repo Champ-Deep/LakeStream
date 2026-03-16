@@ -15,7 +15,7 @@ class DomainMapperWorker:
         self.domain = domain
         self.job_id = job_id
         self.org_id = org_id
-        self.crawler = CrawlerService()
+        self.crawler = CrawlerService(max_concurrent=15, max_per_domain=6)
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
 
     async def execute(self, max_pages: int = 100) -> list[dict]:

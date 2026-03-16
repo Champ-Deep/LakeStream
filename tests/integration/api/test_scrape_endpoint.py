@@ -27,7 +27,7 @@ import pytest
 from src.db.pool import get_pool
 from src.db.queries import jobs as job_queries
 from src.db.queries import scraped_data as data_queries
-from src.models.job import JobStatus, ScrapeJobInput
+from src.models.job import ScrapeJobInput
 
 
 @pytest.mark.integration

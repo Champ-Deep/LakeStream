@@ -59,11 +59,15 @@ async def root_ping() -> dict:
 # so the LAST added runs FIRST (outermost). We want:
 #   Request → SessionMiddleware (decode cookie) → set_tenant_context (read session) → Route
 # So register set_tenant_context first, then SessionMiddleware on top.
-from src.config.settings import get_settings as _get_settings  # noqa: E402
 from src.api.middleware.auth import TenantContextMiddleware  # noqa: E402
+from src.config.settings import get_settings as _get_settings  # noqa: E402
 
 app.add_middleware(TenantContextMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=_get_settings().jwt_secret, session_cookie="ls_session")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_get_settings().jwt_secret,
+    session_cookie="ls_session",
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")

@@ -25,7 +25,8 @@ class LakeProxyFetcher:
     def __init__(self):
         warnings.warn(
             "LakeProxyFetcher (HEADLESS_PROXY tier) is deprecated. "
-            "Use LakePlaywrightProxyFetcher (PLAYWRIGHT_PROXY tier) instead for session persistence + proxy.",
+            "Use LakePlaywrightProxyFetcher (PLAYWRIGHT_PROXY tier) instead "
+            "for session persistence + proxy.",
             DeprecationWarning,
             stacklevel=2,
         )

@@ -2,8 +2,8 @@
 
 import ipaddress
 import socket
-from uuid import UUID
 from urllib.parse import urlparse
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -44,6 +44,7 @@ class WebhookTriggerRequest(BaseModel):
     data_types: list[str] | None = None
     max_pages: int = 100
     template_id: str | None = None
+    tier: str | None = None
 
 
 class WebhookTriggerResponse(BaseModel):
@@ -124,6 +125,7 @@ async def trigger_scrape(request: WebhookTriggerRequest, user: dict = Depends(ge
             template_id=request.template_id or "auto",
             max_pages=request.max_pages,
             data_types=request.data_types,
+            tier=request.tier,
         )
         await redis.aclose()
     except Exception as e:

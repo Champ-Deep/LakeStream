@@ -31,7 +31,7 @@ class ScraperService:
             domain = re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
             tier = await self.escalation.decide_initial_tier(domain)
         else:
-            tier = tier or ScrapingTier.BASIC_HTTP
+            tier = tier or ScrapingTier.PLAYWRIGHT
 
         # 2. Fetch content
         fetcher = create_fetcher(tier)

@@ -178,29 +178,6 @@ async def logout(request: Request):
 
 
 # =============================================================================
-# AUTH PAGES
-# =============================================================================
-
-
-@router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    """Login page."""
-    return get_templates().TemplateResponse(
-        "pages/login.html",
-        {"request": request, "layout": "auth"}
-    )
-
-
-@router.get("/signup", response_class=HTMLResponse)
-async def signup_page(request: Request):
-    """Signup page."""
-    return get_templates().TemplateResponse(
-        "pages/signup.html",
-        {"request": request, "layout": "auth"}
-    )
-
-
-# =============================================================================
 # DASHBOARD
 # =============================================================================
 
@@ -223,24 +200,36 @@ async def dashboard(request: Request):
             "SELECT COUNT(*) FROM scrape_jobs WHERE user_id = $1", user_filter
         )
         running_jobs = await pool.fetchval(
-            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running' AND user_id = $1", user_filter
+            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running' AND user_id = $1",
+            user_filter,
         )
-        total_data = await pool.fetchval(
-            "SELECT COUNT(*) FROM scraped_data WHERE user_id = $1", user_filter
+        success_rate = await pool.fetchval(
+            """SELECT COALESCE(
+                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
+                0
+            ) FROM scrape_jobs WHERE user_id = $1""",
+            user_filter,
         )
         total_domains = await pool.fetchval(
             "SELECT COUNT(DISTINCT domain) FROM scraped_data WHERE user_id = $1", user_filter
         )
     else:
         total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
-        running_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'")
-        total_data = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
+        running_jobs = await pool.fetchval(
+            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'"
+        )
+        success_rate = await pool.fetchval(
+            """SELECT COALESCE(
+                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
+                0
+            ) FROM scrape_jobs"""
+        )
         total_domains = await pool.fetchval("SELECT COUNT(DISTINCT domain) FROM scraped_data")
 
     stats = {
         "total_jobs": total_jobs or 0,
         "running_jobs": running_jobs or 0,
-        "total_data": total_data or 0,
+        "success_rate": success_rate or 0,
         "total_domains": total_domains or 0,
     }
 
@@ -471,14 +460,6 @@ async def results_browse(
     offset = (page - 1) * limit
     user_filter = _get_user_filter(request)
 
-    # Build user filter clause
-    if user_filter:
-        user_clause = "AND user_id = $%d"
-        user_val = [user_filter]
-    else:
-        user_clause = ""
-        user_val = []
-
     # Get unique domains for filter dropdown (scoped to user)
     if user_filter:
         domains_rows = await pool.fetch(
@@ -510,18 +491,20 @@ async def results_browse(
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     vals.extend([limit, offset])
 
-    rows = await pool.fetch(
-        f"SELECT * FROM scraped_data {where} ORDER BY scraped_at DESC LIMIT ${idx} OFFSET ${idx + 1}",
-        *vals,
+    query = (
+        f"SELECT * FROM scraped_data {where} "
+        f"ORDER BY scraped_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
     )
+    rows = await pool.fetch(query, *vals)
     results = [_parse_row(row) for row in rows]
 
     # Get total count with same filters
     count_vals = vals[:-2]  # exclude limit/offset
-    total = await pool.fetchval(
-        f"SELECT COUNT(*) FROM scraped_data {where}".replace(f" LIMIT ${idx} OFFSET ${idx + 1}", ""),
-        *count_vals,
-    ) if count_vals else await pool.fetchval(f"SELECT COUNT(*) FROM scraped_data {where}")
+    count_query = f"SELECT COUNT(*) FROM scraped_data {where}"
+    if count_vals:
+        total = await pool.fetchval(count_query, *count_vals)
+    else:
+        total = await pool.fetchval(count_query)
 
     return get_templates().TemplateResponse(
         "pages/results/browse.html",
@@ -672,7 +655,9 @@ async def settings_page(request: Request):
         if not org_id:
             org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
         if org_id:
-            proxy_url = await pool.fetchval("SELECT proxy_url FROM organizations WHERE id = $1", org_id) or ""
+            proxy_url = await pool.fetchval(
+                "SELECT proxy_url FROM organizations WHERE id = $1", org_id
+            ) or ""
     except Exception:
         pass  # Settings page works without proxy info
 

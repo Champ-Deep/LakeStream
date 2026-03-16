@@ -69,70 +69,28 @@ async def process_scrape_job(
         total_data = 0
         errors: list[str] = []
 
-        # 3. For each requested data_type, run the appropriate worker
-        from src.workers.article_parser import ArticleParserWorker
-        from src.workers.blog_extractor import BlogExtractorWorker
-        from src.workers.contact_finder import ContactFinderWorker
-        from src.workers.resource_finder import ResourceFinderWorker
-        from src.workers.tech_detector import TechDetectorWorker
+        # 3. Unified ContentWorker: fetch each URL once, extract all data types
+        from src.workers.content_worker import ContentWorker
 
-        blog_urls: list[str] = []
-
-        for dtype in data_types:
-            try:
-                if dtype == "blog_url":
-                    worker = BlogExtractorWorker(**worker_kwargs)
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
+        try:
+            # Ensure homepage is in URL list for tech_stack detection
+            if "tech_stack" in data_types:
+                homepage = f"https://{domain}"
+                has_homepage = any(
+                    c["url"].rstrip("/") == homepage.rstrip("/")
+                    for c in classified_urls
+                )
+                if not has_homepage:
+                    classified_urls.insert(
+                        0, {"url": homepage, "data_type": "page", "confidence": 1.0},
                     )
-                    # Extract individual article URLs discovered by BlogExtractor
-                    blog_urls = []
-                    for r in result:
-                        if r.metadata and isinstance(r.metadata, dict):
-                            article_urls = r.metadata.get("article_urls", [])
-                            if article_urls:
-                                blog_urls.extend(article_urls)
-                            elif r.url:
-                                # No article links found — page is likely an article itself
-                                blog_urls.append(r.url)
-                    total_data += len(result)
 
-                elif dtype == "article":
-                    worker = ArticleParserWorker(**worker_kwargs)  # type: ignore[assignment]
-                    result = await worker.execute(blog_urls)
-                    total_data += len(result)
-
-                elif dtype == "contact":
-                    worker = ContactFinderWorker(**worker_kwargs)  # type: ignore[assignment]
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "contact"]
-                    )
-                    total_data += len(result)
-
-                elif dtype == "tech_stack":
-                    worker = TechDetectorWorker(**worker_kwargs)  # type: ignore[assignment]
-                    result = await worker.execute([f"https://{domain}"])
-                    total_data += len(result)
-
-                elif dtype == "resource":
-                    worker = ResourceFinderWorker(**worker_kwargs)  # type: ignore[assignment]
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "resource"]
-                    )
-                    total_data += len(result)
-
-                elif dtype == "pricing":
-                    from src.workers.pricing_finder import PricingFinderWorker
-
-                    worker = PricingFinderWorker(**worker_kwargs)  # type: ignore[assignment]
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
-                    )
-                    total_data += len(result)
-
-            except Exception as e:
-                log.error("worker_error", dtype=dtype, error=str(e))
-                errors.append(f"{dtype}: {str(e)}")
+            content_worker = ContentWorker(**worker_kwargs)
+            results = await content_worker.execute(classified_urls, data_types)
+            total_data = len(results)
+        except Exception as e:
+            log.error("content_worker_error", error=str(e))
+            errors.append(f"content_worker: {str(e)}")
 
         # 4. Mark job complete or failed based on data extracted
         duration_ms = int((time.time() - start_time) * 1000)

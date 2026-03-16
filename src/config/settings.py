@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = 10
     max_scrape_pages_per_job: int = 500
     default_rate_limit_ms: int = 1000
-    min_html_bytes: int = 20  # Minimum HTML size before treating as blocked (catches truly empty responses)
+    # Minimum HTML size before treating as blocked (catches truly empty responses)
+    min_html_bytes: int = 20
 
     # LakeCurrent search API
     lakecurrent_base_url: str = "http://lakecurrent-backend:8001"
