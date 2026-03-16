@@ -43,23 +43,73 @@
 
   {% elif result.data_type == 'article' %}
   {# Article card layout #}
-  <div class="space-y-2">
-    {% if result.metadata.get('author') %}
-      <p class="text-sm">
-        <span class="text-slate-400">By</span>
-        <span class="font-medium text-navy">{{ result.metadata.author }}</span>
-      </p>
-    {% endif %}
-    {% if result.metadata.get('excerpt') %}
-      <p class="text-sm text-slate-600 leading-relaxed">{{ result.metadata.excerpt[:200] }}{% if result.metadata.excerpt|length > 200 %}...{% endif %}</p>
-    {% endif %}
-    <div class="flex flex-wrap gap-2">
-      {% for cat in result.metadata.get('categories', []) %}
-        <span class="badge badge-neutral">{{ cat }}</span>
-      {% endfor %}
+  <div class="space-y-3">
+    {# Author + published date row #}
+    <div class="flex flex-wrap items-center gap-3 text-sm">
+      {% if result.metadata.get('author') %}
+        <p>
+          <span class="text-slate-400">By</span>
+          <span class="font-medium text-navy">{{ result.metadata.author }}</span>
+        </p>
+      {% endif %}
+      {% if result.metadata.get('published_date') or result.published_date %}
+        <span class="text-slate-400">|</span>
+        <span class="text-slate-500">{{ result.metadata.get('published_date') or result.published_date }}</span>
+      {% endif %}
+      {% if result.metadata.get('word_count') %}
+        <span class="text-slate-400">|</span>
+        <span class="text-xs text-slate-400">{{ result.metadata.word_count }} words</span>
+      {% endif %}
     </div>
-    {% if result.metadata.get('word_count') %}
-      <p class="text-xs text-slate-400">{{ result.metadata.word_count }} words</p>
+
+    {# OG image thumbnail #}
+    {% if result.metadata.get('og_image') %}
+      <img src="{{ result.metadata.og_image }}" alt=""
+        class="w-full max-w-md rounded-lg border border-slate-200 max-h-48 object-cover" loading="lazy">
+    {% endif %}
+
+    {# Excerpt #}
+    {% if result.metadata.get('excerpt') %}
+      <p class="text-sm text-slate-600 leading-relaxed">{{ result.metadata.excerpt[:300] }}{% if result.metadata.excerpt|length > 300 %}...{% endif %}</p>
+    {% endif %}
+
+    {# Full content preview #}
+    {% if result.metadata.get('content') %}
+      <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
+        <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{{ result.metadata.content[:500] }}{% if result.metadata.content|length > 500 %}...{% endif %}</p>
+        {% if result.metadata.content|length > 500 %}
+          <details class="mt-2">
+            <summary class="text-sm text-brand-red cursor-pointer hover:underline">Show full content</summary>
+            <p class="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-line max-h-96 overflow-y-auto">{{ result.metadata.content[:5000] }}{% if result.metadata.content|length > 5000 %}<br><em class="text-slate-400">Content truncated — export for full text</em>{% endif %}</p>
+          </details>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# Categories #}
+    {% if result.metadata.get('categories') %}
+      <div class="flex flex-wrap gap-2">
+        {% for cat in result.metadata.get('categories', []) %}
+          <span class="badge badge-neutral">{{ cat }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# Rich metadata (og:, twitter, canonical) #}
+    {% if result.metadata.get('og_description') or result.metadata.get('twitter_site') or result.metadata.get('canonical_url') %}
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 space-y-1">
+        {% if result.metadata.get('og_description') %}
+          <p><span class="text-slate-400">og:description:</span> {{ result.metadata.og_description[:200] }}</p>
+        {% endif %}
+        {% if result.metadata.get('twitter_site') %}
+          <p><span class="text-slate-400">Twitter:</span> {{ result.metadata.twitter_site }}</p>
+        {% endif %}
+        {% if result.metadata.get('canonical_url') %}
+          <p><span class="text-slate-400">Canonical:</span>
+            <a href="{{ result.metadata.canonical_url }}" target="_blank" class="text-brand-red hover:underline">{{ result.metadata.canonical_url[:80] }}</a>
+          </p>
+        {% endif %}
+      </div>
     {% endif %}
   </div>
 

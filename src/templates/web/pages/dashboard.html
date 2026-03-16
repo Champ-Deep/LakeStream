@@ -39,11 +39,11 @@
     <div class="card p-6 group hover:shadow-lg">
       <div class="flex items-center justify-between mb-3">
         <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-          <i data-lucide="database" class="w-5 h-5 text-green-500"></i>
+          <i data-lucide="check-circle" class="w-5 h-5 text-green-500"></i>
         </div>
       </div>
-      <p class="text-3xl font-bold text-navy stat-value">{{ stats.total_data | default('0') }}</p>
-      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Data Records</p>
+      <p class="text-3xl font-bold text-navy stat-value">{{ stats.success_rate | default('0') }}%</p>
+      <p class="text-xs text-slate-400 uppercase tracking-wide mt-1">Success Rate</p>
     </div>
 
     <div class="card p-6 group hover:shadow-lg">

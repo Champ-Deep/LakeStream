@@ -178,29 +178,6 @@ async def logout(request: Request):
 
 
 # =============================================================================
-# AUTH PAGES
-# =============================================================================
-
-
-@router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    """Login page."""
-    return get_templates().TemplateResponse(
-        "pages/login.html",
-        {"request": request, "layout": "auth"}
-    )
-
-
-@router.get("/signup", response_class=HTMLResponse)
-async def signup_page(request: Request):
-    """Signup page."""
-    return get_templates().TemplateResponse(
-        "pages/signup.html",
-        {"request": request, "layout": "auth"}
-    )
-
-
-# =============================================================================
 # DASHBOARD
 # =============================================================================
 
@@ -225,8 +202,12 @@ async def dashboard(request: Request):
         running_jobs = await pool.fetchval(
             "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running' AND user_id = $1", user_filter
         )
-        total_data = await pool.fetchval(
-            "SELECT COUNT(*) FROM scraped_data WHERE user_id = $1", user_filter
+        success_rate = await pool.fetchval(
+            """SELECT COALESCE(
+                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
+                0
+            ) FROM scrape_jobs WHERE user_id = $1""",
+            user_filter,
         )
         total_domains = await pool.fetchval(
             "SELECT COUNT(DISTINCT domain) FROM scraped_data WHERE user_id = $1", user_filter
@@ -234,13 +215,18 @@ async def dashboard(request: Request):
     else:
         total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
         running_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'")
-        total_data = await pool.fetchval("SELECT COUNT(*) FROM scraped_data")
+        success_rate = await pool.fetchval(
+            """SELECT COALESCE(
+                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
+                0
+            ) FROM scrape_jobs"""
+        )
         total_domains = await pool.fetchval("SELECT COUNT(DISTINCT domain) FROM scraped_data")
 
     stats = {
         "total_jobs": total_jobs or 0,
         "running_jobs": running_jobs or 0,
-        "total_data": total_data or 0,
+        "success_rate": success_rate or 0,
         "total_domains": total_domains or 0,
     }
 
