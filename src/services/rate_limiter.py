@@ -7,27 +7,27 @@ import structlog
 log = structlog.get_logger()
 
 # Domain-specific rate limits (milliseconds between requests)
-# Higher values = more conservative = less likely to trigger blocks = less proxy usage
+# Aggressive defaults — rely on proxy/escalation for blocked sites
 DOMAIN_RATE_LIMITS = {
-    "linkedin.com": 5000,  # 5 seconds (very conservative to avoid bans)
-    "*.linkedin.com": 5000,  # Apply to all LinkedIn subdomains
-    "*.hubspot.com": 2000,  # 2 seconds
-    "*.wordpress.com": 1500,  # 1.5 seconds
-    "default": 1000,  # 1 second (current default)
+    "linkedin.com": 3000,  # 3 seconds (still conservative for LinkedIn)
+    "*.linkedin.com": 3000,
+    "*.hubspot.com": 500,
+    "*.wordpress.com": 300,
+    "default": 200,  # 200ms — fast by default, back off adaptively on 429/503
 }
 
 
 class RateLimiter:
     """Per-domain rate limiting with adaptive delay based on server responses.
 
-    Supports domain-specific rate limits to optimize for different site behaviors:
-    - LinkedIn: 5s (very conservative, avoid account bans)
-    - HubSpot: 2s (moderate)
-    - WordPress: 1.5s (moderate)
-    - Default: 1s (standard)
+    Aggressive defaults — back off adaptively on 429/503:
+    - LinkedIn: 3s (conservative, avoid account bans)
+    - HubSpot: 500ms
+    - WordPress: 300ms
+    - Default: 200ms (fast, escalate on blocks)
     """
 
-    def __init__(self, default_delay_ms: int = 1000, max_delay_ms: int = 30000):
+    def __init__(self, default_delay_ms: int = 200, max_delay_ms: int = 30000):
         self._last_request: dict[str, float] = {}
         self._default_delay = default_delay_ms / 1000.0
         self._max_delay = max_delay_ms / 1000.0
