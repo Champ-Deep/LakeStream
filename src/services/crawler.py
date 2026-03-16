@@ -109,7 +109,13 @@ class CrawlerService:
     async def _crawl_recursive(
         self, base_url: str, limit: int, exclude: set[str] | None = None
     ) -> list[str]:
-        """Recursively crawl the domain up to the limit."""
+        """Recursively crawl the domain up to the limit.
+
+        Improvements over naive BFS:
+        - Logs blocked pages instead of silently skipping
+        - Stall detection: exits early if 3 consecutive batches find 0 new URLs
+        - Reduced timeout (15s) for faster discovery
+        """
         parsed_base = urlparse(base_url)
         base_domain = parsed_base.netloc.lower().replace("www.", "")
 
@@ -118,9 +124,11 @@ class CrawlerService:
         to_crawl: deque[str] = deque([base_url])
         crawled: set[str] = set()
         new_urls: list[str] = []  # Only URLs not in exclude
+        blocked_count = 0
+        stall_batches = 0  # Consecutive batches with zero new URLs
 
-        fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
-        options = FetchOptions(timeout=self.timeout)
+        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+        options = FetchOptions(timeout=min(self.timeout, 15000))  # 15s max for discovery
         sem = self._get_semaphore(base_domain)
 
         async def _fetch_with_limit(url: str):
@@ -134,10 +142,17 @@ class CrawlerService:
             tasks = [_fetch_with_limit(u) for u in batch]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
+            batch_new = 0
             for result in results:
                 if isinstance(result, Exception):
                     continue
                 if result.blocked or not result.html:
+                    blocked_count += 1
+                    self.log.debug(
+                        "crawl_blocked",
+                        url=result.url if hasattr(result, "url") else "unknown",
+                        status=result.status_code if hasattr(result, "status_code") else 0,
+                    )
                     continue
 
                 crawled.add(result.url)
@@ -157,12 +172,41 @@ class CrawlerService:
                             discovered.add(full_url)
                             if not exclude or full_url not in exclude:
                                 new_urls.append(full_url)
+                                batch_new += 1
                             if full_url not in crawled:
                                 to_crawl.append(full_url)
 
                     if len(new_urls) >= limit:
                         break
 
-            await asyncio.sleep(0.05)
+            # Stall detection: only count stalls when pages were fetched successfully
+            # but yielded no new URLs (graph exhausted). Blocked batches don't count —
+            # the queue may still have good URLs behind the blocked ones.
+            batch_fetched = sum(
+                1 for r in results
+                if not isinstance(r, Exception) and not r.blocked and r.html
+            )
+            if batch_new == 0 and batch_fetched > 0:
+                stall_batches += 1
+                if stall_batches >= 3:
+                    self.log.info(
+                        "crawl_stalled",
+                        new_urls=len(new_urls),
+                        blocked=blocked_count,
+                        remaining_queue=len(to_crawl),
+                    )
+                    break
+            elif batch_new > 0:
+                stall_batches = 0
+
+            await asyncio.sleep(0)  # yield control without delay
+
+        if blocked_count > 0:
+            self.log.info(
+                "crawl_complete",
+                new_urls=len(new_urls),
+                blocked=blocked_count,
+                crawled=len(crawled),
+            )
 
         return new_urls[:limit]

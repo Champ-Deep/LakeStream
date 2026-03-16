@@ -13,12 +13,11 @@ These tests use real HTTP requests to public sites, so they:
 """
 
 import asyncio
-from typing import Any
 
 import pytest
-
-from src.models.scraping import FetchOptions, ScrapingTier
 from src.scraping.fetcher.lake_fetcher import LakeFetcher
+
+from src.models.scraping import FetchOptions
 from src.scraping.parser.html_parser import HTMLParser
 from src.templates.wordpress import WordPressTemplate
 

@@ -7,7 +7,10 @@ from src.models.job import JobStatus, ScrapeJob, ScrapeJobInput
 
 
 async def create_job(
-    pool: asyncpg.Pool, input: ScrapeJobInput, org_id: UUID | None = None, user_id: UUID | None = None
+    pool: asyncpg.Pool,
+    input: ScrapeJobInput,
+    org_id: UUID | None = None,
+    user_id: UUID | None = None,
 ) -> ScrapeJob:
     # Fall back to "Default Organization" for unauthenticated dashboard scrapes
     if org_id is None:

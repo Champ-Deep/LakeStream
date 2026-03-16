@@ -130,11 +130,17 @@ class TestEscalationService:
 
     def test_next_tier_playwright_with_proxy_allows(self, svc):
         """Escalation from PLAYWRIGHT should proceed when proxy is available."""
-        assert svc.get_next_tier(ScrapingTier.PLAYWRIGHT, proxy_available=True) == ScrapingTier.PLAYWRIGHT_PROXY
+        result = svc.get_next_tier(
+            ScrapingTier.PLAYWRIGHT, proxy_available=True,
+        )
+        assert result == ScrapingTier.PLAYWRIGHT_PROXY
 
     def test_next_tier_basic_unaffected_by_proxy_flag(self, svc):
         """Escalation from BASIC_HTTP to PLAYWRIGHT is unaffected by proxy flag."""
-        assert svc.get_next_tier(ScrapingTier.BASIC_HTTP, proxy_available=False) == ScrapingTier.PLAYWRIGHT
+        result = svc.get_next_tier(
+            ScrapingTier.BASIC_HTTP, proxy_available=False,
+        )
+        assert result == ScrapingTier.PLAYWRIGHT
 
     @pytest.mark.asyncio
     async def test_linkedin_healthy_session_uses_playwright(self, svc):

@@ -110,16 +110,17 @@ class LakePlaywrightProxyFetcher:
 
                 # Navigate to URL
                 page = await context.new_page()
-                response = await page.goto(url, timeout=options.timeout or settings.playwright_timeout_ms)
+                timeout = options.timeout or settings.playwright_timeout_ms
+                response = await page.goto(url, timeout=timeout)
 
-                # Wait for network to be idle (ensures JS content is loaded)
-                # This is critical for SPAs (React, Vue, Angular) that load content after page load
+                # Wait for network idle (ensures JS content is loaded for SPAs)
                 try:
-                    await page.wait_for_load_state('networkidle', timeout=10000)  # 10s max
-                    log.debug("playwright_networkidle_complete", url=url, domain=domain)
+                    await page.wait_for_load_state('networkidle', timeout=10000)
                 except Exception as e:
-                    # If timeout, continue anyway (better partial content than nothing)
-                    log.debug("playwright_networkidle_timeout", url=url, domain=domain, error=str(e))
+                    log.debug(
+                        "playwright_networkidle_timeout",
+                        url=url, domain=domain, error=str(e),
+                    )
 
                 # Extract content
                 html = await page.content()
@@ -136,7 +137,10 @@ class LakePlaywrightProxyFetcher:
                         "request_count": (session_data.get("request_count", 0) + 1)
                         if session_data
                         else 1,
-                        "authenticated": session_data.get("authenticated", False) if session_data else False,
+                        "authenticated": (
+                            session_data.get("authenticated", False)
+                            if session_data else False
+                        ),
                         "proxy_used": proxy_config.get("server") if proxy_config else None,
                     },
                 )
@@ -262,7 +266,8 @@ class LakePlaywrightProxyFetcher:
             client: Redis client
             domain: Domain to save session for (e.g., "linkedin.com")
             storage_state: Playwright storage state (cookies, localStorage, etc.)
-            metadata: Additional metadata (created_at, last_used_at, request_count, authenticated, proxy_used)
+            metadata: Additional metadata (created_at, last_used_at,
+                request_count, authenticated, proxy_used)
         """
         settings = get_settings()
         key = f"playwright_session:{domain}"

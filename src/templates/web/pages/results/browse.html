@@ -32,7 +32,7 @@
       hx-get="/results"
       hx-target="#results-container"
       hx-swap="innerHTML"
-      hx-select="#results-container"
+      hx-select="#results-container > *"
       hx-push-url="true"
       class="flex flex-wrap items-center gap-4"
     >
@@ -68,6 +68,7 @@
           <option value="tech_stack" {% if filter_data_type == 'tech_stack' %}selected{% endif %}>Tech Stack</option>
           <option value="resource" {% if filter_data_type == 'resource' %}selected{% endif %}>Resources</option>
           <option value="pricing" {% if filter_data_type == 'pricing' %}selected{% endif %}>Pricing</option>
+          <option value="page" {% if filter_data_type == 'page' %}selected{% endif %}>Pages</option>
         </select>
       </div>
 

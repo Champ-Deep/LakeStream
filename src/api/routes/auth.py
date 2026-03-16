@@ -248,6 +248,9 @@ async def logout():
             "message": "Logged out successfully"
         }
     """
-    response = Response(content='{"message": "Logged out successfully"}', media_type="application/json")
+    response = Response(
+        content='{"message": "Logged out successfully"}',
+        media_type="application/json",
+    )
     response.delete_cookie("access_token", path="/")
     return response
