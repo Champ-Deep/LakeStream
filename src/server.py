@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -63,7 +64,16 @@ from src.config.settings import get_settings as _get_settings  # noqa: E402
 from src.api.middleware.auth import TenantContextMiddleware  # noqa: E402
 
 app.add_middleware(TenantContextMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=_get_settings().jwt_secret, session_cookie="ls_session")
+_settings = _get_settings()
+_is_production = bool(os.environ.get("RAILWAY_PUBLIC_DOMAIN") or os.environ.get("RAILWAY_ENVIRONMENT"))
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_settings.jwt_secret,
+    session_cookie="ls_session",
+    https_only=_is_production,
+    same_site="lax",
+    max_age=86400,  # 24 hours
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")

@@ -178,29 +178,6 @@ async def logout(request: Request):
 
 
 # =============================================================================
-# AUTH PAGES
-# =============================================================================
-
-
-@router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    """Login page."""
-    return get_templates().TemplateResponse(
-        "pages/login.html",
-        {"request": request, "layout": "auth"}
-    )
-
-
-@router.get("/signup", response_class=HTMLResponse)
-async def signup_page(request: Request):
-    """Signup page."""
-    return get_templates().TemplateResponse(
-        "pages/signup.html",
-        {"request": request, "layout": "auth"}
-    )
-
-
-# =============================================================================
 # DASHBOARD
 # =============================================================================
 

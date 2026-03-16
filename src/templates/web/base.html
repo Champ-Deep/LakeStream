@@ -172,13 +172,13 @@
               x-transition
               class="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-slate-200 shadow-lg py-2 z-50"
             >
-              <button
-                onclick="document.cookie='access_token=; path=/; max-age=0'; window.location.href='/login';"
+              <a
+                href="/logout"
                 class="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-error flex items-center gap-2"
               >
                 <i data-lucide="log-out" class="w-4 h-4"></i>
                 Sign Out
-              </button>
+              </a>
             </div>
           </div>
         </div>
