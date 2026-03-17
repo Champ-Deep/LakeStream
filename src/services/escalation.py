@@ -10,16 +10,17 @@ from src.models.scraping import FetchResult, ScrapingTier
 
 log = structlog.get_logger()
 
+# Two-tier escalation: start with plain Playwright, escalate to Playwright+Proxy on block
 _TIER_ORDER = [
+    ScrapingTier.PLAYWRIGHT,
     ScrapingTier.PLAYWRIGHT_PROXY,
 ]
 
-# Backward compatibility: map deprecated tier names to new equivalents
+# Backward compatibility: map deprecated tier names to current equivalents
 _TIER_MIGRATION_MAP = {
-    "basic_http": ScrapingTier.PLAYWRIGHT_PROXY,
-    "headless_browser": ScrapingTier.PLAYWRIGHT_PROXY,
+    "basic_http": ScrapingTier.PLAYWRIGHT,
+    "headless_browser": ScrapingTier.PLAYWRIGHT,
     "headless_proxy": ScrapingTier.PLAYWRIGHT_PROXY,
-    "playwright": ScrapingTier.PLAYWRIGHT_PROXY,
 }
 
 
@@ -98,12 +99,22 @@ class EscalationService:
                 authenticated = session.get("authenticated", False)
                 request_count = session.get("request_count", 0)
 
-                # Always use PLAYWRIGHT_PROXY for better success rate
+                        # Healthy authenticated session: use plain Playwright (no proxy cost)
+                # Aging session (>=50 requests): escalate to proxy preemptively
+                if authenticated and request_count < 50:
+                    log.info(
+                        "session_health_tier_decision",
+                        domain=domain,
+                        decision="playwright",
+                        reason="healthy_session",
+                        request_count=request_count,
+                    )
+                    return ScrapingTier.PLAYWRIGHT
                 log.info(
                     "session_health_tier_decision",
                     domain=domain,
                     decision="playwright_proxy",
-                    reason="default_proxy",
+                    reason="aging_or_unauthenticated_session",
                     request_count=request_count,
                 )
                 return ScrapingTier.PLAYWRIGHT_PROXY
@@ -131,7 +142,7 @@ class EscalationService:
             except ValueError:
                 pass
 
-        return ScrapingTier.PLAYWRIGHT_PROXY
+        return ScrapingTier.PLAYWRIGHT
 
     def should_escalate(self, result: FetchResult) -> bool:
         """Determine if result warrants tier escalation.

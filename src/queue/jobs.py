@@ -49,6 +49,9 @@ async def process_scrape_job(
 
         total_data = 0
         errors: list[str] = []
+        # Observability: track URLs discovered vs actually extracted per data type
+        urls_discovered: dict[str, int] = {}
+        urls_extracted: dict[str, int] = {}
 
         # 3. For each requested data_type, run the appropriate worker
         from src.workers.article_parser import ArticleParserWorker
@@ -57,64 +60,92 @@ async def process_scrape_job(
         from src.workers.resource_finder import ResourceFinderWorker
         from src.workers.tech_detector import TechDetectorWorker
 
+        # Collect article URLs from two sources:
+        # 1. BlogExtractorWorker (follows pagination on blog index pages)
+        # 2. URLs the sitemap/crawler already classified directly as ARTICLE
+        #    (individual article slugs discovered at map time — no re-fetching needed)
         blog_urls: list[str] = []
+
+        # Seed blog_urls with any individual article URLs already found during domain mapping
+        sitemap_article_urls = [u["url"] for u in classified_urls if u.get("data_type") == "article"]
+        if sitemap_article_urls:
+            blog_urls.extend(sitemap_article_urls)
+            log.info(
+                "sitemap_articles_seeded",
+                job_id=job_id,
+                domain=domain,
+                count=len(sitemap_article_urls),
+            )
 
         for dtype in data_types:
             try:
                 if dtype == "blog_url":
+                    candidate_urls = [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
+                    urls_discovered["blog_url"] = len(candidate_urls)
                     worker = BlogExtractorWorker(
                         domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id, tier_override=tier
-
                     )
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "blog_url"]
-                    )
-                    # Extract individual article URLs discovered by BlogExtractor
-                    blog_urls = []
+                    result = await worker.execute(candidate_urls)
+                    # Collect article URLs discovered by BlogExtractor (via pagination)
+                    extractor_article_urls: list[str] = []
                     for r in result:
                         if r.metadata and isinstance(r.metadata, dict):
                             article_urls = r.metadata.get("article_urls", [])
                             if article_urls:
-                                blog_urls.extend(article_urls)
+                                extractor_article_urls.extend(article_urls)
                             elif r.url:
-                                # No article links found — page is likely an article itself
-                                blog_urls.append(r.url)
+                                extractor_article_urls.append(r.url)
+
+                    # Merge into blog_urls, deduplicating against sitemap articles already added
+                    existing = set(blog_urls)
+                    for u in extractor_article_urls:
+                        if u not in existing:
+                            blog_urls.append(u)
+                            existing.add(u)
+
+                    urls_extracted["blog_url"] = len(result)
                     total_data += len(result)
 
                 elif dtype == "article":
-
+                    urls_discovered["article"] = len(blog_urls)
                     worker = ArticleParserWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id, tier_override=tier)  # type: ignore[assignment]
                     result = await worker.execute(blog_urls)
+                    urls_extracted["article"] = len(result)
                     total_data += len(result)
 
                 elif dtype == "contact":
+                    candidate_urls = [u["url"] for u in classified_urls if u.get("data_type") == "contact"]
+                    urls_discovered["contact"] = len(candidate_urls)
                     worker = ContactFinderWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id, tier_override=tier)  # type: ignore[assignment]
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "contact"]
-                    )
+                    result = await worker.execute(candidate_urls)
+                    urls_extracted["contact"] = len(result)
                     total_data += len(result)
 
                 elif dtype == "tech_stack":
+                    urls_discovered["tech_stack"] = 1
                     worker = TechDetectorWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id, tier_override=tier)  # type: ignore[assignment]
                     result = await worker.execute([f"https://{domain}"])
+                    urls_extracted["tech_stack"] = len(result)
                     total_data += len(result)
 
                 elif dtype == "resource":
+                    candidate_urls = [u["url"] for u in classified_urls if u.get("data_type") == "resource"]
+                    urls_discovered["resource"] = len(candidate_urls)
                     worker = ResourceFinderWorker(domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id, tier_override=tier)  # type: ignore[assignment]
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "resource"]
-                    )
+                    result = await worker.execute(candidate_urls)
+                    urls_extracted["resource"] = len(result)
                     total_data += len(result)
 
                 elif dtype == "pricing":
                     from src.workers.pricing_finder import PricingFinderWorker
 
+                    candidate_urls = [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
+                    urls_discovered["pricing"] = len(candidate_urls)
                     worker = PricingFinderWorker(  # type: ignore[assignment]
                         domain=domain, job_id=job_id, pool=pool, org_id=org_id, user_id=user_id, tier_override=tier,
                     )
-                    result = await worker.execute(
-                        [u["url"] for u in classified_urls if u.get("data_type") == "pricing"]
-                    )
+                    result = await worker.execute(candidate_urls)
+                    urls_extracted["pricing"] = len(result)
                     total_data += len(result)
 
             except Exception as e:
@@ -163,12 +194,26 @@ async def process_scrape_job(
                     error=str(e),
                 )
 
+        # Build per-dtype yield report for observability
+        yield_report = {
+            dt: {
+                "discovered": urls_discovered.get(dt, 0),
+                "extracted": urls_extracted.get(dt, 0),
+                "yield_pct": round(
+                    urls_extracted.get(dt, 0) / urls_discovered[dt] * 100, 1
+                ) if urls_discovered.get(dt) else 0,
+            }
+            for dt in set(list(urls_discovered.keys()) + list(urls_extracted.keys()))
+        }
+
         log.info(
             "job_completed",
             job_id=job_id,
             domain=domain,
             data_extracted=total_data,
             duration_ms=duration_ms,
+            yield_report=yield_report,
+            errors=errors if errors else None,
         )
 
         return {
@@ -176,6 +221,7 @@ async def process_scrape_job(
             "domain": domain,
             "data_extracted": total_data,
             "duration_ms": duration_ms,
+            "yield_report": yield_report,
             "errors": errors,
         }
 

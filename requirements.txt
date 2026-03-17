@@ -15,5 +15,6 @@ bcrypt>=4.2.0
 pyjwt>=2.10.0
 markdownify>=0.13.1
 scrapling>=0.2.0
+trafilatura>=1.12.0
 itsdangerous>=2.1.0
 python-multipart>=0.0.9

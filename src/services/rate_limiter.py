@@ -6,14 +6,31 @@ import structlog
 
 log = structlog.get_logger()
 
-# Domain-specific rate limits (milliseconds between requests)
-# Higher values = more conservative = less likely to trigger blocks = less proxy usage
+# Domain-specific rate limits (milliseconds between requests).
+# Tuned conservatively — it is always safer to go slower and avoid bans
+# than to go fast and get IP-blocked or trigger CAPTCHAs.
 DOMAIN_RATE_LIMITS = {
-    "linkedin.com": 5000,  # 5 seconds (very conservative to avoid bans)
-    "*.linkedin.com": 5000,  # Apply to all LinkedIn subdomains
-    "*.hubspot.com": 2000,  # 2 seconds
-    "*.wordpress.com": 1500,  # 1.5 seconds
-    "default": 1000,  # 1 second (current default)
+    # Social / professional networks — very aggressive bot detection
+    "linkedin.com": 8000,       # 8s — account-ban risk is high
+    "*.linkedin.com": 8000,
+    "twitter.com": 5000,
+    "x.com": 5000,
+    "facebook.com": 5000,
+    "*.facebook.com": 5000,
+
+    # Major marketing / SaaS platforms with known bot detection
+    "*.hubspot.com": 3000,      # 3s — HubSpot rate-limits aggressively
+    "*.salesforce.com": 3000,
+    "*.marketo.com": 3000,
+    "*.pardot.com": 3000,
+
+    # WordPress.com hosted blogs — shared infrastructure, moderate limits
+    "*.wordpress.com": 2000,    # 2s
+    "*.medium.com": 2000,
+    "medium.com": 2000,
+
+    # Default for all other domains — 1.5s is safer than 1s for Playwright
+    "default": 1500,
 }
 
 

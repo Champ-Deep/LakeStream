@@ -22,6 +22,7 @@ dependencies = [
     "bcrypt>=4.2.0",
     "pyjwt>=2.10.0",
     "scrapling>=0.2.0",
+    "trafilatura>=1.12.0",
 ]
 
 [project.optional-dependencies]

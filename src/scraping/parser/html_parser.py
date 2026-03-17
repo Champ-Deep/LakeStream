@@ -1,14 +1,18 @@
 from urllib.parse import urljoin
 
+import structlog
 from selectolax.parser import HTMLParser
+
+log = structlog.get_logger()
 
 
 class HtmlParser:
-    """General-purpose HTML parser using selectolax."""
+    """General-purpose HTML parser using selectolax + trafilatura for content extraction."""
 
     def __init__(self, html: str, base_url: str):
         self.tree = HTMLParser(html)
         self.base_url = base_url
+        self._raw_html = html
 
     def extract_title(self) -> str | None:
         """Extract page title."""
@@ -76,30 +80,47 @@ class HtmlParser:
         return list(dict.fromkeys(categories))
 
     def extract_content(self, max_chars: int = 50_000) -> str | None:
-        """Extract main article/page body text."""
+        """Extract main article/page body text using trafilatura readability algorithm.
+
+        Primary: trafilatura — strips boilerplate (nav, footer, ads) using
+        text-density and structural heuristics, returning only the main content.
+        Fallback: CSS selector cascade for pages trafilatura cannot parse.
+        """
+        # Primary: trafilatura readability extraction
+        try:
+            import trafilatura
+
+            text = trafilatura.extract(
+                self._raw_html,
+                include_comments=False,
+                include_tables=True,
+                no_fallback=False,  # allow trafilatura's own fallback heuristics
+                favor_precision=False,  # favor recall — get more content
+            )
+            if text and len(text.split()) > 30:
+                return text[:max_chars]
+        except Exception as exc:
+            log.debug("trafilatura_extract_failed", error=str(exc))
+
+        # Fallback: CSS selector cascade (better than raw <body>)
         for selector in [
-            # Common WordPress/blog patterns
             ".entry-content",
             ".post-content",
             ".post-body",
             ".article-content",
             ".blog-content",
-            # Semantic HTML5
             "article",
             "main",
-            # Generic content containers
-            "#left_content",  # fonada.com and similar sites
+            "#left_content",
             "#content",
             ".content",
             "#main-content",
             ".main-content",
-            # Fallback: any div with substantial text
-            "body",
         ]:
             node = self.tree.css_first(selector)
             if node and node.text():
                 text = " ".join(node.text().split()).strip()
-                if len(text) > 100:  # Skip trivially short matches
+                if len(text) > 100:
                     return text[:max_chars]
         return None
 

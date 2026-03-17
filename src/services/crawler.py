@@ -41,8 +41,8 @@ class CrawlerService:
         base_url = ensure_scheme(domain)
         self.log.info("mapping_domain", domain=domain, limit=limit)
 
-        # 1. Try sitemap.xml first (most efficient)
-        sitemap_urls = await self._try_sitemap(base_url)
+        # 1. Discover sitemap URLs from robots.txt first, then fall back to /sitemap.xml
+        sitemap_urls = await self._try_sitemaps(base_url)
         if sitemap_urls:
             self.log.info("sitemap_found", urls=len(sitemap_urls))
             return list(sitemap_urls)[:limit]
@@ -50,48 +50,108 @@ class CrawlerService:
         # 2. Fallback to native recursive crawl
         return await self._crawl_recursive(base_url, limit)
 
-    async def _try_sitemap(self, base_url: str) -> set[str]:
-        """Attempt to find and parse sitemap.xml, including sitemap index files."""
+    async def _discover_sitemap_urls_from_robots(self, base_url: str, client: httpx.AsyncClient) -> list[str]:
+        """Parse robots.txt and extract all Sitemap: directive URLs.
+
+        Returns a list of sitemap URLs declared in robots.txt, or empty list if
+        robots.txt is missing / has no Sitemap directives.
+        """
         import re
-
-        sitemap_url = urljoin(base_url, "/sitemap.xml")
-        all_urls: set[str] = set()
-
+        robots_url = urljoin(base_url, "/robots.txt")
+        sitemap_urls: list[str] = []
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                r = await client.get(sitemap_url)
-                if r.status_code != 200:
+            r = await client.get(robots_url)
+            if r.status_code == 200:
+                for line in r.text.splitlines():
+                    line = line.strip()
+                    if line.lower().startswith("sitemap:"):
+                        url = line.split(":", 1)[1].strip()
+                        if url:
+                            sitemap_urls.append(url)
+                self.log.info(
+                    "robots_txt_sitemaps",
+                    base_url=base_url,
+                    found=len(sitemap_urls),
+                )
+        except Exception as e:
+            self.log.debug("robots_txt_error", base_url=base_url, error=str(e))
+        return sitemap_urls
+
+    async def _fetch_and_parse_sitemap(self, sitemap_url: str, client: httpx.AsyncClient) -> set[str]:
+        """Fetch one sitemap (regular or index) and return all content URLs inside it.
+
+        Handles:
+        - Regular <urlset> sitemaps
+        - <sitemapindex> files pointing to child sitemaps (fetched concurrently)
+        """
+        import re
+        all_urls: set[str] = set()
+        try:
+            r = await client.get(sitemap_url)
+            if r.status_code != 200:
+                return set()
+            content = r.text
+
+            if "<sitemapindex" in content:
+                # Index file — extract child sitemap URLs and fetch them concurrently
+                child_sitemaps = re.findall(r"<loc>\s*(.*?)\s*</loc>", content)
+                child_sitemaps = [
+                    s for s in child_sitemaps
+                    if "sitemap" in s.lower() and s.lower().endswith(".xml")
+                ]
+                self.log.info("sitemap_index_found", url=sitemap_url, child_count=len(child_sitemaps))
+
+                async def _fetch_child(child_url: str) -> set[str]:
+                    try:
+                        child_r = await client.get(child_url)
+                        if child_r.status_code == 200:
+                            child_locs = re.findall(r"<loc>\s*(.*?)\s*</loc>", child_r.text)
+                            valid = {u for u in child_locs if is_valid_scrape_url(u) and not u.lower().endswith(".xml")}
+                            self.log.debug("child_sitemap_parsed", url=child_url, urls_found=len(valid))
+                            return valid
+                    except Exception as e:
+                        self.log.debug("child_sitemap_error", url=child_url, error=str(e))
                     return set()
 
-                content = r.text
-
-                # Check if this is a sitemap index (contains <sitemapindex> or links to other sitemaps)
-                if "<sitemapindex" in content or "sitemap.xml" in content.lower():
-                    # This is a sitemap index - extract all child sitemap URLs
-                    child_sitemaps = re.findall(r"<loc>(.*?)</loc>", content)
-                    child_sitemaps = [s for s in child_sitemaps if "sitemap" in s.lower() and s.endswith(".xml")]
-
-                    self.log.info("sitemap_index_found", child_count=len(child_sitemaps))
-
-                    # Fetch all child sitemaps concurrently
-                    for child_url in child_sitemaps:
-                        try:
-                            child_r = await client.get(child_url)
-                            if child_r.status_code == 200:
-                                child_urls = re.findall(r"<loc>(.*?)</loc>", child_r.text)
-                                valid_urls = {u for u in child_urls if is_valid_scrape_url(u) and not u.endswith(".xml")}
-                                all_urls.update(valid_urls)
-                                self.log.debug("child_sitemap_parsed", url=child_url, urls_found=len(valid_urls))
-                        except Exception as e:
-                            self.log.debug("child_sitemap_error", url=child_url, error=str(e))
-                            continue
-                else:
-                    # Regular sitemap - extract URLs directly
-                    urls = re.findall(r"<loc>(.*?)</loc>", content)
-                    all_urls = {u for u in urls if is_valid_scrape_url(u)}
+                # Fetch all child sitemaps concurrently
+                child_results = await asyncio.gather(*[_fetch_child(u) for u in child_sitemaps])
+                for result in child_results:
+                    all_urls.update(result)
+            else:
+                # Regular urlset sitemap
+                locs = re.findall(r"<loc>\s*(.*?)\s*</loc>", content)
+                all_urls = {u for u in locs if is_valid_scrape_url(u)}
 
         except Exception as e:
-            self.log.debug("sitemap_not_found", url=sitemap_url, error=str(e))
+            self.log.debug("sitemap_fetch_error", url=sitemap_url, error=str(e))
+
+        return all_urls
+
+    async def _try_sitemaps(self, base_url: str) -> set[str]:
+        """Discover sitemaps via robots.txt first, then fall back to /sitemap.xml.
+
+        Strategy:
+        1. Fetch robots.txt → extract all Sitemap: directive URLs
+        2. If none found, try /sitemap.xml, /sitemap_index.xml
+        3. Parse each sitemap (handles sitemap index → child sitemaps concurrently)
+        """
+        all_urls: set[str] = set()
+
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            # Step 1: get sitemap URLs from robots.txt
+            sitemap_locations = await self._discover_sitemap_urls_from_robots(base_url, client)
+
+            # Step 2: if robots.txt had none, try standard locations
+            if not sitemap_locations:
+                sitemap_locations = [
+                    urljoin(base_url, "/sitemap.xml"),
+                    urljoin(base_url, "/sitemap_index.xml"),
+                ]
+
+            # Step 3: fetch and parse all discovered sitemaps
+            for sitemap_url in sitemap_locations:
+                urls = await self._fetch_and_parse_sitemap(sitemap_url, client)
+                all_urls.update(urls)
 
         self.log.info("sitemap_total_urls", count=len(all_urls))
         return all_urls
@@ -105,7 +165,7 @@ class CrawlerService:
         to_crawl: list[str] = [base_url]
         crawled: set[str] = set()
 
-        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT_PROXY)
+        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
         options = FetchOptions(timeout=self.timeout)
         sem = self._get_semaphore(base_domain)
 
