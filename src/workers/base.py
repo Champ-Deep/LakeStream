@@ -73,17 +73,26 @@ class BaseWorker(ABC):
             return result
 
         if self._escalation is None:
-            await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
-            result = await retry_async(
-                fetcher.fetch,
-                url,
-                options,
-                max_retries=2,
-                base_delay=2.0,
-                retry_on=(ConnectionError, TimeoutError, OSError),
-            )
-            self._rate_limiter.report_result(domain, result.status_code)
+            # No DB pool — attempt lightpanda first, fall back through the tier chain manually
+            for fallback_tier in (ScrapingTier.LIGHTPANDA, ScrapingTier.PLAYWRIGHT, ScrapingTier.PLAYWRIGHT_PROXY):
+                await self._rate_limiter.wait(domain)
+                fetcher = create_fetcher(fallback_tier)
+                result = await retry_async(
+                    fetcher.fetch,
+                    url,
+                    options,
+                    max_retries=2,
+                    base_delay=2.0,
+                    retry_on=(ConnectionError, TimeoutError, OSError),
+                )
+                self._rate_limiter.report_result(domain, result.status_code)
+                if not result.blocked:
+                    return result
+                self.log.info(
+                    "fetch_no_pool_escalating",
+                    url=url,
+                    from_tier=fallback_tier.value,
+                )
             return result
 
         current_tier = await self._escalation.decide_initial_tier(self.domain)

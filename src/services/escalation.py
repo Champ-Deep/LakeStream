@@ -10,15 +10,18 @@ from src.models.scraping import FetchResult, ScrapingTier
 
 log = structlog.get_logger()
 
-# Two-tier escalation: start with plain Playwright, escalate to Playwright+Proxy on block
+# Three-tier escalation: Lightpanda → Playwright → Playwright+Proxy
+# Lightpanda is fastest/cheapest; if blocked/unavailable escalates to full Playwright;
+# if still blocked escalates to Playwright with residential proxy.
 _TIER_ORDER = [
+    ScrapingTier.LIGHTPANDA,
     ScrapingTier.PLAYWRIGHT,
     ScrapingTier.PLAYWRIGHT_PROXY,
 ]
 
 # Backward compatibility: map deprecated tier names to current equivalents
 _TIER_MIGRATION_MAP = {
-    "basic_http": ScrapingTier.PLAYWRIGHT,
+    "basic_http": ScrapingTier.LIGHTPANDA,
     "headless_browser": ScrapingTier.PLAYWRIGHT,
     "headless_proxy": ScrapingTier.PLAYWRIGHT_PROXY,
 }
@@ -26,6 +29,12 @@ _TIER_MIGRATION_MAP = {
 
 class EscalationService:
     """Manages three-tier adaptive scraping with automatic escalation.
+
+    Tier order: Lightpanda → Playwright → Playwright+Proxy
+
+    Lightpanda (tier 1) is a lightweight CDP headless browser — fast and cheap.
+    If Lightpanda is not installed or the page blocks it, escalation promotes to
+    Playwright (tier 2). If that also fails, Playwright+Proxy (tier 3) is used.
 
     Includes session health tracking for domains like LinkedIn to optimize
     tier selection based on session state and usage.
@@ -81,16 +90,21 @@ class EscalationService:
     async def decide_initial_tier(self, domain: str) -> ScrapingTier:
         """Decide the starting tier based on domain history and session health.
 
+        Default starting tier is LIGHTPANDA (tier 1). Escalates automatically:
+        - LIGHTPANDA → PLAYWRIGHT if blocked or binary not installed
+        - PLAYWRIGHT → PLAYWRIGHT_PROXY if still blocked
+
         Handles automatic migration from deprecated tiers:
+        - basic_http    → lightpanda
         - headless_browser → playwright
-        - headless_proxy → playwright_proxy
+        - headless_proxy   → playwright_proxy
 
         For LinkedIn domains, uses session health tracking to optimize tier:
-        - Healthy session (authenticated, <50 requests): PLAYWRIGHT (no proxy)
+        - Healthy authenticated session (<50 requests): PLAYWRIGHT (skip lightpanda)
         - Aging session (>=50 requests): PLAYWRIGHT_PROXY (preemptive proxy)
-        - No session or unhealthy: follow normal escalation
+        - No session or unhealthy: follow normal escalation from LIGHTPANDA
         """
-        # Special handling for LinkedIn domains - optimize based on session health
+        # Special handling for LinkedIn — lightpanda is insufficient for auth-gated pages
         linkedin_domains = ["linkedin.com", "www.linkedin.com", "sales.linkedin.com"]
         if domain in linkedin_domains or domain.endswith(".linkedin.com"):
             session = await self._check_session_health(domain)
@@ -99,7 +113,7 @@ class EscalationService:
                 authenticated = session.get("authenticated", False)
                 request_count = session.get("request_count", 0)
 
-                        # Healthy authenticated session: use plain Playwright (no proxy cost)
+                # Healthy authenticated session: use plain Playwright (no proxy cost)
                 # Aging session (>=50 requests): escalate to proxy preemptively
                 if authenticated and request_count < 50:
                     log.info(
@@ -142,7 +156,8 @@ class EscalationService:
             except ValueError:
                 pass
 
-        return ScrapingTier.PLAYWRIGHT
+        # Default: start at tier 1 (Lightpanda) — escalation handles fallback
+        return ScrapingTier.LIGHTPANDA
 
     def should_escalate(self, result: FetchResult) -> bool:
         """Determine if result warrants tier escalation.

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 class ScrapingTier(StrEnum):
+    LIGHTPANDA = "lightpanda"
     BASIC_HTTP = "basic_http"
     HEADLESS_BROWSER = "headless_browser"
     PLAYWRIGHT = "playwright"

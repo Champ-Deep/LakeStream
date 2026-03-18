@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     mail_engine_from_address: str = "LakeStream <notifications@lakeb2b.com>"
     mail_engine_enabled: bool = False
 
+    # Lightpanda CDP browser (Tier 1) — falls back to Playwright if binary not found
+    lightpanda_bin_path: str = ""  # Explicit path; leave empty to search PATH
+
     # Playwright session-based scraping
     playwright_session_ttl_seconds: int = 3600  # Session expiration (1 hour)
     playwright_headless: bool = True  # False for debugging
