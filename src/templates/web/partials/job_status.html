@@ -66,32 +66,20 @@
   <div class="mt-4 pt-4 border-t border-stone-100 text-center">
     <span class="text-xs text-stone-400 uppercase tracking-wide">Strategy: </span>
     <span class="text-sm text-charcoal">
-      {% if job.strategy_used == 'basic_http' %}
+      {% if job.strategy_used == 'playwright' %}
         <span class="inline-flex items-center gap-1">
           <span class="w-2 h-2 rounded-full bg-success"></span>
-          Basic HTTP
-        </span>
-      {% elif job.strategy_used == 'playwright' %}
-        <span class="inline-flex items-center gap-1">
-          <span class="w-2 h-2 rounded-full bg-warning"></span>
           Playwright
         </span>
       {% elif job.strategy_used == 'playwright_proxy' %}
         <span class="inline-flex items-center gap-1">
-          <span class="w-2 h-2 rounded-full bg-error"></span>
+          <span class="w-2 h-2 rounded-full bg-warning"></span>
           Playwright + Proxy
         </span>
-      {% elif job.strategy_used == 'headless_browser' %}
-        <!-- Legacy support -->
+      {% elif job.strategy_used in ('basic_http', 'headless_browser', 'headless_proxy') %}
         <span class="inline-flex items-center gap-1">
-          <span class="w-2 h-2 rounded-full bg-warning"></span>
+          <span class="w-2 h-2 rounded-full bg-stone-400"></span>
           Playwright (legacy)
-        </span>
-      {% elif job.strategy_used == 'headless_proxy' %}
-        <!-- Legacy support -->
-        <span class="inline-flex items-center gap-1">
-          <span class="w-2 h-2 rounded-full bg-error"></span>
-          Playwright + Proxy (legacy)
         </span>
       {% else %}
         {{ job.strategy_used }}
@@ -100,6 +88,16 @@
   </div>
   {% endif %}
 </div>
+
+{% if job.status in ('completed', 'failed') %}
+<script>
+  // Terminal status reached via polling — reload page to show action buttons
+  var panel = document.getElementById('job-status-panel');
+  if (panel) panel.removeAttribute('hx-trigger');
+  window.location.reload();
+</script>
+{% endif %}
+
 {% else %}
 <div class="bg-white rounded-xl border border-stone-200 p-6 text-center">
   <p class="text-stone-400">Job not found</p>

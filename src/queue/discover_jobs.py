@@ -71,7 +71,7 @@ async def process_discovery_job(ctx: dict, *, discovery_id: str) -> dict:
                 max_pages=job.max_pages_per_domain,
                 data_types=job.data_types,
             )
-            scrape_job = await job_queries.create_job(pool, scrape_input)
+            scrape_job = await job_queries.create_job(pool, scrape_input, org_id=job.org_id)
 
             # Record in discovery_job_domains
             await disc_queries.insert_discovery_domain(

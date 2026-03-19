@@ -47,6 +47,10 @@ _ERROR_MARKERS = ("error", "404", "not found", "page not found")
 class ContentWorker(BaseWorker):
     """Fetches each URL once and runs all applicable extractors."""
 
+    def __init__(self, raw_only: bool = False, **kwargs):
+        super().__init__(**kwargs)
+        self.raw_only = raw_only
+
     async def execute(  # type: ignore[override]
         self,
         classified_urls: list[dict],
@@ -104,7 +108,7 @@ class ContentWorker(BaseWorker):
                     continue
                 fetched_urls.add(url)
                 try:
-                    records = await self._process_url(url, DataType.BLOG_URL, data_types)
+                    records = await self._process_url(url, DataType.ARTICLE, data_types)
                     all_results.extend(records)
                 except Exception as e:
                     self.log.error("article_process_error", url=url, error=str(e))
@@ -145,6 +149,23 @@ class ContentWorker(BaseWorker):
 
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
+
+        if self.raw_only:
+            if records:
+                await self.export_results(records)
+            return [
+                ScrapedData(
+                    id=UUID(int=0),
+                    job_id=UUID(self.job_id),
+                    domain=self.domain,
+                    data_type=rec["data_type"],
+                    url=rec.get("url", url),
+                    title=rec.get("title"),
+                    metadata=rec.get("metadata", {}),
+                    scraped_at=datetime.now(UTC),
+                )
+                for rec in records
+            ]
 
         # --- Specialized extraction based on URL classification ---
 

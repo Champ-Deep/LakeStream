@@ -19,12 +19,14 @@ async def process_scrape_job(
     max_pages: int,
     data_types: list[str],
     tier: str | None = None,
+    raw_only: bool = False,
 ) -> dict:
     """Main scrape job processor. Orchestrates all workers for a domain.
 
     Args:
         tier: Optional tier override (e.g., "playwright", "playwright_proxy").
               If provided, bypasses automatic escalation and uses this tier for all fetches.
+        raw_only: If True, save only raw page content and skip specialized extraction.
     """
     pool = ctx["pool"]
     start_time = time.time()
@@ -56,6 +58,7 @@ async def process_scrape_job(
         worker_kwargs = dict(
             domain=domain, job_id=job_id, pool=pool,
             org_id=org_id, user_id=user_id, tier_override=tier, proxy_url=proxy_url,
+            raw_only=raw_only,
         )
 
         # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)

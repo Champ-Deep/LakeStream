@@ -46,10 +46,10 @@ class TestScrapeExecuteEndpoint:
         async with httpx.AsyncClient(timeout=30.0) as client:
             yield client
 
-    async def test_execute_scrape_basic_http_tier(
+    async def test_execute_scrape_playwright_tier(
         self, base_url: str, http_client: httpx.AsyncClient, db_pool: asyncpg.Pool
     ):
-        """Test executing a scrape job with basic HTTP tier.
+        """Test executing a scrape job with Playwright tier.
 
         Workflow:
         1. Submit scrape job for example.com
@@ -64,7 +64,7 @@ class TestScrapeExecuteEndpoint:
             "template_id": "generic",
             "data_types": ["contact"],
             "max_pages": 1,
-            "tier": "basic_http",  # Force basic HTTP tier
+            "tier": "playwright",
         }
 
         response = await http_client.post(f"{base_url}/api/scrape/execute", json=payload)

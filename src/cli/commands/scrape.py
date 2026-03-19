@@ -18,7 +18,7 @@ def scrape(
     ] = None,
     tier: Annotated[
         str | None,
-        typer.Option(help="Force tier: basic_http, playwright, playwright_proxy."),
+        typer.Option(help="Force tier: playwright, playwright_proxy."),
     ] = None,
     max_pages: Annotated[int, typer.Option("--max-pages", "-m", help="Max pages.")] = 100,
     data_types: Annotated[

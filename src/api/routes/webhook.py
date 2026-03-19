@@ -126,6 +126,7 @@ async def trigger_scrape(request: WebhookTriggerRequest, user: dict = Depends(ge
             max_pages=request.max_pages,
             data_types=request.data_types,
             tier=request.tier,
+            raw_only=getattr(request, "raw_only", False),
         )
         await redis.aclose()
     except Exception as e:

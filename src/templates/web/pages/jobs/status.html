@@ -128,16 +128,12 @@
       <div class="flex justify-between">
         <dt class="text-slate">Strategy</dt>
         <dd class="text-charcoal">
-          {% if job.strategy_used == 'basic_http' %}
-            Basic HTTP
-          {% elif job.strategy_used == 'playwright' %}
+          {% if job.strategy_used == 'playwright' %}
             Playwright
           {% elif job.strategy_used == 'playwright_proxy' %}
             Playwright + Proxy
-          {% elif job.strategy_used == 'headless_browser' %}
+          {% elif job.strategy_used in ('basic_http', 'headless_browser', 'headless_proxy') %}
             Playwright (legacy)
-          {% elif job.strategy_used == 'headless_proxy' %}
-            Playwright + Proxy (legacy)
           {% else %}
             {{ job.strategy_used }}
           {% endif %}

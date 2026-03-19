@@ -17,12 +17,16 @@ class ScrapeJobInput(BaseModel):
     template_id: str | None = None
     tier: str | None = Field(
         default=None,
-        description="Optional tier override (basic_http, playwright, playwright_proxy). "
+        description="Optional tier override (playwright, playwright_proxy). "
         "If not specified, uses automatic escalation.",
     )
     max_pages: int = Field(default=100, gt=0, le=500)
     data_types: list[str] = Field(
         default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]
+    )
+    raw_only: bool = Field(
+        default=False,
+        description="Save only raw page content (skip article/contact/tech extraction).",
     )
     priority: int = Field(default=5, ge=1, le=10)
 

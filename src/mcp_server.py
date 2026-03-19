@@ -38,7 +38,7 @@ async def submit_scrape_job(
         domain: Domain to scrape (e.g. "hubspot.com", "stripe.com")
         data_types: What to extract. Options: blog_url, article, contact, tech_stack,
                     resource, pricing. Defaults to all types.
-        tier: Scraping tier override: basic_http, playwright, playwright_proxy.
+        tier: Scraping tier override: playwright, playwright_proxy.
               Leave empty for automatic escalation (recommended).
         max_pages: Maximum pages to scrape (1-500, default 100)
         template_id: Platform template: wordpress, hubspot, webflow, generic, directory.
@@ -77,6 +77,7 @@ async def submit_scrape_job(
         max_pages=input_model.max_pages,
         data_types=input_model.data_types,
         tier=input_model.tier,
+        raw_only=input_model.raw_only,
     )
     await redis.aclose()
 

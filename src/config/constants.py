@@ -1,10 +1,7 @@
 # Per-request cost estimates by scraping tier
 TIER_COSTS: dict[str, float] = {
-    "basic_http": 0.0001,
-    "headless_browser": 0.002,
     "playwright": 0.003,
     "playwright_proxy": 0.0035,
-    "headless_proxy": 0.004,
 }
 
 QUEUE_NAMES: dict[str, str] = {

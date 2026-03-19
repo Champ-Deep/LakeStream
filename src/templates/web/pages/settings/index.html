@@ -46,8 +46,8 @@
       <div class="flex-1">
         <h2 class="text-xl font-bold text-navy mb-1">Proxy Configuration</h2>
         <p class="text-slate-500 text-sm">
-          Add a proxy URL to enable Tier 3 scraping (headless browser + proxy).
-          Without a proxy, scraping uses Tier 1 (HTTP) and Tier 2 (headless browser) only.
+          Add a proxy URL to enable Playwright + Proxy scraping.
+          Without a proxy, scraping uses Playwright only.
         </p>
       </div>
       <span x-show="proxyEnabled" x-cloak class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold whitespace-nowrap">Active</span>
@@ -63,7 +63,7 @@
           placeholder="socks5://user:pass@proxy.example.com:1080"
           class="input flex-1 font-mono text-sm"
         >
-        <p class="text-xs text-slate-400 mt-2">Supports HTTP, HTTPS, and SOCKS5 proxy URLs. Scrape jobs will route through this proxy when Tier 3 is needed.</p>
+        <p class="text-xs text-slate-400 mt-2">Supports HTTP, HTTPS, and SOCKS5 proxy URLs. Scrape jobs will route through this proxy when escalation to Playwright + Proxy is needed.</p>
       </div>
 
       <!-- Save Result -->
@@ -279,6 +279,94 @@
     </div>
   </div>
 
+  {% if request.session.role == 'org_owner' %}
+  <!-- Team Members Card -->
+  <div class="card p-8">
+    <div class="flex items-start gap-6">
+      <div class="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+        <i data-lucide="users" class="w-7 h-7 text-white"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy mb-1">Team Members</h2>
+        <p class="text-slate-500 text-sm">
+          Manage your organization's team members and invite new users to collaborate.
+        </p>
+      </div>
+    </div>
+
+    <!-- Invite Form -->
+    <div class="mt-8 bg-slate-50 rounded-2xl p-6">
+      <h3 class="font-bold text-navy mb-4">Invite New Member</h3>
+      <form method="POST" action="/settings/team/invite" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Full Name</label>
+            <input type="text" name="full_name" required class="input text-sm" placeholder="John Doe">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Email Address</label>
+            <input type="email" name="email" required class="input text-sm" placeholder="john@example.com">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Initial Password</label>
+            <input type="password" name="password" required class="input text-sm" placeholder="At least 8 characters" minlength="8">
+          </div>
+        </div>
+        <div class="flex justify-end pt-2">
+          <button type="submit" class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            Invite Member
+          </button>
+        </div>
+        {% if request.query_params.error %}
+          <p class="text-red-500 mt-2 text-sm">{{ request.query_params.error }}</p>
+        {% endif %}
+      </form>
+    </div>
+
+    <!-- Active Members List -->
+    <div class="mt-8">
+      <h3 class="font-bold text-navy mb-4">Active Members</h3>
+      <div class="border rounded-xl overflow-hidden">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="px-6 py-4 font-bold">Name</th>
+              <th class="px-6 py-4 font-bold">Role</th>
+              <th class="px-6 py-4 font-bold">Joined</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for member in team_members %}
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-6 py-4">
+                <div class="font-medium text-navy">{{ member.full_name }}</div>
+                <div class="text-slate-400 text-xs">{{ member.email }}</div>
+              </td>
+              <td class="px-6 py-4">
+                {% if member.role == 'org_owner' %}
+                  <span class="badge badge-success">Owner</span>
+                {% else %}
+                  <span class="badge badge-info text-blue-700 bg-blue-50 border-blue-200">Member</span>
+                {% endif %}
+              </td>
+              <td class="px-6 py-4 text-slate-500">
+                {{ member.created_at.strftime('%Y-%m-%d') if member.created_at else 'Unknown' }}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not team_members %}
+            <tr>
+              <td colspan="3" class="px-6 py-8 text-center text-slate-500">No team members found.</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Quick Export Card -->
   <div class="card p-8">
     <div class="flex items-start gap-6">
@@ -439,7 +527,7 @@ function proxySettings() {
           const data = await res.json();
           this.proxyEnabled = data.proxy_enabled;
           this.saveResult = 'success';
-          this.saveMessage = this.proxyUrl ? 'Proxy saved — Tier 3 scraping enabled' : 'Proxy removed — Tier 3 disabled';
+          this.saveMessage = this.proxyUrl ? 'Proxy saved — Playwright + Proxy enabled' : 'Proxy removed — Proxy tier disabled';
         } else {
           this.saveResult = 'error';
           this.saveMessage = 'Failed to save proxy settings';
@@ -473,9 +561,9 @@ function copyToClipboard(inputId, button) {
 
 function webhookSettings() {
   return {
-    exportUrl: localStorage.getItem('webhook_export_url') || '',
-    autoSendOnComplete: localStorage.getItem('webhook_auto_send') === 'true',
-    includeMetadata: localStorage.getItem('webhook_include_metadata') === 'true',
+    exportUrl: '{{ webhook_url or "" }}',
+    autoSendOnComplete: {{ 'true' if webhook_auto_send else 'false' }},
+    includeMetadata: {{ 'true' if webhook_include_metadata else 'false' }},
     testing: false,
     testResult: null,
     testMessage: '',
@@ -508,12 +596,24 @@ function webhookSettings() {
       this.testing = false;
     },
 
-    saveSettings() {
-      localStorage.setItem('webhook_export_url', this.exportUrl);
-      localStorage.setItem('webhook_auto_send', this.autoSendOnComplete);
-      localStorage.setItem('webhook_include_metadata', this.includeMetadata);
-      this.saved = true;
-      setTimeout(() => this.saved = false, 3000);
+    async saveSettings() {
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            webhook_url: this.exportUrl,
+            webhook_auto_send: this.autoSendOnComplete,
+            webhook_include_metadata: this.includeMetadata,
+          })
+        });
+        if (res.ok) {
+          this.saved = true;
+          setTimeout(() => this.saved = false, 3000);
+        }
+      } catch (e) {
+        // Network error — silent fail
+      }
     }
   }
 }

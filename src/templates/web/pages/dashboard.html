@@ -175,9 +175,8 @@
               <label class="text-xs text-slate-500 w-24">Scraping Tier</label>
               <select x-model="scrapingTier" class="select text-sm flex-1">
                 <option value="auto">Auto (Adaptive - Recommended)</option>
-                <option value="basic">Basic HTTP (Fastest, ~$0.0001/req)</option>
-                <option value="headless">Headless Browser (~$0.002/req)</option>
-                <option value="proxy">Headless + Proxy (~$0.004/req)</option>
+                <option value="playwright">Playwright (~$0.003/req)</option>
+                <option value="proxy">Playwright + Proxy (~$0.0035/req)</option>
               </select>
             </div>
             <div class="flex items-center gap-4">
@@ -187,6 +186,13 @@
                 <option value="5" selected>Normal</option>
                 <option value="10">High</option>
               </select>
+            </div>
+            <div class="flex items-center gap-4">
+              <label class="text-xs text-slate-500 w-24">Raw only</label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" x-model="rawOnly" class="w-4 h-4 rounded accent-brand-red">
+                <span class="text-xs text-slate-500">Save raw page content only (skip extraction)</span>
+              </label>
             </div>
           </div>
         </div>

@@ -15,9 +15,9 @@ These tests use real HTTP requests to public sites, so they:
 import asyncio
 
 import pytest
-from src.scraping.fetcher.lake_fetcher import LakeFetcher
 
 from src.models.scraping import FetchOptions
+from src.scraping.fetcher.lake_playwright_fetcher import LakePlaywrightFetcher
 from src.scraping.parser.html_parser import HTMLParser
 from src.templates.wordpress import WordPressTemplate
 
@@ -31,14 +31,14 @@ class TestBlogExtractionAccuracy:
     @pytest.fixture
     def fetcher(self):
         """Basic HTTP fetcher for blog scraping."""
-        return LakeFetcher()
+        return LakePlaywrightFetcher()
 
     @pytest.fixture
     def parser(self):
         """HTML parser for content extraction."""
         return HTMLParser()
 
-    async def test_blog_list_extraction(self, fetcher: LakeFetcher):
+    async def test_blog_list_extraction(self, fetcher: LakePlaywrightFetcher):
         """Test extracting blog article list from HubSpot blog.
 
         Validates:
@@ -88,7 +88,9 @@ class TestBlogExtractionAccuracy:
                 "hubspot.com" in link or link.startswith("/blog/")
             ), f"Unexpected URL pattern: {link}"
 
-    async def test_article_content_extraction(self, fetcher: LakeFetcher, parser: HTMLParser):
+    async def test_article_content_extraction(
+        self, fetcher: LakePlaywrightFetcher, parser: HTMLParser
+    ):
         """Test extracting content from a specific blog article.
 
         Validates:
@@ -137,7 +139,7 @@ class TestBlogExtractionAccuracy:
         images = [img.attributes.get("src") for img in tree.css("img") if img.attributes.get("src")]
         assert len(images) > 0, "No images extracted from article"
 
-    async def test_wordpress_template_accuracy(self, fetcher: LakeFetcher):
+    async def test_wordpress_template_accuracy(self, fetcher: LakePlaywrightFetcher):
         """Test WordPress template detection and article extraction.
 
         Uses WordPress template to extract blog articles and validates
@@ -171,7 +173,7 @@ class TestBlogExtractionAccuracy:
                 "/"
             ), f"Invalid link format: {link}"
 
-    async def test_content_quality_metrics(self, fetcher: LakeFetcher):
+    async def test_content_quality_metrics(self, fetcher: LakePlaywrightFetcher):
         """Calculate content quality metrics across multiple articles.
 
         Metrics:
@@ -247,9 +249,9 @@ class TestContactExtractionAccuracy:
 
     @pytest.fixture
     def fetcher(self):
-        return LakeFetcher()
+        return LakePlaywrightFetcher()
 
-    async def test_email_extraction_pattern_validation(self, fetcher: LakeFetcher):
+    async def test_email_extraction_pattern_validation(self, fetcher: LakePlaywrightFetcher):
         """Test email extraction using regex patterns.
 
         Validates:

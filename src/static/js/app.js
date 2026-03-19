@@ -201,6 +201,7 @@ document.addEventListener('alpine:init', () => {
     maxPages: 100,
     templateId: '',
     scrapingTier: 'auto',
+    rawOnly: false,
     priority: 5,
     showPanel: false,
     showAdvanced: false,
@@ -253,10 +254,9 @@ document.addEventListener('alpine:init', () => {
 
       // Map frontend tier values to backend enum values
       const tierMap = {
-        'auto': null,              // null triggers adaptive escalation
-        'basic': 'basic_http',     // maps to ScrapingTier.BASIC_HTTP
-        'headless': 'playwright',  // maps to ScrapingTier.PLAYWRIGHT
-        'proxy': 'playwright_proxy' // maps to ScrapingTier.PLAYWRIGHT_PROXY
+        'auto': null,                // null triggers adaptive escalation
+        'playwright': 'playwright',  // Playwright (default)
+        'proxy': 'playwright_proxy'  // Playwright + Proxy
       };
 
       const payload = {
@@ -266,6 +266,7 @@ document.addEventListener('alpine:init', () => {
         priority: this.priority,
       };
       if (this.templateId) payload.template_id = this.templateId;
+      if (this.rawOnly) payload.raw_only = true;
 
       // Only include tier if not 'auto' (null triggers adaptive escalation)
       const backendTier = tierMap[this.scrapingTier];

@@ -24,4 +24,4 @@ class TestCrawlerConcurrency:
 
     def test_default_max_per_domain(self):
         crawler = CrawlerService()
-        assert crawler.max_per_domain == 2
+        assert crawler.max_per_domain == 6

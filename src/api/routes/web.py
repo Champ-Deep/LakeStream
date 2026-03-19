@@ -430,9 +430,14 @@ async def job_status_partial(request: Request, job_id: UUID):
     job = await get_job(pool, job_id)
     data_count = await count_scraped_data_by_job(pool, job_id) if job else 0
 
+    headers = {}
+    if job and job.status in ("completed", "failed"):
+        headers["HX-Refresh"] = "true"
+
     return get_templates().TemplateResponse(
         "partials/job_status.html",
         {"request": request, "job": job, "data_count": data_count},
+        headers=headers,
     )
 
 
@@ -647,19 +652,39 @@ async def settings_page(request: Request):
     settings = get_settings()
     webhook_trigger_url = f"{settings.base_url}/api/webhook/trigger"
 
-    # Load org proxy settings for initial render
+    # Load org settings and team members for initial render
     proxy_url = ""
+    webhook_url = ""
+    webhook_auto_send = False
+    webhook_include_metadata = False
+    team_members = []
     try:
         pool = await get_pool()
         org_id = getattr(request.state, "org_id", None)
         if not org_id:
             org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
         if org_id:
-            proxy_url = await pool.fetchval(
-                "SELECT proxy_url FROM organizations WHERE id = $1", org_id
-            ) or ""
+            org_row = await pool.fetchrow(
+                "SELECT proxy_url, webhook_url, webhook_auto_send, webhook_include_metadata "
+                "FROM organizations WHERE id = $1",
+                org_id,
+            )
+            if org_row:
+                proxy_url = org_row["proxy_url"] or ""
+                webhook_url = org_row["webhook_url"] or ""
+                webhook_auto_send = org_row["webhook_auto_send"] or False
+                webhook_include_metadata = org_row["webhook_include_metadata"] or False
+
+            # Fetch team members if user is org_owner
+            if request.session.get("role") == "org_owner":
+                members_records = await pool.fetch(
+                    "SELECT id, email, full_name, role, created_at FROM users "
+                    "WHERE org_id = $1 ORDER BY created_at DESC",
+                    org_id,
+                )
+                team_members = [dict(r) for r in members_records]
     except Exception:
-        pass  # Settings page works without proxy info
+        pass  # Settings page works without these
 
     return get_templates().TemplateResponse(
         "pages/settings/index.html",
@@ -668,8 +693,58 @@ async def settings_page(request: Request):
             "active_page": "settings",
             "webhook_trigger_url": webhook_trigger_url,
             "proxy_url": proxy_url,
+            "webhook_url": webhook_url,
+            "webhook_auto_send": webhook_auto_send,
+            "webhook_include_metadata": webhook_include_metadata,
+            "team_members": team_members,
         },
     )
+
+@router.post("/settings/team/invite")
+async def team_invite(
+    request: Request,
+    email: str = Form(...),
+    full_name: str = Form(...),
+    password: str = Form(...),
+):
+    """Invite a new team member to the active organization."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    if request.session.get("role") != "org_owner":
+        return RedirectResponse(url="/settings", status_code=302)
+
+    from src.db.pool import get_pool
+    from src.db.queries.users import create_user, get_user_by_email
+    from src.services.auth import hash_password
+
+    pool = await get_pool()
+    org_id_str = getattr(request.state, "org_id", None)
+
+    if not org_id_str:
+        return get_templates().TemplateResponse(
+            "pages/settings/index.html",
+            {"request": request, "active_page": "settings", "error": "No org found"},
+            status_code=400,
+        )
+
+    # Check if user exists
+    existing = await get_user_by_email(pool, email)
+    if existing:
+        return RedirectResponse(url="/settings?error=User+already+exists", status_code=302)
+
+    password_hash = hash_password(password)
+    await create_user(
+        pool,
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        org_id=UUID(org_id_str),
+        role="member",
+    )
+
+    return RedirectResponse(url="/settings", status_code=302)
 
 
 # =============================================================================
