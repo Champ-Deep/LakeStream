@@ -1,6 +1,8 @@
+import asyncio
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse
 
+import httpx
 import structlog
 
 from src.models.scraped_data import ScrapedData
@@ -9,6 +11,11 @@ from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
 from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
+
+_RETRY_ON = (
+    ConnectionError, TimeoutError, OSError,
+    httpx.TimeoutException, asyncio.TimeoutError,
+)
 
 
 class BaseWorker(ABC):
@@ -68,7 +75,7 @@ class BaseWorker(ABC):
                 options,
                 max_retries=2,
                 base_delay=2.0,
-                retry_on=(ConnectionError, TimeoutError, OSError),
+                retry_on=_RETRY_ON,
             )
             self._rate_limiter.report_result(domain, result.status_code)
             self.log.info(
@@ -88,7 +95,7 @@ class BaseWorker(ABC):
                 options,
                 max_retries=2,
                 base_delay=2.0,
-                retry_on=(ConnectionError, TimeoutError, OSError),
+                retry_on=_RETRY_ON,
             )
             self._rate_limiter.report_result(domain, result.status_code)
             return result
@@ -105,7 +112,7 @@ class BaseWorker(ABC):
                 options,
                 max_retries=2,
                 base_delay=2.0,
-                retry_on=(ConnectionError, TimeoutError, OSError),
+                retry_on=_RETRY_ON,
             )
             self._rate_limiter.report_result(domain, result.status_code)
 

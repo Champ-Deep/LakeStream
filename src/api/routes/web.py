@@ -2,8 +2,11 @@
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+log = structlog.get_logger()
 
 router = APIRouter(tags=["web"])
 
@@ -38,6 +41,26 @@ def _get_user_filter(request: Request) -> UUID | None:
         return None  # Admin sees everything
     uid = request.session.get("user_id")
     return UUID(uid) if uid else None
+
+
+async def _get_running_data_counts(pool, jobs) -> dict[str, int]:
+    """Get live scraped-item counts for running jobs."""
+    from src.db.queries.scraped_data import count_scraped_data_by_job
+
+    data_counts: dict[str, int] = {}
+    for job in jobs:
+        if job.status == "running":
+            data_counts[str(job.id)] = await count_scraped_data_by_job(pool, job.id)
+    return data_counts
+
+
+def _get_elapsed_ms(job) -> int | None:
+    """Calculate elapsed milliseconds for a running job."""
+    if job and job.status == "running" and job.created_at:
+        from datetime import UTC, datetime
+
+        return int((datetime.now(UTC) - job.created_at).total_seconds() * 1000)
+    return None
 
 
 # =============================================================================
@@ -93,81 +116,11 @@ async def login_submit(
     return RedirectResponse(url="/", status_code=302)
 
 
-@router.get("/signup", response_class=HTMLResponse)
-async def signup_page(request: Request):
-    """Signup page."""
-    if request.session.get("user_id"):
-        return RedirectResponse(url="/", status_code=302)
-    return get_templates().TemplateResponse(
-        "pages/signup.html",
-        {"request": request, "error": None, "email": None, "full_name": None, "org_name": None},
-    )
-
-
+@router.get("/signup")
 @router.post("/signup")
-async def signup_submit(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    full_name: str = Form(...),
-    org_name: str = Form(...),
-):
-    """Handle signup form submission."""
-    from src.db.pool import get_pool
-    from src.db.queries.users import create_organization, create_user, get_user_by_email
-    from src.services.auth import hash_password
-
-    pool = await get_pool()
-
-    # Check if email already exists
-    existing = await get_user_by_email(pool, email)
-    if existing:
-        return get_templates().TemplateResponse(
-            "pages/signup.html",
-            {
-                "request": request,
-                "error": "Email already registered",
-                "email": email,
-                "full_name": full_name,
-                "org_name": org_name,
-            },
-            status_code=400,
-        )
-
-    if len(password) < 8:
-        return get_templates().TemplateResponse(
-            "pages/signup.html",
-            {
-                "request": request,
-                "error": "Password must be at least 8 characters",
-                "email": email,
-                "full_name": full_name,
-                "org_name": org_name,
-            },
-            status_code=400,
-        )
-
-    # Create org + user
-    org = await create_organization(pool, org_name)
-    password_hash = hash_password(password)
-    user = await create_user(
-        pool,
-        email=email,
-        password_hash=password_hash,
-        full_name=full_name,
-        org_id=org.id,
-        role="org_owner",
-    )
-
-    # Log them in
-    request.session["user_id"] = str(user.id)
-    request.session["org_id"] = str(user.org_id)
-    request.session["role"] = user.role
-    request.session["email"] = user.email
-    request.session["is_admin"] = user.is_admin
-    request.session["full_name"] = user.full_name or user.email
-
-    return RedirectResponse(url="/", status_code=302)
+async def signup_disabled():
+    """Self-registration is disabled. Redirect to login."""
+    return RedirectResponse(url="/login", status_code=302)
 
 
 @router.get("/logout")
@@ -253,8 +206,8 @@ async def dashboard(request: Request):
                         "success_rate": meta.success_rate or 0,
                         "block_count": meta.block_count or 0,
                     }
-    except Exception:
-        pass  # tracked_domains table may not exist yet
+    except Exception as e:
+        log.warning("tracked_domains_query_failed", error=str(e))
 
     return get_templates().TemplateResponse(
         "pages/dashboard.html",
@@ -364,10 +317,37 @@ async def jobs_list(request: Request, status: str | None = None):
     pool = await get_pool()
     user_filter = _get_user_filter(request)
     jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
+    data_counts = await _get_running_data_counts(pool, jobs)
 
     return get_templates().TemplateResponse(
         "pages/jobs/list.html",
-        {"request": request, "active_page": "jobs", "jobs": jobs, "filter_status": status},
+        {
+            "request": request,
+            "active_page": "jobs",
+            "jobs": jobs,
+            "filter_status": status,
+            "data_counts": data_counts,
+        },
+    )
+
+
+@router.get("/partials/jobs-table-body", response_class=HTMLResponse)
+async def jobs_table_body_partial(request: Request, status: str | None = None):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+    """Jobs table body partial for HTMX polling."""
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import list_jobs
+
+    pool = await get_pool()
+    user_filter = _get_user_filter(request)
+    jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
+    data_counts = await _get_running_data_counts(pool, jobs)
+
+    return get_templates().TemplateResponse(
+        "partials/jobs_table_rows.html",
+        {"request": request, "jobs": jobs, "data_counts": data_counts},
     )
 
 
@@ -412,7 +392,13 @@ async def job_status_page(request: Request, job_id: UUID):
 
     return get_templates().TemplateResponse(
         "pages/jobs/status.html",
-        {"request": request, "active_page": "jobs", "job": job, "data_count": data_count},
+        {
+            "request": request,
+            "active_page": "jobs",
+            "job": job,
+            "data_count": data_count,
+            "elapsed_ms": _get_elapsed_ms(job),
+        },
     )
 
 
@@ -436,7 +422,12 @@ async def job_status_partial(request: Request, job_id: UUID):
 
     return get_templates().TemplateResponse(
         "partials/job_status.html",
-        {"request": request, "job": job, "data_count": data_count},
+        {
+            "request": request,
+            "job": job,
+            "data_count": data_count,
+            "elapsed_ms": _get_elapsed_ms(job),
+        },
         headers=headers,
     )
 
@@ -552,8 +543,8 @@ async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
 
         tracked_domains = await list_tracked_domains(pool)
         tracked_set = {td.domain for td in tracked_domains}
-    except Exception:
-        pass  # tracked_domains table may not exist yet
+    except Exception as e:
+        log.warning("tracked_domains_query_failed", error=str(e))
 
     return get_templates().TemplateResponse(
         "pages/domains/list.html",
@@ -683,8 +674,8 @@ async def settings_page(request: Request):
                     org_id,
                 )
                 team_members = [dict(r) for r in members_records]
-    except Exception:
-        pass  # Settings page works without these
+    except Exception as e:
+        log.warning("settings_load_failed", error=str(e))
 
     return get_templates().TemplateResponse(
         "pages/settings/index.html",
@@ -847,6 +838,60 @@ async def download_job_csv(request: Request, job_id: UUID):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/download/job/{job_id}.json")
+async def download_job_json(request: Request, job_id: UUID):
+    """Download scraped data for a job as JSON (session-based auth)."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from fastapi import HTTPException
+    from fastapi.responses import JSONResponse
+
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import get_job
+    from src.db.queries.scraped_data import get_scraped_data_by_job
+
+    pool = await get_pool()
+    job = await get_job(pool, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    user_filter = _get_user_filter(request)
+    if user_filter and job.user_id != user_filter:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    data = await get_scraped_data_by_job(pool, job_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="No data found for this job")
+
+    records = [
+        {
+            "domain": item.domain,
+            "data_type": item.data_type,
+            "url": item.url,
+            "title": item.title,
+            "published_date": str(item.published_date) if item.published_date else None,
+            "scraped_at": item.scraped_at.isoformat() if item.scraped_at else None,
+            "metadata": item.metadata or {},
+        }
+        for item in data
+    ]
+
+    domain = job.domain.replace(".", "_")
+    filename = f"{domain}_{str(job_id)[:8]}.json"
+
+    return JSONResponse(
+        content={
+            "job_id": str(job_id),
+            "domain": job.domain,
+            "count": len(records),
+            "data": records,
+        },
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

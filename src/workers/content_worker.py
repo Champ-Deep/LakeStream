@@ -134,6 +134,7 @@ class ContentWorker(BaseWorker):
 
         html = fetch_result.html
         if not html or len(html) < 100:
+            self.log.warning("empty_html", url=url, html_length=len(html) if html else 0)
             return []
 
         parser = HtmlParser(html, url)

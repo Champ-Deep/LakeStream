@@ -1,0 +1,46 @@
+{% for job in jobs %}
+<tr class="table-row-hover">
+  <td class="px-6 py-4">
+    <a href="/jobs/{{ job.id }}" class="font-medium text-charcoal hover:text-accent block max-w-[200px] truncate" title="{{ job.domain }}">
+      {{ job.domain }}
+    </a>
+  </td>
+  <td class="px-6 py-4 whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
+      {% if job.status == 'running' %}bg-running/10 text-running
+      {% elif job.status == 'completed' %}bg-success/10 text-success
+      {% elif job.status == 'failed' %}bg-error/10 text-error
+      {% else %}bg-warning/10 text-warning{% endif %}
+    ">
+      {% if job.status == 'running' %}
+        <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse-gentle"></span>
+      {% else %}
+        <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+      {% endif %}
+      {{ job.status | capitalize }}
+    </span>
+  </td>
+  <td class="px-6 py-4 text-sm text-charcoal whitespace-nowrap">
+    {% if job.status == 'running' %}
+      {{ data_counts.get(job.id|string, 0) }} <span class="text-xs text-stone-400">items</span>
+    {% else %}
+      {{ job.pages_scraped }}
+    {% endif %}
+  </td>
+  <td class="px-6 py-4 text-sm text-slate whitespace-nowrap">
+    {{ job.created_at | timeago }}
+  </td>
+  <td class="px-6 py-4 text-right">
+    <div class="flex items-center justify-end gap-2">
+      {% if job.status == 'completed' %}
+      <a href="/download/job/{{ job.id }}" class="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-navy" title="Download CSV">
+        <i data-lucide="download" class="w-4 h-4"></i>
+      </a>
+      {% endif %}
+      <a href="/jobs/{{ job.id }}" class="text-accent hover:underline text-sm">
+        View
+      </a>
+    </div>
+  </td>
+</tr>
+{% endfor %}

@@ -1,7 +1,7 @@
-"""Authentication API routes for signup, login, and user management.
+"""Authentication API routes for login and user management.
 
 Endpoints:
-- POST /auth/signup - Create new organization and user
+- POST /auth/signup - Disabled (returns 403)
 - POST /auth/login - Authenticate user and return JWT
 - GET /auth/me - Get current user profile
 """
@@ -11,101 +11,22 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from src.api.middleware.auth import get_current_user
 from src.db.pool import get_pool
 from src.db.queries.users import (
-    create_organization,
-    create_user,
     get_organization,
     get_user_by_email,
     update_last_login,
 )
-from src.models.auth import LoginRequest, LoginResponse, SignupRequest, UserProfile
-from src.services.auth import create_access_token, hash_password, verify_password
+from src.models.auth import LoginRequest, LoginResponse, UserProfile
+from src.services.auth import create_access_token, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/signup", response_model=LoginResponse)
-async def signup(request: SignupRequest):
-    """Sign up with new organization.
-
-    Creates:
-    1. New organization (with generated slug)
-    2. First user (assigned role: org_owner)
-    3. JWT token for immediate login
-
-    Args:
-        request: SignupRequest with email, password, full_name, org_name
-
-    Returns:
-        LoginResponse with access token and user profile
-
-    Raises:
-        HTTPException 400: If email already exists
-
-    Example:
-        POST /api/auth/signup
-        {
-            "email": "john@acme.com",
-            "password": "SecurePass123!",
-            "full_name": "John Doe",
-            "org_name": "Acme Corp"
-        }
-
-        Response:
-        {
-            "access_token": "eyJhbGc...",
-            "token_type": "bearer",
-            "user": {
-                "id": "123e4567-...",
-                "email": "john@acme.com",
-                "full_name": "John Doe",
-                "org_id": "123e4567-...",
-                "org_name": "Acme Corp",
-                "role": "org_owner",
-                "team_id": null
-            }
-        }
-    """
-    pool = await get_pool()
-
-    # Check if email already exists
-    existing = await get_user_by_email(pool, request.email)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
-        )
-
-    # Create organization
-    org = await create_organization(pool, request.org_name)
-
-    # Create user (first user is org_owner)
-    password_hash = hash_password(request.password)
-    user = await create_user(
-        pool,
-        email=request.email,
-        password_hash=password_hash,
-        full_name=request.full_name,
-        org_id=org.id,
-        role="org_owner",
-    )
-
-    # Update last login
-    await update_last_login(pool, user.id)
-
-    # Generate JWT token
-    token = create_access_token(user.id, org.id, user.role, is_admin=user.is_admin)
-
-    return LoginResponse(
-        access_token=token,
-        user=UserProfile(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            org_id=org.id,
-            org_name=org.name,
-            role=user.role,
-            team_id=user.team_id,
-            is_admin=user.is_admin,
-        ),
+@router.post("/signup")
+async def signup():
+    """Self-registration is disabled. Use team invites or admin user creation."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Self-registration is disabled. Contact your admin for an invite.",
     )
 
 

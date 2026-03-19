@@ -9,7 +9,13 @@
     <div class="h-2 bg-stone-100 rounded-full overflow-hidden">
       <div class="h-full bg-running progress-indeterminate" style="width: 25%;"></div>
     </div>
-    <p class="text-xs text-stone-400 mt-2 text-center">Scraping in progress...</p>
+    <p class="text-xs text-running mt-2 text-center">
+      {% if data_count is defined and data_count > 0 %}
+        Extracting content...
+      {% else %}
+        Discovering URLs...
+      {% endif %}
+    </p>
   </div>
   {% elif job.status == 'completed' %}
   <div class="mb-6">
@@ -51,8 +57,15 @@
           {% else %}
             {{ (seconds / 60) | int }}m {{ seconds % 60 }}s
           {% endif %}
-        {% elif job.status == 'running' %}
-          <span class="text-running">...</span>
+        {% elif job.status == 'running' and elapsed_ms is defined and elapsed_ms %}
+          {% set seconds = (elapsed_ms / 1000) | int %}
+          <span class="text-running">
+            {% if seconds < 60 %}
+              {{ seconds }}s
+            {% else %}
+              {{ (seconds / 60) | int }}m {{ seconds % 60 }}s
+            {% endif %}
+          </span>
         {% else %}
           -
         {% endif %}
@@ -89,14 +102,6 @@
   {% endif %}
 </div>
 
-{% if job.status in ('completed', 'failed') %}
-<script>
-  // Terminal status reached via polling — reload page to show action buttons
-  var panel = document.getElementById('job-status-panel');
-  if (panel) panel.removeAttribute('hx-trigger');
-  window.location.reload();
-</script>
-{% endif %}
 
 {% else %}
 <div class="bg-white rounded-xl border border-stone-200 p-6 text-center">

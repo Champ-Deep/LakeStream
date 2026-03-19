@@ -65,9 +65,9 @@
   </div>
 
   <!-- Jobs Table -->
-  <div class="bg-white rounded-xl border border-stone-200 overflow-hidden">
+  <div class="bg-white rounded-xl border border-stone-200 overflow-x-auto">
     {% if jobs %}
-    <table class="w-full">
+    <table class="w-full min-w-full">
       <thead class="bg-stone-50 border-b border-stone-200">
         <tr>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Domain</th>
@@ -77,49 +77,16 @@
           <th class="px-6 py-3 text-right text-xs font-medium text-slate uppercase tracking-wide"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-stone-100">
-        {% for job in jobs %}
-        <tr class="table-row-hover">
-          <td class="px-6 py-4">
-            <a href="/jobs/{{ job.id }}" class="font-medium text-charcoal hover:text-accent">
-              {{ job.domain }}
-            </a>
-          </td>
-          <td class="px-6 py-4">
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
-              {% if job.status == 'running' %}bg-running/10 text-running
-              {% elif job.status == 'completed' %}bg-success/10 text-success
-              {% elif job.status == 'failed' %}bg-error/10 text-error
-              {% else %}bg-warning/10 text-warning{% endif %}
-            ">
-              {% if job.status == 'running' %}
-                <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse-gentle"></span>
-              {% else %}
-                <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
-              {% endif %}
-              {{ job.status | capitalize }}
-            </span>
-          </td>
-          <td class="px-6 py-4 text-sm text-charcoal">
-            {{ job.pages_scraped }}
-          </td>
-          <td class="px-6 py-4 text-sm text-slate">
-            {{ job.created_at | timeago }}
-          </td>
-          <td class="px-6 py-4 text-right">
-            <div class="flex items-center justify-end gap-2">
-              {% if job.status == 'completed' %}
-              <a href="/download/job/{{ job.id }}" class="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-navy" title="Download CSV">
-                <i data-lucide="download" class="w-4 h-4"></i>
-              </a>
-              {% endif %}
-              <a href="/jobs/{{ job.id }}" class="text-accent hover:underline text-sm">
-                View
-              </a>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
+      <tbody
+        id="jobs-table-body"
+        class="divide-y divide-stone-100"
+        {% if jobs | selectattr('status', 'equalto', 'running') | list %}
+          hx-get="/partials/jobs-table-body{% if filter_status %}?status={{ filter_status }}{% endif %}"
+          hx-trigger="every 5s"
+          hx-swap="innerHTML"
+        {% endif %}
+      >
+        {% include "partials/jobs_table_rows.html" %}
       </tbody>
     </table>
     {% else %}

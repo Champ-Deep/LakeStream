@@ -22,7 +22,7 @@ security = HTTPBearer()
 log = structlog.get_logger()
 
 # Web routes that don't require authentication
-PUBLIC_PATHS = {"/login", "/signup", "/ping"}
+PUBLIC_PATHS = {"/login", "/ping"}
 PUBLIC_PREFIXES = ("/api/", "/static/")
 
 

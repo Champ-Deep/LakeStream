@@ -120,7 +120,11 @@ async def process_scrape_job(
                 log.warning("job_failed_no_data", job_id=job_id, domain=domain, errors=errors)
             else:
                 # No errors but no data - domain might be empty or blocked
-                error_msg = "No data extracted from domain (empty site or blocked)"
+                strategy = domain_meta.last_successful_strategy if domain_meta else None
+                hint = ""
+                if strategy == "playwright" or strategy is None:
+                    hint = " Try escalating to Playwright + Proxy."
+                error_msg = f"No data extracted from {domain}.{hint}"
                 await job_queries.update_job_status(
                     pool,
                     uid,

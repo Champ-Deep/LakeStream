@@ -90,7 +90,10 @@ class CrawlerService:
                                 if cr.status_code == 200:
                                     urls = re.findall(r"<loc>(.*?)</loc>", cr.text)
                                     all_urls.update(u for u in urls if is_valid_scrape_url(u))
-                            except Exception:
+                            except Exception as e:
+                                self.log.warning(
+                                    "child_sitemap_failed", url=child_url, error=str(e),
+                                )
                                 continue
                     else:
                         # Regular sitemap — extract page URLs directly
@@ -102,7 +105,7 @@ class CrawlerService:
                         break  # Found a working sitemap, no need to try others
 
                 except Exception as e:
-                    self.log.debug("sitemap_not_found", url=sitemap_url, error=str(e))
+                    self.log.warning("sitemap_not_found", url=sitemap_url, error=str(e))
 
         return all_urls
 
@@ -143,8 +146,10 @@ class CrawlerService:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             batch_new = 0
-            for result in results:
+            for i, result in enumerate(results):
                 if isinstance(result, Exception):
+                    url = batch[i] if i < len(batch) else "unknown"
+                    self.log.warning("crawl_fetch_error", url=url, error=str(result))
                     continue
                 if result.blocked or not result.html:
                     blocked_count += 1
