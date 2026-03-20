@@ -10,7 +10,8 @@ WHERE a.domain = b.domain
   AND a.url = b.url
   AND a.data_type = b.data_type
   AND a.url IS NOT NULL
-  AND a.scraped_at < b.scraped_at;
+  AND (a.scraped_at < b.scraped_at
+       OR (a.scraped_at = b.scraped_at AND a.id < b.id));
 
 -- Step 3a: Add unique partial index for deduplication
 -- Partial: only where url IS NOT NULL (tech_stack records may have NULL url)

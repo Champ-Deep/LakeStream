@@ -55,10 +55,6 @@ async def update_job_status(
     vals: list[object] = [job_id, status]
     idx = 3
 
-    # Auto-set heartbeat when transitioning to RUNNING
-    if status == JobStatus.RUNNING:
-        sets.append("last_activity_at = NOW()")
-
     for field, value in [
         ("strategy_used", strategy_used),
         ("error_message", error_message),
@@ -90,19 +86,34 @@ async def recover_stale_jobs(pool: asyncpg.Pool, stale_minutes: int = 10) -> int
     created_at for jobs that pre-date the heartbeat column.
     Default: 10 minutes of inactivity (down from 30 min of created_at).
     """
-    result = await pool.execute(
-        """
-        UPDATE scrape_jobs
-        SET status = 'failed',
-            error_message = 'Job timed out (no activity for '
-                || $1 || ' minutes)',
-            completed_at = NOW()
-        WHERE status = 'running'
-          AND COALESCE(last_activity_at, created_at)
-              < NOW() - INTERVAL '1 minute' * $1
-        """,
-        stale_minutes,
-    )
+    try:
+        result = await pool.execute(
+            """
+            UPDATE scrape_jobs
+            SET status = 'failed',
+                error_message = 'Job timed out (no activity for '
+                    || $1 || ' minutes)',
+                completed_at = NOW()
+            WHERE status = 'running'
+              AND COALESCE(last_activity_at, created_at)
+                  < NOW() - INTERVAL '1 minute' * $1
+            """,
+            stale_minutes,
+        )
+    except asyncpg.exceptions.UndefinedColumnError:
+        # Migration 020 hasn't run yet — fall back to created_at only
+        result = await pool.execute(
+            """
+            UPDATE scrape_jobs
+            SET status = 'failed',
+                error_message = 'Job timed out (no activity for '
+                    || $1 || ' minutes)',
+                completed_at = NOW()
+            WHERE status = 'running'
+              AND created_at < NOW() - INTERVAL '1 minute' * $1
+            """,
+            stale_minutes,
+        )
     return int(result.split()[-1])
 
 
