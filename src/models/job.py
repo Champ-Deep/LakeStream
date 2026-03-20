@@ -17,8 +17,8 @@ class ScrapeJobInput(BaseModel):
     template_id: str | None = None
     tier: str | None = Field(
         default=None,
-        description="Optional tier override (playwright, playwright_proxy). "
-        "If not specified, uses automatic escalation.",
+        description="Optional tier override (lightpanda, playwright, playwright_proxy). "
+        "Defaults to None — escalation service selects automatically.",
     )
     max_pages: int = Field(default=100, gt=0, le=500)
     data_types: list[str] = Field(

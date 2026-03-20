@@ -10,6 +10,7 @@ from playwright.async_api import async_playwright
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+from src.scraping.fetcher.captcha_detector import detect_captcha
 
 log = structlog.get_logger()
 
@@ -17,21 +18,14 @@ log = structlog.get_logger()
 class LakePlaywrightProxyFetcher:
     """Tier 3: Playwright with session persistence + residential proxy.
 
-    This fetcher combines the best of both worlds:
-    - Session persistence (cookies, localStorage) from PLAYWRIGHT tier
-    - Residential proxy rotation from HEADLESS_PROXY tier
-    - Custom proxy support (bring your own proxy)
-
     Proxy Priority Chain:
     1. Custom proxy (settings.custom_proxy_url)
     2. Bright Data (settings.brightdata_proxy_url)
     3. Smartproxy (settings.smartproxy_url)
     4. No proxy (falls back to PLAYWRIGHT behavior)
 
-    Sessions are stored in Redis with TTL (default 1 hour) using the key format:
-    `playwright_session:{domain}`
-
-    Cost: $0.0035 per request (12.5% cheaper than HEADLESS_PROXY $0.004)
+    Sessions are stored in Redis with TTL (default 1 hour).
+    Cost: $0.0035 per request
     """
 
     def __init__(self):
@@ -42,13 +36,6 @@ class LakePlaywrightProxyFetcher:
 
         Tries each proxy provider in priority order. If a provider fails with a
         connection/timeout error, falls back to the next provider in the chain.
-
-        Args:
-            url: Target URL to fetch
-            options: Fetch options (timeout configurable)
-
-        Returns:
-            FetchResult with HTML, status code, cost, duration, and block detection
         """
         options = options or FetchOptions()
         settings = get_settings()
@@ -131,8 +118,8 @@ class LakePlaywrightProxyFetcher:
                 # Block detection
                 http_error = status_code in (403, 429, 503)
                 tiny_html = len(html) < settings.min_html_bytes
+                captcha = detect_captcha(html) if html else False
                 blocked = http_error or tiny_html
-                captcha = False
 
                 # Success (even if blocked by site) — don't failover for HTTP blocks,
                 # only for connection-level failures
@@ -180,16 +167,7 @@ class LakePlaywrightProxyFetcher:
         )
 
     def _get_proxy_chain(self) -> list[dict[str, Any]]:
-        """Get all available proxy configs in priority order for failover.
-
-        Priority:
-        1. Custom proxy (custom_proxy_url with optional auth)
-        2. Bright Data (brightdata_proxy_url)
-        3. Smartproxy (smartproxy_url)
-
-        Returns:
-            List of proxy config dicts for Playwright context (may be empty)
-        """
+        """Get all available proxy configs in priority order for failover."""
         settings = get_settings()
         chain: list[dict[str, Any]] = []
 
@@ -209,26 +187,12 @@ class LakePlaywrightProxyFetcher:
         return chain
 
     async def _get_redis_client(self) -> redis.Redis:
-        """Lazy Redis client initialization.
-
-        Returns:
-            Redis client instance (cached after first call)
-        """
         if self._redis_client is None:
             settings = get_settings()
             self._redis_client = redis.from_url(settings.redis_url)
         return self._redis_client
 
     async def _load_session(self, client: redis.Redis, domain: str) -> dict[str, Any] | None:
-        """Load session from Redis.
-
-        Args:
-            client: Redis client
-            domain: Domain to load session for (e.g., "linkedin.com")
-
-        Returns:
-            Session data dict with storage_state and metadata, or None if not found
-        """
         key = f"playwright_session:{domain}"
         try:
             data = await client.get(key)
@@ -250,15 +214,6 @@ class LakePlaywrightProxyFetcher:
         storage_state: dict[str, Any],
         metadata: dict[str, Any],
     ) -> None:
-        """Save session to Redis with TTL.
-
-        Args:
-            client: Redis client
-            domain: Domain to save session for (e.g., "linkedin.com")
-            storage_state: Playwright storage state (cookies, localStorage, etc.)
-            metadata: Additional metadata (created_at, last_used_at,
-                request_count, authenticated, proxy_used)
-        """
         settings = get_settings()
         key = f"playwright_session:{domain}"
 

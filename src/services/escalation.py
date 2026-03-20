@@ -10,17 +10,37 @@ from src.models.scraping import FetchResult, ScrapingTier
 
 log = structlog.get_logger()
 
-_TIER_ORDER = [
-    ScrapingTier.PLAYWRIGHT,
-    ScrapingTier.PLAYWRIGHT_PROXY,
-]
+# Timeouts (seconds) to wait before escalating to the next tier
+ESCALATION_WAIT: dict[tuple[ScrapingTier, ScrapingTier], int] = {
+    (ScrapingTier.LIGHTPANDA, ScrapingTier.PLAYWRIGHT): 120,       # 2 min
+    (ScrapingTier.PLAYWRIGHT, ScrapingTier.PLAYWRIGHT_PROXY): 600,  # 10 min
+}
+# Wait before final termination when playwright_proxy also fails
+TERMINATION_WAIT_SECONDS: int = 600  # 10 min
 
 # Backward compatibility: map deprecated tier names to new equivalents
 _TIER_MIGRATION_MAP = {
-    "basic_http": ScrapingTier.PLAYWRIGHT,
+    "basic_http": ScrapingTier.LIGHTPANDA,
     "headless_browser": ScrapingTier.PLAYWRIGHT,
     "headless_proxy": ScrapingTier.PLAYWRIGHT_PROXY,
 }
+
+
+def _build_tier_order(proxy_available: bool = True) -> list[ScrapingTier]:
+    """Build dynamic tier chain based on configuration.
+
+    - If lightpanda_ws_url is set: [LIGHTPANDA, PLAYWRIGHT, PLAYWRIGHT_PROXY]
+    - If no proxy configured: drops PLAYWRIGHT_PROXY
+    - If no LightPanda configured: starts at PLAYWRIGHT
+    """
+    settings = get_settings()
+    order: list[ScrapingTier] = []
+    if settings.lightpanda_ws_url:
+        order.append(ScrapingTier.LIGHTPANDA)
+    order.append(ScrapingTier.PLAYWRIGHT)
+    if proxy_available:
+        order.append(ScrapingTier.PLAYWRIGHT_PROXY)
+    return order
 
 
 class EscalationService:
@@ -139,11 +159,14 @@ class EscalationService:
 
             # Use the strategy directly if it's a current tier
             try:
-                return ScrapingTier(strategy)
+                tier = ScrapingTier(strategy)
+                return tier
             except ValueError:
                 pass
 
-        return ScrapingTier.PLAYWRIGHT
+        # Default: start at the cheapest available tier
+        tier_order = _build_tier_order()
+        return tier_order[0]
 
     def should_escalate(self, result: FetchResult) -> bool:
         """Determine if result warrants tier escalation.
@@ -166,21 +189,41 @@ class EscalationService:
     def get_next_tier(
         self, current: ScrapingTier, proxy_available: bool = True,
     ) -> ScrapingTier | None:
-        """Get the next tier in the escalation chain. Returns None if at max.
-
-        If proxy_available is False, escalation stops at PLAYWRIGHT (no proxy tier).
-        """
-        if current == ScrapingTier.PLAYWRIGHT and not proxy_available:
-            log.info("escalation_blocked_no_proxy", current=current.value)
-            return None
-
+        """Get the next tier in the dynamic escalation chain. Returns None if at max."""
+        tier_order = _build_tier_order(proxy_available)
         try:
-            idx = _TIER_ORDER.index(current)
-            if idx < len(_TIER_ORDER) - 1:
-                return _TIER_ORDER[idx + 1]
+            idx = tier_order.index(current)
+            if idx < len(tier_order) - 1:
+                return tier_order[idx + 1]
         except ValueError:
             pass
         return None
+
+    def get_escalation_wait(
+        self,
+        current: ScrapingTier,
+        next_tier: ScrapingTier | None,
+        result: FetchResult | None = None,
+        proxy_available: bool = True,
+    ) -> int:
+        """Return seconds to wait before escalating from current to next_tier.
+
+        Waits only apply when the server is rate-limiting (429/503).
+        Captcha or tiny-HTML escalations are immediate (no wait).
+        Termination wait is skipped when no proxy is available.
+        """
+        # No point waiting at termination if there's no proxy to escalate to
+        if next_tier is None:
+            return 0 if not proxy_available else TERMINATION_WAIT_SECONDS
+
+        # Only wait if the block was a rate-limit/server-side rejection, not captcha
+        if result is not None and result.captcha_detected and not result.blocked:
+            return 0
+        if result is not None and result.status_code not in (429, 503):
+            # Not a rate-limit — escalate immediately
+            return 0
+
+        return ESCALATION_WAIT.get((current, next_tier), 0)
 
     async def record_result(self, domain: str, result: FetchResult, success: bool) -> None:
         """Record the scraping result for the domain."""

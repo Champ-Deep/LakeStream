@@ -100,8 +100,8 @@ class BaseWorker(ABC):
             self._rate_limiter.report_result(domain, result.status_code)
             return result
 
-        current_tier = await self._escalation.decide_initial_tier(self.domain)
         proxy_available = bool(self.proxy_url)
+        current_tier = await self._escalation.decide_initial_tier(self.domain)
 
         while True:
             await self._rate_limiter.wait(domain)
@@ -123,11 +123,25 @@ class BaseWorker(ABC):
             next_tier = self._escalation.get_next_tier(
                 current_tier, proxy_available=proxy_available,
             )
+
+            wait_seconds = self._escalation.get_escalation_wait(
+                current_tier, next_tier, result=result, proxy_available=proxy_available
+            )
+            reason = self._escalation.get_escalation_reason(result)
+
             if next_tier is None:
+                self.log.info(
+                    "fetch_terminating",
+                    url=url,
+                    last_tier=current_tier.value,
+                    reason=reason,
+                    wait_seconds=wait_seconds,
+                )
+                if wait_seconds:
+                    await asyncio.sleep(wait_seconds)
                 await self._escalation.record_result(self.domain, result, success=False)
                 return result
 
-            reason = self._escalation.get_escalation_reason(result)
             self.log.info(
                 "fetch_escalating",
                 url=url,
@@ -136,7 +150,10 @@ class BaseWorker(ABC):
                 reason=reason,
                 status=result.status_code,
                 html_size=len(result.html),
+                wait_seconds=wait_seconds,
             )
+            if wait_seconds:
+                await asyncio.sleep(wait_seconds)
             current_tier = next_tier
 
     async def export_results(self, data: list[dict]) -> int:

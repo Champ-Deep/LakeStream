@@ -18,10 +18,19 @@ SITEMAP_PATHS = ["/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml"]
 class CrawlerService:
     """Native domain crawler and URL discovery engine."""
 
-    def __init__(self, max_concurrent: int = 15, max_per_domain: int = 6, timeout: int = 30000):
+    def __init__(
+        self,
+        max_concurrent: int = 15,
+        max_per_domain: int = 6,
+        timeout: int = 30000,
+        pool=None,
+        job_id: str | None = None,
+    ):
         self.max_concurrent = max_concurrent
         self.max_per_domain = max_per_domain
         self.timeout = timeout
+        self.pool = pool
+        self.job_id = job_id
         self._domain_semaphores: dict[str, asyncio.Semaphore] = {}
         self.log = log.bind(service="CrawlerService")
 
@@ -114,10 +123,10 @@ class CrawlerService:
     ) -> list[str]:
         """Recursively crawl the domain up to the limit.
 
-        Improvements over naive BFS:
         - Logs blocked pages instead of silently skipping
         - Stall detection: exits early if 3 consecutive batches find 0 new URLs
         - Reduced timeout (15s) for faster discovery
+        - Updates DB with crawl progress when pool is available
         """
         parsed_base = urlparse(base_url)
         base_domain = parsed_base.netloc.lower().replace("www.", "")
@@ -130,7 +139,8 @@ class CrawlerService:
         blocked_count = 0
         stall_batches = 0  # Consecutive batches with zero new URLs
 
-        fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+        # Use LightPanda for discovery (cheapest tier, just finding URLs)
+        fetcher = create_fetcher(ScrapingTier.LIGHTPANDA)
         options = FetchOptions(timeout=min(self.timeout, 15000))  # 15s max for discovery
         sem = self._get_semaphore(base_domain)
 
@@ -185,8 +195,7 @@ class CrawlerService:
                         break
 
             # Stall detection: only count stalls when pages were fetched successfully
-            # but yielded no new URLs (graph exhausted). Blocked batches don't count —
-            # the queue may still have good URLs behind the blocked ones.
+            # but yielded no new URLs (graph exhausted). Blocked batches don't count.
             batch_fetched = sum(
                 1 for r in results
                 if not isinstance(r, Exception) and not r.blocked and r.html
@@ -204,7 +213,19 @@ class CrawlerService:
             elif batch_new > 0:
                 stall_batches = 0
 
-            await asyncio.sleep(0)  # yield control without delay
+            # Update database with real-time progress
+            if self.pool and self.job_id:
+                try:
+                    from uuid import UUID
+                    await self.pool.execute(
+                        "UPDATE scrape_jobs SET pages_scraped = $1 WHERE id = $2",
+                        len(crawled),
+                        UUID(self.job_id),
+                    )
+                except Exception as e:
+                    self.log.warning("failed_to_update_progress", error=str(e))
+
+            await asyncio.sleep(0.1)  # Minimal delay to avoid overwhelming
 
         if blocked_count > 0:
             self.log.info(

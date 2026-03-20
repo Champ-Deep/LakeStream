@@ -55,6 +55,10 @@ async def update_job_status(
     vals: list[object] = [job_id, status]
     idx = 3
 
+    # Auto-set heartbeat when transitioning to RUNNING
+    if status == JobStatus.RUNNING:
+        sets.append("last_activity_at = NOW()")
+
     for field, value in [
         ("strategy_used", strategy_used),
         ("error_message", error_message),
@@ -71,16 +75,31 @@ async def update_job_status(
     await pool.execute(query, *vals)
 
 
-async def recover_stale_jobs(pool: asyncpg.Pool, stale_minutes: int = 30) -> int:
-    """Mark jobs stuck at 'running' longer than stale_minutes as failed."""
+async def update_heartbeat(pool: asyncpg.Pool, job_id: UUID) -> None:
+    """Update the heartbeat timestamp to signal the job is still active."""
+    await pool.execute(
+        "UPDATE scrape_jobs SET last_activity_at = NOW() WHERE id = $1",
+        job_id,
+    )
+
+
+async def recover_stale_jobs(pool: asyncpg.Pool, stale_minutes: int = 10) -> int:
+    """Mark jobs stuck at 'running' with no recent activity as failed.
+
+    Uses last_activity_at (heartbeat) when available, falling back to
+    created_at for jobs that pre-date the heartbeat column.
+    Default: 10 minutes of inactivity (down from 30 min of created_at).
+    """
     result = await pool.execute(
         """
         UPDATE scrape_jobs
         SET status = 'failed',
-            error_message = 'Job timed out (stale recovery)',
+            error_message = 'Job timed out (no activity for '
+                || $1 || ' minutes)',
             completed_at = NOW()
         WHERE status = 'running'
-          AND created_at < NOW() - INTERVAL '1 minute' * $1
+          AND COALESCE(last_activity_at, created_at)
+              < NOW() - INTERVAL '1 minute' * $1
         """,
         stale_minutes,
     )

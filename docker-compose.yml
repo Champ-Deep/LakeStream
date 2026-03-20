@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_DB: lakeb2b_scraper
       POSTGRES_USER: scraper
@@ -18,12 +18,24 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6381:6379"
+      - "6382:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://scraper:scraper_dev@postgres:5432/lakeb2b_scraper
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m src.db.migrate
+    restart: "no"
 
   api:
     build: .
@@ -35,11 +47,12 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: "3001"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     command: uvicorn src.server:app --host 0.0.0.0 --port 3001
+    restart: unless-stopped
 
   worker:
     build: .
@@ -48,11 +61,12 @@ services:
       DATABASE_URL: postgresql://scraper:scraper_dev@postgres:5432/lakeb2b_scraper
       REDIS_URL: redis://redis:6379
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     command: arq src.queue.worker.WorkerSettings
+    restart: unless-stopped
 
 volumes:
   pgdata:

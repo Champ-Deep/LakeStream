@@ -1,5 +1,6 @@
 # Per-request cost estimates by scraping tier
 TIER_COSTS: dict[str, float] = {
+    "lightpanda": 0.001,
     "playwright": 0.003,
     "playwright_proxy": 0.0035,
 }

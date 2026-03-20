@@ -23,9 +23,12 @@ class Settings(BaseSettings):
 
     max_concurrent_jobs: int = 10
     max_scrape_pages_per_job: int = 500
-    default_rate_limit_ms: int = 1000
+    default_rate_limit_ms: int = 200
     # Minimum HTML size before treating as blocked (catches truly empty responses)
     min_html_bytes: int = 20
+
+    # LightPanda (Zig headless browser via CDP)
+    lightpanda_ws_url: str = ""  # e.g. ws://127.0.0.1:9222 (empty = disabled)
 
     # LakeCurrent search API
     lakecurrent_base_url: str = "http://lakecurrent-backend:8001"

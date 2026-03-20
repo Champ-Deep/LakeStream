@@ -77,6 +77,7 @@ class ContentWorker(BaseWorker):
         article_urls_from_blogs: list[str] = []
 
         # --- Phase 1: Process all classified URLs ---
+        processed_count = 0
         for entry in classified_urls:
             url = entry["url"]
             data_type = entry.get("data_type", DataType.PAGE)
@@ -99,12 +100,18 @@ class ContentWorker(BaseWorker):
                 self.log.error("process_url_error", url=url, error=str(e))
                 self.stats["errors"] += 1
 
+            # Heartbeat every 5 URLs to signal the job is still active
+            processed_count += 1
+            if processed_count % 5 == 0:
+                await self._send_heartbeat()
+
         # --- Phase 2: Fetch article URLs discovered from blog landing pages ---
         if "article" in data_types and article_urls_from_blogs:
             self.log.info(
                 "processing_blog_articles",
                 count=len(article_urls_from_blogs),
             )
+            phase2_count = 0
             for url in article_urls_from_blogs:
                 if url in fetched_urls:
                     continue
@@ -115,6 +122,10 @@ class ContentWorker(BaseWorker):
                 except Exception as e:
                     self.log.error("article_process_error", url=url, error=str(e))
                     self.stats["errors"] += 1
+
+                phase2_count += 1
+                if phase2_count % 5 == 0:
+                    await self._send_heartbeat()
 
         self.log.info("content_worker_done", total_records=len(all_results), **self.stats)
         return all_results
@@ -402,6 +413,16 @@ class ContentWorker(BaseWorker):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _send_heartbeat(self) -> None:
+        """Update the job's last_activity_at timestamp. Non-fatal on failure."""
+        if self._pool is None:
+            return
+        try:
+            from src.db.queries.jobs import update_heartbeat
+            await update_heartbeat(self._pool, UUID(self.job_id))
+        except Exception:
+            pass  # Non-fatal — don't let heartbeat failure kill the job
 
     def _filter_article_links(self, links: list[str], source_url: str) -> list[str]:
         """Remove homepage, non-HTML, and off-domain links. From BlogExtractorWorker."""

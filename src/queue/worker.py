@@ -70,4 +70,4 @@ class WorkerSettings:
     _settings = get_settings()
     redis_settings = RedisSettings.from_dsn(_settings.redis_url)
     max_jobs = _settings.max_concurrent_jobs
-    job_timeout = 3600  # 1 hour (increased from 900s / 15min)
+    job_timeout = 7200  # 2 hours — heartbeat stale recovery (10 min) is the real safety net
