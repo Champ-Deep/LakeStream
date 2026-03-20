@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse
 
@@ -7,7 +8,6 @@ from src.models.scraped_data import ScrapedData
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
-from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
 
 
@@ -34,7 +34,6 @@ class BaseWorker(ABC):
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
-        self._rate_limiter = RateLimiter()
 
         if pool is not None:
             from src.services.escalation import EscalationService
@@ -47,10 +46,11 @@ class BaseWorker(ABC):
     async def execute(self, urls: list[str]) -> list[ScrapedData]: ...
 
     async def fetch_page(self, url: str, options: FetchOptions | None = None) -> FetchResult:
-        """Fetch a page with automatic tier escalation, rate limiting, and cost tracking.
+        """Fetch a page with automatic tier escalation and cost tracking.
 
         If tier_override is set, uses that tier directly (no escalation).
         Injects org-level proxy_url into options when available.
+        Note: Rate limiting has been removed for unlimited scraping capability.
         """
         options = options or FetchOptions()
         if self.proxy_url:
@@ -60,7 +60,6 @@ class BaseWorker(ABC):
 
         # If tier override is set, use it directly (no escalation)
         if self._tier_override:
-            await self._rate_limiter.wait(domain)
             fetcher = create_fetcher(self._tier_override)
             result = await retry_async(
                 fetcher.fetch,
@@ -70,7 +69,6 @@ class BaseWorker(ABC):
                 base_delay=2.0,
                 retry_on=(ConnectionError, TimeoutError, OSError),
             )
-            self._rate_limiter.report_result(domain, result.status_code)
             self.log.info(
                 "fetch_tier_override",
                 url=url,
@@ -80,8 +78,8 @@ class BaseWorker(ABC):
             return result
 
         if self._escalation is None:
-            await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(ScrapingTier.BASIC_HTTP)
+            # Default to PLAYWRIGHT_PROXY when no escalation service available
+            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT_PROXY)
             result = await retry_async(
                 fetcher.fetch,
                 url,
@@ -90,14 +88,12 @@ class BaseWorker(ABC):
                 base_delay=2.0,
                 retry_on=(ConnectionError, TimeoutError, OSError),
             )
-            self._rate_limiter.report_result(domain, result.status_code)
             return result
 
         current_tier = await self._escalation.decide_initial_tier(self.domain)
         proxy_available = bool(self.proxy_url)
 
         while True:
-            await self._rate_limiter.wait(domain)
             fetcher = create_fetcher(current_tier)
             result = await retry_async(
                 fetcher.fetch,
@@ -107,7 +103,6 @@ class BaseWorker(ABC):
                 base_delay=2.0,
                 retry_on=(ConnectionError, TimeoutError, OSError),
             )
-            self._rate_limiter.report_result(domain, result.status_code)
 
             if not self._escalation.should_escalate(result):
                 await self._escalation.record_result(self.domain, result, success=True)
@@ -116,11 +111,25 @@ class BaseWorker(ABC):
             next_tier = self._escalation.get_next_tier(
                 current_tier, proxy_available=proxy_available,
             )
+
+            wait_seconds = self._escalation.get_escalation_wait(
+                current_tier, next_tier, result=result, proxy_available=proxy_available
+            )
+            reason = self._escalation.get_escalation_reason(result)
+
             if next_tier is None:
+                self.log.info(
+                    "fetch_terminating",
+                    url=url,
+                    last_tier=current_tier.value,
+                    reason=reason,
+                    wait_seconds=wait_seconds,
+                )
+                if wait_seconds:
+                    await asyncio.sleep(wait_seconds)
                 await self._escalation.record_result(self.domain, result, success=False)
                 return result
 
-            reason = self._escalation.get_escalation_reason(result)
             self.log.info(
                 "fetch_escalating",
                 url=url,
@@ -129,7 +138,10 @@ class BaseWorker(ABC):
                 reason=reason,
                 status=result.status_code,
                 html_size=len(result.html),
+                wait_seconds=wait_seconds,
             )
+            if wait_seconds:
+                await asyncio.sleep(wait_seconds)
             current_tier = next_tier
 
     async def export_results(self, data: list[dict]) -> int:

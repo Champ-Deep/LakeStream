@@ -11,23 +11,31 @@ log = structlog.get_logger()
 class DomainMapperWorker:
     """Discovers all URLs for a domain using CrawlerService, then classifies them."""
 
-    def __init__(self, domain: str, job_id: str, org_id: str | None = None):
+    def __init__(self, domain: str, job_id: str, org_id: str | None = None, pool=None):
         self.domain = domain
         self.job_id = job_id
         self.org_id = org_id
-        self.crawler = CrawlerService()
+        self.pool = pool
+        self.crawler = CrawlerService(pool=pool, job_id=job_id)
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
 
-    async def execute(self, max_pages: int = 100) -> list[dict]:
-        """Map a domain and return classified URLs."""
-        self.log.info("mapping_domain", max_pages=max_pages)
+    async def execute(self, max_pages: int | None = None) -> list[dict]:
+        """Map a domain and return classified URLs.
 
-        # 1. Discover URLs via CrawlerService
+        Args:
+            max_pages: Maximum pages to crawl (None for unlimited)
+
+        Returns:
+            List of classified URLs with data_type annotations
+        """
+        self.log.info("mapping_domain", max_pages=max_pages or "unlimited")
+
+        # 1. Discover URLs via CrawlerService (unlimited by default)
         url = ensure_scheme(self.domain)
         raw_urls = await self.crawler.map_domain(url, limit=max_pages)
         self.log.info("urls_discovered", count=len(raw_urls))
 
-        # 2. Validate and deduplicate
+        # 2. Validate and deduplicate (keep duplicates from traversal if max_pages is None)
         valid_urls = validate_and_deduplicate(raw_urls)
         self.log.info("urls_validated", count=len(valid_urls))
 

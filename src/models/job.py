@@ -17,10 +17,14 @@ class ScrapeJobInput(BaseModel):
     template_id: str | None = None
     tier: str | None = Field(
         default=None,
-        description="Optional tier override (basic_http, playwright, playwright_proxy). "
-        "If not specified, uses automatic escalation.",
+        description="Optional tier override (lightpanda, playwright, playwright_proxy). "
+        "Defaults to None — escalation service starts from lightpanda automatically.",
     )
-    max_pages: int = Field(default=100, gt=0, le=500)
+    max_pages: int | None = Field(
+        default=None,
+        description="Maximum pages to scrape (None for unlimited). "
+        "Unlimited scraping is enabled by default for comprehensive data collection."
+    )
     data_types: list[str] = Field(
         default=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"]
     )

@@ -10,6 +10,7 @@ from playwright.async_api import async_playwright
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+from src.scraping.fetcher.lake_lightpanda_fetcher import _detect_captcha
 
 log = structlog.get_logger()
 
@@ -146,8 +147,8 @@ class LakePlaywrightProxyFetcher:
             # Block detection (same logic as other fetchers)
             http_error = status_code in (403, 429, 503)
             tiny_html = len(html) < settings.min_html_bytes
+            captcha = _detect_captcha(html) if html else False
             blocked = http_error or tiny_html
-            captcha = False  # Currently disabled (caused false positives)
 
         except Exception as exc:
             log.warning(

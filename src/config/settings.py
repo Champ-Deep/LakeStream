@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     custom_proxy_password: str = ""
 
     max_concurrent_jobs: int = 10
-    max_scrape_pages_per_job: int = 500
-    default_rate_limit_ms: int = 1000
+    max_scrape_pages_per_job: int | None = None  # None for unlimited scraping
+    default_rate_limit_ms: int = 0  # 0 = no rate limiting for unlimited scraping
     min_html_bytes: int = 20  # Minimum HTML size before treating as blocked (catches truly empty responses)
 
     # LakeCurrent search API

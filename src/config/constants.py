@@ -1,5 +1,6 @@
 # Per-request cost estimates by scraping tier
 TIER_COSTS: dict[str, float] = {
+    "lightpanda": 0.00005,
     "basic_http": 0.0001,
     "headless_browser": 0.002,
     "playwright": 0.003,

@@ -1,13 +1,15 @@
 import asyncio
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, TypeVar
 
 import structlog
 
 log = structlog.get_logger()
 
+T = TypeVar("T")
 
-async def retry_async[T](
+
+async def retry_async(
     fn: Callable[..., Coroutine[Any, Any, T]],
     *args: Any,
     max_retries: int = 3,

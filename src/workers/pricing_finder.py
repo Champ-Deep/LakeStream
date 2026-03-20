@@ -16,6 +16,7 @@ class PricingFinderWorker(BaseWorker):
         job_id: str,
         pool: object | None = None,
         org_id: str | None = None,
+        user_id: str | None = None,
         tier_override: str | None = None,
         proxy_url: str | None = None,
     ):
@@ -24,6 +25,7 @@ class PricingFinderWorker(BaseWorker):
             job_id=job_id,
             pool=pool,
             org_id=org_id,
+            user_id=user_id,
             tier_override=tier_override,
             proxy_url=proxy_url,
         )
