@@ -156,4 +156,13 @@ class BaseWorker(ABC):
                 rec.setdefault("user_id", user_uuid)
 
         pool = self._pool or await get_pool()
-        return await batch_insert_scraped_data(pool, data)  # type: ignore[arg-type]
+        try:
+            return await batch_insert_scraped_data(pool, data)  # type: ignore[arg-type]
+        except Exception as e:
+            self.log.error(
+                "db_insert_failed",
+                record_count=len(data),
+                domain=self.domain,
+                error=str(e),
+            )
+            raise

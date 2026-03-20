@@ -50,6 +50,7 @@ class ContentWorker(BaseWorker):
     def __init__(self, raw_only: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.raw_only = raw_only
+        self.stats: dict[str, int] = {"blocked": 0, "skipped": 0, "errors": 0, "fetched": 0}
 
     async def execute(  # type: ignore[override]
         self,
@@ -96,6 +97,7 @@ class ContentWorker(BaseWorker):
                 all_results.extend(records)
             except Exception as e:
                 self.log.error("process_url_error", url=url, error=str(e))
+                self.stats["errors"] += 1
 
         # --- Phase 2: Fetch article URLs discovered from blog landing pages ---
         if "article" in data_types and article_urls_from_blogs:
@@ -112,8 +114,9 @@ class ContentWorker(BaseWorker):
                     all_results.extend(records)
                 except Exception as e:
                     self.log.error("article_process_error", url=url, error=str(e))
+                    self.stats["errors"] += 1
 
-        self.log.info("content_worker_done", total_records=len(all_results))
+        self.log.info("content_worker_done", total_records=len(all_results), **self.stats)
         return all_results
 
     # ------------------------------------------------------------------
@@ -130,19 +133,30 @@ class ContentWorker(BaseWorker):
         fetch_result = await self.fetch_page(url)
         if fetch_result.blocked:
             self.log.warning("blocked", url=url, status=fetch_result.status_code)
+            self.stats["blocked"] += 1
             return []
 
         html = fetch_result.html
         if not html or len(html) < 100:
             self.log.warning("empty_html", url=url, html_length=len(html) if html else 0)
+            self.stats["skipped"] += 1
+            return []
+
+        # Skip HTTP error pages (404 Not Found, 410 Gone)
+        if fetch_result.status_code in (404, 410):
+            self.log.debug(
+                "skipping_http_error_page", url=url, status_code=fetch_result.status_code,
+            )
+            self.stats["skipped"] += 1
             return []
 
         parser = HtmlParser(html, url)
         title = parser.extract_title()
 
-        # Skip error pages
+        # Skip error pages (title-based fallback for soft 404s)
         if title and any(m in title.lower() for m in _ERROR_MARKERS):
             self.log.debug("skipping_error_page", url=url, title=title)
+            self.stats["skipped"] += 1
             return []
 
         rich_meta = extract_rich_metadata(html, url)
@@ -153,7 +167,10 @@ class ContentWorker(BaseWorker):
 
         if self.raw_only:
             if records:
-                await self.export_results(records)
+                try:
+                    await self.export_results(records)
+                except Exception:
+                    return []
             return [
                 ScrapedData(
                     id=UUID(int=0),
@@ -201,8 +218,13 @@ class ContentWorker(BaseWorker):
                     records.append(tech_rec)
 
         # Batch insert all records for this URL
+        self.stats["fetched"] += 1
         if records:
-            await self.export_results(records)
+            try:
+                await self.export_results(records)
+            except Exception:
+                self.stats["errors"] += 1
+                return []
 
         # Convert to ScrapedData for return value
         return [

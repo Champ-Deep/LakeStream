@@ -5,6 +5,20 @@ import asyncpg
 
 from src.models.scraped_data import ScrapedData
 
+_UPSERT_SQL = """
+    INSERT INTO scraped_data
+        (id, job_id, domain, data_type, url, title, metadata, org_id, user_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+    ON CONFLICT (domain, url, data_type) WHERE url IS NOT NULL
+    DO UPDATE SET
+        job_id = EXCLUDED.job_id,
+        title = EXCLUDED.title,
+        metadata = EXCLUDED.metadata,
+        org_id = EXCLUDED.org_id,
+        user_id = EXCLUDED.user_id,
+        scraped_at = NOW()
+"""
+
 
 async def insert_scraped_data(
     pool: asyncpg.Pool,
@@ -19,10 +33,7 @@ async def insert_scraped_data(
 ) -> UUID:
     record_id = uuid4()
     await pool.execute(
-        """
-        INSERT INTO scraped_data (id, job_id, domain, data_type, url, title, metadata, org_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-        """,
+        _UPSERT_SQL,
         record_id,
         job_id,
         domain,
@@ -31,6 +42,7 @@ async def insert_scraped_data(
         title,
         json.dumps(metadata or {}),
         org_id,
+        None,  # user_id
     )
     return record_id
 
@@ -39,7 +51,11 @@ async def batch_insert_scraped_data(
     pool: asyncpg.Pool,
     records: list[dict],
 ) -> int:
-    """Insert multiple scraped_data records in a single batch."""
+    """Upsert multiple scraped_data records in a single transaction.
+
+    Uses ON CONFLICT to update existing records (same domain+url+data_type)
+    instead of creating duplicates.
+    """
     if not records:
         return 0
 
@@ -59,14 +75,7 @@ async def batch_insert_scraped_data(
             )
         )
 
-    await pool.executemany(
-        """
-        INSERT INTO scraped_data
-            (id, job_id, domain, data_type, url, title, metadata, org_id, user_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
-        """,
-        values,
-    )
+    await pool.executemany(_UPSERT_SQL, values)
     return len(values)
 
 
@@ -89,6 +98,44 @@ async def get_scraped_data_by_job(pool: asyncpg.Pool, job_id: UUID) -> list[Scra
 async def count_scraped_data_by_job(pool: asyncpg.Pool, job_id: UUID) -> int:
     count = await pool.fetchval("SELECT COUNT(*) FROM scraped_data WHERE job_id = $1", job_id)
     return count or 0
+
+
+async def get_data_type_counts(pool: asyncpg.Pool, job_id: UUID) -> dict[str, int]:
+    """Return {data_type: count} for a job, excluding raw 'page' records."""
+    rows = await pool.fetch(
+        "SELECT data_type, COUNT(*) as count FROM scraped_data "
+        "WHERE job_id = $1 AND data_type != 'page' "
+        "GROUP BY data_type ORDER BY count DESC",
+        job_id,
+    )
+    return {row["data_type"]: row["count"] for row in rows}
+
+
+async def cleanup_stale_data(pool: asyncpg.Pool) -> dict[str, int]:
+    """Delete old data that no longer provides value.
+
+    Policy:
+    - 'page' records older than 7 days (raw HTML, only useful for debugging)
+    - scraped_data from 'failed' jobs older than 30 days (no useful content)
+    """
+    pages_deleted = await pool.fetchval(
+        "WITH deleted AS ("
+        "  DELETE FROM scraped_data"
+        "  WHERE data_type = 'page' AND scraped_at < NOW() - INTERVAL '7 days'"
+        "  RETURNING 1"
+        ") SELECT COUNT(*) FROM deleted"
+    )
+    failed_deleted = await pool.fetchval(
+        "WITH deleted AS ("
+        "  DELETE FROM scraped_data"
+        "  WHERE job_id IN ("
+        "    SELECT id FROM scrape_jobs WHERE status = 'failed'"
+        "    AND completed_at < NOW() - INTERVAL '30 days'"
+        "  )"
+        "  RETURNING 1"
+        ") SELECT COUNT(*) FROM deleted"
+    )
+    return {"pages": pages_deleted or 0, "failed_job_data": failed_deleted or 0}
 
 
 async def get_scraped_data_by_domain(

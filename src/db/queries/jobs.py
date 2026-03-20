@@ -77,7 +77,8 @@ async def recover_stale_jobs(pool: asyncpg.Pool, stale_minutes: int = 30) -> int
         """
         UPDATE scrape_jobs
         SET status = 'failed',
-            error_message = 'Job timed out (stale recovery)'
+            error_message = 'Job timed out (stale recovery)',
+            completed_at = NOW()
         WHERE status = 'running'
           AND created_at < NOW() - INTERVAL '1 minute' * $1
         """,

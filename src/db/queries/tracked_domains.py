@@ -1,5 +1,6 @@
 """CRUD queries for the tracked_domains table."""
 
+import random
 from datetime import UTC, datetime, timedelta
 
 import asyncpg
@@ -97,7 +98,11 @@ async def get_due_domains(pool: asyncpg.Pool) -> list[TrackedDomain]:
 
 
 async def mark_scraped(pool: asyncpg.Pool, domain: str) -> None:
-    """Update last/next scrape timestamps after an auto-scrape."""
+    """Update last/next scrape timestamps after a successful auto-scrape.
+
+    Adds random jitter (0–15 min) to prevent thundering herd when many
+    domains share the same frequency.
+    """
     row = await pool.fetchrow(
         "SELECT scrape_frequency FROM tracked_domains WHERE domain = $1",
         domain,
@@ -106,12 +111,42 @@ async def mark_scraped(pool: asyncpg.Pool, domain: str) -> None:
         return
     freq = row["scrape_frequency"]
     delta = FREQUENCY_DELTAS.get(freq, timedelta(weeks=1))
+    jitter = timedelta(seconds=random.randint(0, 900))  # 0–15 min
     await pool.execute(
         "UPDATE tracked_domains "
         "SET last_auto_scraped_at = NOW(), "
         "    next_scrape_at = NOW() + $2, "
+        "    consecutive_failures = 0, "
         "    updated_at = NOW() "
         "WHERE domain = $1",
         domain,
-        delta,
+        delta + jitter,
+    )
+
+
+async def mark_scraped_failed(pool: asyncpg.Pool, domain: str) -> None:
+    """Increment failure counter and push back next_scrape_at with exponential backoff.
+
+    Backoff: frequency * 2^failures, capped at 24 hours.
+    """
+    row = await pool.fetchrow(
+        "SELECT scrape_frequency, consecutive_failures FROM tracked_domains WHERE domain = $1",
+        domain,
+    )
+    if not row:
+        return
+    freq = row["scrape_frequency"]
+    failures = (row["consecutive_failures"] or 0) + 1
+    base_delta = FREQUENCY_DELTAS.get(freq, timedelta(weeks=1))
+    backoff = min(base_delta * (2 ** failures), timedelta(hours=24))
+    jitter = timedelta(seconds=random.randint(0, 900))
+    await pool.execute(
+        "UPDATE tracked_domains "
+        "SET next_scrape_at = NOW() + $2, "
+        "    consecutive_failures = $3, "
+        "    updated_at = NOW() "
+        "WHERE domain = $1",
+        domain,
+        backoff + jitter,
+        failures,
     )

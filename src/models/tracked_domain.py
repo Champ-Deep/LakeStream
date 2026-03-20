@@ -13,6 +13,7 @@ class TrackedDomain(BaseModel):
     template_id: str = "auto"
     webhook_url: str | None = None
     is_active: bool = True
+    consecutive_failures: int = 0
     last_auto_scraped_at: datetime | None = None
     next_scrape_at: datetime | None = None
     created_at: datetime | None = None

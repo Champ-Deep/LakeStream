@@ -40,16 +40,8 @@ class LakePlaywrightProxyFetcher:
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         """Fetch URL with session persistence + proxy via Playwright browser context.
 
-        Workflow:
-        1. Extract domain from URL
-        2. Determine proxy configuration (priority chain)
-        3. Try load existing session from Redis
-        4. Launch Playwright browser
-        5. Create context with storage_state + proxy
-        6. Navigate to URL
-        7. Extract HTML + status code
-        8. Save updated storage_state to Redis
-        9. Return FetchResult
+        Tries each proxy provider in priority order. If a provider fails with a
+        connection/timeout error, falls back to the next provider in the chain.
 
         Args:
             url: Target URL to fetch
@@ -64,108 +56,114 @@ class LakePlaywrightProxyFetcher:
 
         domain = urlparse(url).netloc
 
-        # Get proxy configuration
-        proxy_config = self._get_proxy_config()
+        # Build proxy chain for failover (may be empty)
+        proxy_chain = self._get_proxy_chain()
+        # Always include a None entry as last resort (no proxy)
+        proxy_configs: list[dict[str, Any] | None] = [*proxy_chain, None]
 
-        try:
-            # Get Redis client (lazy initialization)
-            redis_client = await self._get_redis_client()
+        html = ""
+        status_code = 0
+        blocked = True
+        captcha = False
+        proxy_config: dict[str, Any] | None = None
 
-            # Try load existing session
-            session_data = await self._load_session(redis_client, domain)
-            storage_state = session_data.get("storage_state") if session_data else None
+        for i, proxy_config in enumerate(proxy_configs):
+            try:
+                redis_client = await self._get_redis_client()
+                session_data = await self._load_session(redis_client, domain)
+                storage_state = session_data.get("storage_state") if session_data else None
 
-            # Launch Playwright browser
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=settings.playwright_headless)
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=settings.playwright_headless)
 
-                # Create context with session + proxy
-                context_options: dict[str, Any] = {}
-                if storage_state:
-                    context_options["storage_state"] = storage_state
-                if proxy_config:
-                    context_options["proxy"] = proxy_config
+                    context_options: dict[str, Any] = {}
+                    if storage_state:
+                        context_options["storage_state"] = storage_state
+                    if proxy_config:
+                        context_options["proxy"] = proxy_config
 
-                context = await browser.new_context(**context_options)
+                    context = await browser.new_context(**context_options)
 
-                # Log session and proxy status
-                if storage_state and proxy_config:
                     log.debug(
-                        "playwright_proxy_session_loaded",
+                        "playwright_proxy_attempt",
                         domain=domain,
                         url=url,
-                        proxy=proxy_config.get("server"),
+                        proxy=proxy_config.get("server") if proxy_config else None,
+                        attempt=i + 1,
+                        total_providers=len(proxy_configs),
                     )
-                elif storage_state:
-                    log.debug("playwright_proxy_session_no_proxy", domain=domain, url=url)
-                elif proxy_config:
-                    log.debug(
-                        "playwright_proxy_fresh_context",
-                        domain=domain,
+
+                    page = await context.new_page()
+                    timeout = options.timeout or settings.playwright_timeout_ms
+                    response = await page.goto(url, timeout=timeout)
+
+                    try:
+                        await page.wait_for_load_state('networkidle', timeout=10000)
+                    except Exception:
+                        pass  # Non-fatal: page may still have content
+
+                    html = await page.content()
+                    status_code = response.status if response else 0
+
+                    # Save updated session
+                    updated_storage_state = await context.storage_state()
+                    await self._save_session(
+                        redis_client,
+                        domain,
+                        updated_storage_state,
+                        {
+                            "last_used_at": time.time(),
+                            "request_count": (session_data.get("request_count", 0) + 1)
+                            if session_data
+                            else 1,
+                            "authenticated": (
+                                session_data.get("authenticated", False)
+                                if session_data else False
+                            ),
+                            "proxy_used": (
+                                proxy_config.get("server") if proxy_config else None
+                            ),
+                        },
+                    )
+
+                    await browser.close()
+
+                # Block detection
+                http_error = status_code in (403, 429, 503)
+                tiny_html = len(html) < settings.min_html_bytes
+                blocked = http_error or tiny_html
+                captcha = False
+
+                # Success (even if blocked by site) — don't failover for HTTP blocks,
+                # only for connection-level failures
+                break
+
+            except Exception as exc:
+                proxy_server = proxy_config.get("server") if proxy_config else None
+                remaining = len(proxy_configs) - i - 1
+                if remaining > 0:
+                    log.warning(
+                        "proxy_failover",
                         url=url,
-                        proxy=proxy_config.get("server"),
+                        domain=domain,
+                        failed_proxy=proxy_server,
+                        remaining_providers=remaining,
+                        error=str(exc),
                     )
+                    continue  # Try next provider
                 else:
-                    log.debug("playwright_proxy_no_session_no_proxy", domain=domain, url=url)
-
-                # Navigate to URL
-                page = await context.new_page()
-                timeout = options.timeout or settings.playwright_timeout_ms
-                response = await page.goto(url, timeout=timeout)
-
-                # Wait for network idle (ensures JS content is loaded for SPAs)
-                try:
-                    await page.wait_for_load_state('networkidle', timeout=10000)
-                except Exception as e:
-                    log.debug(
-                        "playwright_networkidle_timeout",
-                        url=url, domain=domain, error=str(e),
+                    log.warning(
+                        "lake_playwright_proxy_fetcher_error",
+                        url=url,
+                        domain=domain,
+                        proxy=proxy_server,
+                        error=str(exc),
+                        error_type=type(exc).__name__,
                     )
-
-                # Extract content
-                html = await page.content()
-                status_code = response.status if response else 0
-
-                # Save updated session (cookies may have changed)
-                updated_storage_state = await context.storage_state()
-                await self._save_session(
-                    redis_client,
-                    domain,
-                    updated_storage_state,
-                    {
-                        "last_used_at": time.time(),
-                        "request_count": (session_data.get("request_count", 0) + 1)
-                        if session_data
-                        else 1,
-                        "authenticated": (
-                            session_data.get("authenticated", False)
-                            if session_data else False
-                        ),
-                        "proxy_used": proxy_config.get("server") if proxy_config else None,
-                    },
-                )
-
-                await browser.close()
-
-            # Block detection (same logic as other fetchers)
-            http_error = status_code in (403, 429, 503)
-            tiny_html = len(html) < settings.min_html_bytes
-            blocked = http_error or tiny_html
-            captcha = False  # Currently disabled (caused false positives)
-
-        except Exception as exc:
-            log.warning(
-                "lake_playwright_proxy_fetcher_error",
-                url=url,
-                domain=domain,
-                proxy=proxy_config.get("server") if proxy_config else None,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            html = ""
-            status_code = 0
-            blocked = True
-            captcha = False
+                    html = ""
+                    status_code = 0
+                    blocked = True
+                    captcha = False
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -181,42 +179,34 @@ class LakePlaywrightProxyFetcher:
             captcha_detected=captcha,
         )
 
-    def _get_proxy_config(self) -> dict[str, Any] | None:
-        """Get proxy configuration with priority chain.
+    def _get_proxy_chain(self) -> list[dict[str, Any]]:
+        """Get all available proxy configs in priority order for failover.
 
         Priority:
         1. Custom proxy (custom_proxy_url with optional auth)
         2. Bright Data (brightdata_proxy_url)
         3. Smartproxy (smartproxy_url)
-        4. None (no proxy available)
 
         Returns:
-            Proxy config dict for Playwright context, or None if no proxy configured
+            List of proxy config dicts for Playwright context (may be empty)
         """
         settings = get_settings()
+        chain: list[dict[str, Any]] = []
 
-        # Priority 1: Custom proxy
         if settings.custom_proxy_url:
             proxy_config: dict[str, Any] = {"server": settings.custom_proxy_url}
             if settings.custom_proxy_username and settings.custom_proxy_password:
                 proxy_config["username"] = settings.custom_proxy_username
                 proxy_config["password"] = settings.custom_proxy_password
-            log.debug("proxy_priority_custom", server=settings.custom_proxy_url)
-            return proxy_config
+            chain.append(proxy_config)
 
-        # Priority 2: Bright Data
         if settings.brightdata_proxy_url:
-            log.debug("proxy_priority_brightdata", server=settings.brightdata_proxy_url)
-            return {"server": settings.brightdata_proxy_url}
+            chain.append({"server": settings.brightdata_proxy_url})
 
-        # Priority 3: Smartproxy
         if settings.smartproxy_url:
-            log.debug("proxy_priority_smartproxy", server=settings.smartproxy_url)
-            return {"server": settings.smartproxy_url}
+            chain.append({"server": settings.smartproxy_url})
 
-        # No proxy available
-        log.debug("proxy_priority_none")
-        return None
+        return chain
 
     async def _get_redis_client(self) -> redis.Redis:
         """Lazy Redis client initialization.

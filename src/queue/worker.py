@@ -34,6 +34,16 @@ async def recover_stale_jobs_cron(ctx: dict) -> None:
         log.info("recovered_stale_jobs_cron", count=count)
 
 
+async def cleanup_stale_data_cron(ctx: dict) -> None:
+    """Cron: delete old 'page' records (7d) and failed job data (30d)."""
+    from src.db.queries.scraped_data import cleanup_stale_data
+
+    result = await cleanup_stale_data(ctx["pool"])
+    total = result["pages"] + result["failed_job_data"]
+    if total:
+        log.info("cleanup_stale_data", **result)
+
+
 async def shutdown(ctx: dict) -> None:
     from src.db.pool import close_pool
 
@@ -48,11 +58,13 @@ class WorkerSettings:
     # Run scheduled scrape checks every hour at :00
     # Run signal evaluation every 15 minutes
     # Run tracked search checks every 15 minutes (offset by 10 min)
+    # Run data retention cleanup daily at 3:00 AM
     cron_jobs = [
         cron(check_scheduled_scrapes, hour=None, minute=0),
         cron(process_signals, hour=None, minute={0, 15, 30, 45}),
         cron(check_tracked_searches, hour=None, minute={10, 25, 40, 55}),
         cron(recover_stale_jobs_cron, hour=None, minute={5, 20, 35, 50}),
+        cron(cleanup_stale_data_cron, hour=3, minute=0),
     ]
 
     _settings = get_settings()

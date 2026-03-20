@@ -390,6 +390,12 @@ async def job_status_page(request: Request, job_id: UUID):
 
     data_count = await count_scraped_data_by_job(pool, job_id)
 
+    type_counts = {}
+    if job.status in ("completed", "failed"):
+        from src.db.queries.scraped_data import get_data_type_counts
+
+        type_counts = await get_data_type_counts(pool, job_id)
+
     return get_templates().TemplateResponse(
         "pages/jobs/status.html",
         {
@@ -398,6 +404,7 @@ async def job_status_page(request: Request, job_id: UUID):
             "job": job,
             "data_count": data_count,
             "elapsed_ms": _get_elapsed_ms(job),
+            "type_counts": type_counts,
         },
     )
 
@@ -410,15 +417,17 @@ async def job_status_partial(request: Request, job_id: UUID):
     """Job status partial for HTMX polling."""
     from src.db.pool import get_pool
     from src.db.queries.jobs import get_job
-    from src.db.queries.scraped_data import count_scraped_data_by_job
+    from src.db.queries.scraped_data import count_scraped_data_by_job, get_data_type_counts
 
     pool = await get_pool()
     job = await get_job(pool, job_id)
     data_count = await count_scraped_data_by_job(pool, job_id) if job else 0
 
     headers = {}
+    type_counts = {}
     if job and job.status in ("completed", "failed"):
-        headers["HX-Refresh"] = "true"
+        headers["HX-Redirect"] = f"/jobs/{job_id}?status={job.status}"
+        type_counts = await get_data_type_counts(pool, job_id)
 
     return get_templates().TemplateResponse(
         "partials/job_status.html",
@@ -427,6 +436,7 @@ async def job_status_partial(request: Request, job_id: UUID):
             "job": job,
             "data_count": data_count,
             "elapsed_ms": _get_elapsed_ms(job),
+            "type_counts": type_counts,
         },
         headers=headers,
     )

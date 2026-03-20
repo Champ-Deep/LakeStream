@@ -74,6 +74,29 @@
     </div>
   </div>
 
+  <!-- Data Type Breakdown (completed/failed jobs) -->
+  {% if type_counts is defined and type_counts %}
+  <div class="mt-4 pt-4 border-t border-stone-100">
+    <p class="text-xs text-stone-400 uppercase tracking-wide mb-2 text-center">Data Breakdown</p>
+    <div class="flex flex-wrap justify-center gap-2">
+      {% for dtype, count in type_counts.items() %}
+      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
+        {% if dtype == 'article' %}bg-purple-50 text-purple-700
+        {% elif dtype == 'contact' %}bg-green-50 text-green-700
+        {% elif dtype == 'blog_url' %}bg-blue-50 text-blue-700
+        {% elif dtype == 'tech_stack' %}bg-orange-50 text-orange-700
+        {% elif dtype == 'resource' %}bg-pink-50 text-pink-700
+        {% elif dtype == 'pricing' %}bg-stone-100 text-stone-600
+        {% else %}bg-stone-100 text-stone-600{% endif %}
+      ">
+        {{ dtype | replace('_', ' ') | title }}
+        <span class="font-bold">{{ count }}</span>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Strategy Used -->
   {% if job.strategy_used %}
   <div class="mt-4 pt-4 border-t border-stone-100 text-center">

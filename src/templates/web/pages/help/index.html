@@ -205,15 +205,15 @@
         </button>
         <div x-show="open === 2" x-collapse class="mt-2 text-sm text-slate">
           <p>
-            We use a three-tier adaptive scraping system:
+            We use a two-tier adaptive scraping system:
           </p>
           <ul class="list-disc list-inside mt-2 space-y-1">
-            <li><strong>Basic HTTP</strong> - Fast and cheap (~$0.0001/page). Works for most simple sites.</li>
-            <li><strong>Headless Browser</strong> - Renders JavaScript (~$0.002/page). For complex SPAs.</li>
-            <li><strong>Headless + Proxy</strong> - Uses residential proxies (~$0.004/page). For sites with bot detection.</li>
+            <li><strong>Playwright</strong> - Headless browser with session persistence (~$0.003/page). Default for all scraping, handles JavaScript-heavy sites.</li>
+            <li><strong>Playwright + Proxy</strong> - Adds residential proxy rotation (~$0.0035/page). Used when a site blocks direct requests.</li>
           </ul>
           <p class="mt-2">
-            We automatically start with the cheapest strategy and escalate only when needed.
+            We automatically start with Playwright and escalate to Playwright + Proxy only when needed (e.g., 403/429 blocks).
+            You can also force a specific tier in the Advanced Options when starting a scrape.
           </p>
         </div>
       </div>

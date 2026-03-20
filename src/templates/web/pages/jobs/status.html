@@ -80,7 +80,7 @@
       </button>
     {% elif job.status == 'failed' %}
       <a
-        href="/jobs/new?domain={{ job.domain }}"
+        href="/?domain={{ job.domain }}"
         class="flex-1 py-3 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors text-center"
       >
         Try Again
@@ -95,16 +95,18 @@
     {% endif %}
   </div>
 
-  <!-- Error Message (if failed) -->
-  {% if job.status == 'failed' and job.error_message %}
-  <div class="bg-error/5 border border-error/20 rounded-xl p-5">
+  <!-- Error / Warning Message -->
+  {% if job.error_message %}
+  <div class="{% if job.status == 'failed' %}bg-error/5 border border-error/20{% else %}bg-warning/5 border border-warning/20{% endif %} rounded-xl p-5">
     <div class="flex items-start gap-3">
-      <svg class="w-5 h-5 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg class="w-5 h-5 {% if job.status == 'failed' %}text-error{% else %}text-warning{% endif %} flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
       </svg>
       <div>
-        <p class="text-sm font-medium text-error">Error Details</p>
+        <p class="text-sm font-medium {% if job.status == 'failed' %}text-error{% else %}text-warning{% endif %}">
+          {% if job.status == 'failed' %}Error Details{% else %}Warning{% endif %}
+        </p>
         <p class="text-sm text-slate mt-1">{{ job.error_message }}</p>
       </div>
     </div>
@@ -154,4 +156,19 @@
   </div>
 
 </div>
+
+<script>
+  document.addEventListener('alpine:init', () => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+    if (status === 'completed') {
+      Alpine.store('toast').show('Scrape completed successfully!', 'success');
+    } else if (status === 'failed') {
+      Alpine.store('toast').show('Scrape job failed. See error details below.', 'error');
+    }
+    if (status) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  });
+</script>
 {% endblock %}
