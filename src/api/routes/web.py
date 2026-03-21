@@ -852,7 +852,7 @@ async def download_job_csv(request: Request, job_id: UUID):
     )
 
 
-@router.get("/download/job/{job_id}.json")
+@router.get("/download/job/{job_id}/json")
 async def download_job_json(request: Request, job_id: UUID):
     """Download scraped data for a job as JSON (session-based auth)."""
     redirect = _require_login(request)
