@@ -213,6 +213,7 @@ document.addEventListener('alpine:init', () => {
       { value: 'contact', label: 'Contacts' },
       { value: 'tech_stack', label: 'Tech Stack' },
       { value: 'resource', label: 'Resources' },
+      { value: 'pricing', label: 'Pricing' },
     ],
 
     init() {
@@ -295,6 +296,77 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // YouTube Transcript component (dashboard)
+  Alpine.data('youtubeTranscript', () => ({
+    url: '',
+    loading: false,
+    result: null,
+    error: null,
+    copied: false,
+
+    async extract() {
+      if (!this.url.trim()) {
+        this.error = 'Please enter a YouTube URL';
+        return;
+      }
+      this.loading = true;
+      this.error = null;
+      this.result = null;
+
+      try {
+        const response = await fetch('/api/scrape/youtube-transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: this.url.trim() }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          this.result = data;
+          Alpine.store('toast').show('Transcript extracted!', 'success');
+        } else {
+          this.error = data.error || 'Failed to extract transcript';
+        }
+      } catch (err) {
+        this.error = 'Network error. Please try again.';
+      }
+      this.loading = false;
+    },
+
+    copyTranscript() {
+      if (!this.result?.transcript_text) return;
+      navigator.clipboard.writeText(this.result.transcript_text).then(() => {
+        this.copied = true;
+        setTimeout(() => this.copied = false, 2000);
+      });
+    },
+
+    downloadTxt() {
+      if (!this.result?.transcript_text) return;
+      const title = this.result.metadata?.title || 'transcript';
+      const filename = title.replace(/[^a-z0-9]/gi, '_').substring(0, 50) + '.txt';
+      const blob = new Blob([this.result.transcript_text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    formatDuration(seconds) {
+      if (!seconds) return '';
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return m + 'm ' + s + 's';
+    }
+  }));
+
+  // MCP Connection Guide component (dashboard modal)
+  Alpine.data('mcpGuide', () => ({
+    open: false,
+    tab: 'claude-code',
+  }));
+
   // Add Site Modal component (domains page)
   Alpine.data('addSiteModal', () => ({
     open: false,
@@ -310,6 +382,7 @@ document.addEventListener('alpine:init', () => {
       { value: 'contact', label: 'Contacts' },
       { value: 'tech_stack', label: 'Tech Stack' },
       { value: 'resource', label: 'Resources' },
+      { value: 'pricing', label: 'Pricing' },
     ],
 
     async submit() {

@@ -1,0 +1,771 @@
+{% extends "base.html" %}
+
+{% block title %}API Documentation - LakeStream{% endblock %}
+
+{% block content %}
+<div class="space-y-8" x-data="{ activeSection: 'scraping' }">
+
+  <!-- Page Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <a href="/settings" class="text-sm text-slate-400 hover:text-brand-red transition-colors flex items-center gap-1">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i>
+          Settings
+        </a>
+      </div>
+      <h1 class="text-3xl font-extrabold text-navy">API Documentation</h1>
+      <p class="text-slate-500 mt-1">Complete reference for REST API endpoints, authentication, and MCP integration</p>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <div class="flex flex-wrap gap-2 bg-white border border-slate-200 rounded-2xl p-2">
+    <button @click="activeSection = 'scraping'"
+      :class="activeSection === 'scraping' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      Scraping
+    </button>
+    <button @click="activeSection = 'export'"
+      :class="activeSection === 'export' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      Export
+    </button>
+    <button @click="activeSection = 'discovery'"
+      :class="activeSection === 'discovery' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      Discovery
+    </button>
+    <button @click="activeSection = 'webhooks'"
+      :class="activeSection === 'webhooks' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      Webhooks
+    </button>
+    <button @click="activeSection = 'domains'"
+      :class="activeSection === 'domains' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      Domains
+    </button>
+    <button @click="activeSection = 'auth'"
+      :class="activeSection === 'auth' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      Authentication
+    </button>
+    <button @click="activeSection = 'mcp'"
+      :class="activeSection === 'mcp' ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'"
+      class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+      MCP Integration
+    </button>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- SCRAPING SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'scraping'" class="space-y-6">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">Scraping API</h2>
+      <p class="text-slate-500 text-sm mb-8">Start scrape jobs for domains and extract YouTube transcripts</p>
+
+      <!-- POST /api/scrape/execute -->
+      <div class="space-y-4 mb-10" id="scrape-execute">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/scrape/execute</code>
+        </div>
+        <p class="text-sm text-slate-600">Start a new domain scrape job. The job is enqueued and processed asynchronously by the worker pool.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "domain": "example.com",
+  "data_types": ["blog_url", "article", "contact", "tech_stack", "resource", "pricing"],
+  "max_pages": 100,
+  "template_id": "auto",
+  "tier": null,
+  "priority": 5,
+  "raw_only": false
+}</pre>
+              </div>
+            </div>
+            <div class="text-xs text-slate-500 space-y-1">
+              <p><code class="bg-slate-100 px-1 rounded">domain</code> <span class="text-red-500">required</span> — Website domain to scrape</p>
+              <p><code class="bg-slate-100 px-1 rounded">data_types</code> — Array of types to extract: blog_url, article, contact, tech_stack, resource, pricing</p>
+              <p><code class="bg-slate-100 px-1 rounded">max_pages</code> — Max pages to crawl (1-500, default: 100)</p>
+              <p><code class="bg-slate-100 px-1 rounded">template_id</code> — Template to use: auto, wordpress, hubspot, webflow, generic, directory</p>
+              <p><code class="bg-slate-100 px-1 rounded">tier</code> — Scraping tier: null (auto), "playwright", or "playwright_proxy"</p>
+              <p><code class="bg-slate-100 px-1 rounded">priority</code> — Job priority (1=low, 5=normal, 10=high)</p>
+              <p><code class="bg-slate-100 px-1 rounded">raw_only</code> — If true, save raw HTML only without extraction</p>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response (202)</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "pending",
+  "message": "Scrape job queued for example.com"
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- GET /api/scrape/status/{job_id} -->
+      <div class="space-y-4 mb-10" id="scrape-status">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/scrape/status/{'{'}job_id{'}'}</code>
+        </div>
+        <p class="text-sm text-slate-600">Check the status of a scrape job. Poll this endpoint until status is "completed" or "failed".</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response (200)</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "domain": "example.com",
+  "status": "completed",
+  "strategy_used": "playwright",
+  "pages_scraped": 47,
+  "cost_usd": 0.141,
+  "duration_ms": 35200,
+  "created_at": "2026-03-23T10:00:00",
+  "completed_at": "2026-03-23T10:00:35",
+  "data_count": 23
+}</pre>
+              </div>
+            </div>
+            <div class="text-xs text-slate-500 space-y-1">
+              <p><code class="bg-slate-100 px-1 rounded">status</code> — pending, running, completed, failed</p>
+              <p><code class="bg-slate-100 px-1 rounded">strategy_used</code> — The scraping tier that was used</p>
+              <p><code class="bg-slate-100 px-1 rounded">data_count</code> — Number of extracted data records</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- POST /api/scrape/youtube-transcript -->
+      <div class="space-y-4" id="youtube-transcript">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/scrape/youtube-transcript</code>
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded">NEW</span>
+        </div>
+        <p class="text-sm text-slate-600">Extract transcript from a YouTube video. Returns immediately (no job queue). Works with auto-generated and manual captions.</p>
+
+        <div x-data="{ open: true }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "include_timestamps": true,
+  "languages": ["en"]
+}</pre>
+              </div>
+            </div>
+            <div class="text-xs text-slate-500 space-y-1">
+              <p><code class="bg-slate-100 px-1 rounded">url</code> <span class="text-red-500">required</span> — YouTube video URL (watch, youtu.be, or embed format)</p>
+              <p><code class="bg-slate-100 px-1 rounded">include_timestamps</code> — Include timestamped segments array (default: true)</p>
+              <p><code class="bg-slate-100 px-1 rounded">languages</code> — Preferred transcript languages in priority order (default: ["en"])</p>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response (200)</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "success": true,
+  "video_id": "dQw4w9WgXcQ",
+  "metadata": {
+    "title": "Rick Astley - Never Gonna Give You Up",
+    "channel": "Rick Astley",
+    "channel_url": "https://youtube.com/@RickAstley",
+    "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/..."
+  },
+  "transcript_text": "We're no strangers to love...",
+  "segment_count": 42,
+  "language": "English",
+  "language_code": "en",
+  "is_generated": false,
+  "duration_seconds": 212.0,
+  "segments": [
+    { "text": "We're no strangers to love", "start": 18.0, "duration": 3.5 }
+  ]
+}</pre>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">cURL Example</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>curl -X POST http://localhost:3000/api/scrape/youtube-transcript \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://youtube.com/watch?v=dQw4w9WgXcQ"}'</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- EXPORT SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'export'" x-cloak class="space-y-6">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">Export API</h2>
+      <p class="text-slate-500 text-sm mb-8">Download scraped data as CSV/JSON or send to a webhook</p>
+
+      <!-- GET /api/export/csv/{job_id} -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/export/csv/{'{'}job_id{'}'}</code>
+        </div>
+        <p class="text-sm text-slate-600">Download all scraped data from a job as a CSV file. Metadata fields are flattened into columns.</p>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- GET /api/export/csv -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/export/csv?domain=example.com</code>
+        </div>
+        <p class="text-sm text-slate-600">Export all scraped data as CSV, optionally filtered by domain. Returns up to 10,000 records.</p>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- GET /api/export/json/{job_id} -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/export/json/{'{'}job_id{'}'}</code>
+        </div>
+        <p class="text-sm text-slate-600">Download all scraped data from a job as JSON with rich metadata. Includes job info and all data records.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Response Example
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3">
+            <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "job_id": "550e8400-...",
+  "domain": "example.com",
+  "exported_at": "2026-03-23T10:00:00Z",
+  "total_records": 23,
+  "data": [
+    {
+      "id": "...",
+      "domain": "example.com",
+      "data_type": "article",
+      "url": "https://example.com/blog/post-1",
+      "title": "My Article",
+      "metadata": { "author": "John", "word_count": 1200 }
+    }
+  ]
+}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- POST /api/export/webhook -->
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/export/webhook</code>
+        </div>
+        <p class="text-sm text-slate-600">Send scraped data to an external webhook URL. Filter by job_id or domain.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "url": "https://your-n8n.com/webhook/abc123",
+  "job_id": "550e8400-...",
+  "domain": null
+}</pre>
+              </div>
+            </div>
+            <div class="text-xs text-slate-500">
+              <p>Provide either <code class="bg-slate-100 px-1 rounded">job_id</code> or <code class="bg-slate-100 px-1 rounded">domain</code> to filter data.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- DISCOVERY SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'discovery'" x-cloak class="space-y-6">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">Discovery API</h2>
+      <p class="text-slate-500 text-sm mb-8">Search for domains by keyword and automatically enqueue scrape jobs for discovered sites</p>
+
+      <!-- POST /api/discover/search -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/discover/search</code>
+        </div>
+        <p class="text-sm text-slate-600">Submit a search query to discover relevant B2B domains. Uses LakeCurrent search engine. Automatically enqueues scrape jobs for discovered domains.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "query": "SaaS marketing automation tools",
+  "max_domains": 10,
+  "data_types": ["blog_url", "article", "contact"],
+  "max_pages_per_domain": 50
+}</pre>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response (202)</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "discovery_id": "...",
+  "query": "SaaS marketing automation tools",
+  "status": "pending",
+  "message": "Discovery job queued. Searching for domains..."
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- GET /api/discover/status/{discovery_id} -->
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/discover/status/{'{'}discovery_id{'}'}</code>
+        </div>
+        <p class="text-sm text-slate-600">Check the status of a discovery job including found domains and child scrape jobs.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- WEBHOOKS SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'webhooks'" x-cloak class="space-y-6">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">Webhooks API</h2>
+      <p class="text-slate-500 text-sm mb-8">Trigger scrapes from external services like n8n</p>
+
+      <!-- POST /api/webhook/trigger -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/webhook/trigger</code>
+        </div>
+        <p class="text-sm text-slate-600">Trigger a scrape job via webhook. Designed for n8n integration.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "domain": "example.com",
+  "data_types": ["blog_url", "article", "contact"],
+  "max_pages": 100,
+  "template_id": "auto"
+}</pre>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response (200)</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "success": true,
+  "job_id": "550e8400-...",
+  "status_url": "/jobs/550e8400-..."
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- POST /api/webhook/test -->
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/webhook/test</code>
+        </div>
+        <p class="text-sm text-slate-600">Test that a webhook URL is reachable by sending a test payload.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request / Response
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3 space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{ "url": "https://your-n8n.com/webhook/test" }</pre>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response (200)</label>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "success": true,
+  "status_code": 200,
+  "message": "Webhook responded with status 200"
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- DOMAINS SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'domains'" x-cloak class="space-y-6">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">Domains & Tracking API</h2>
+      <p class="text-slate-500 text-sm mb-8">Manage scraped domains and set up automated tracking</p>
+
+      <!-- GET /api/domains -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/domains</code>
+        </div>
+        <p class="text-sm text-slate-600">List all scraped domains with metadata (success rate, block count, cost, last scraped date).</p>
+        <div class="text-xs text-slate-500">
+          <p>Query params: <code class="bg-slate-100 px-1 rounded">limit</code> (default 50), <code class="bg-slate-100 px-1 rounded">offset</code>, <code class="bg-slate-100 px-1 rounded">sort_by</code> (last_scraped_at, success_rate)</p>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- GET /api/domains/{domain}/stats -->
+      <div class="space-y-4 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-lg">GET</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/domains/{'{'}domain{'}'}/stats</code>
+        </div>
+        <p class="text-sm text-slate-600">Get detailed metadata and stats for a specific domain.</p>
+      </div>
+
+      <div class="h-px bg-slate-100 my-8"></div>
+
+      <!-- POST /api/tracked/add -->
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-lg">POST</span>
+          <code class="text-sm font-mono text-navy font-bold">/api/tracked/add</code>
+        </div>
+        <p class="text-sm text-slate-600">Add a domain for automated tracking with scheduled re-scraping.</p>
+
+        <div x-data="{ open: false }">
+          <button @click="open = !open" class="text-xs font-bold text-slate-400 uppercase tracking-wide hover:text-navy flex items-center gap-1">
+            <i data-lucide="code-2" class="w-3.5 h-3.5"></i>
+            Request Body
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+          </button>
+          <div x-show="open" x-transition class="mt-3">
+            <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "domain": "example.com",
+  "data_types": ["blog_url", "article", "contact"],
+  "scrape_frequency": "weekly",
+  "max_pages": 100,
+  "webhook_url": "https://your-n8n.com/webhook/..."
+}</pre>
+            </div>
+            <div class="text-xs text-slate-500 mt-2">
+              <p><code class="bg-slate-100 px-1 rounded">scrape_frequency</code> — daily, weekly, biweekly, monthly</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- AUTHENTICATION SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'auth'" x-cloak class="space-y-6">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">Authentication</h2>
+      <p class="text-slate-500 text-sm mb-8">How to authenticate with the LakeStream API</p>
+
+      <div class="space-y-6">
+        <!-- Session Auth -->
+        <div class="bg-slate-50 rounded-2xl p-6">
+          <h3 class="font-bold text-navy mb-2 flex items-center gap-2">
+            <i data-lucide="globe" class="w-5 h-5 text-slate-500"></i>
+            Browser (Session Cookie)
+          </h3>
+          <p class="text-sm text-slate-600 mb-3">
+            When using the web dashboard, authentication is handled automatically via session cookies after login.
+            All web UI actions (Quick Start scraping, exports, etc.) use this method.
+          </p>
+        </div>
+
+        <!-- JWT Auth -->
+        <div class="bg-slate-50 rounded-2xl p-6">
+          <h3 class="font-bold text-navy mb-2 flex items-center gap-2">
+            <i data-lucide="key" class="w-5 h-5 text-slate-500"></i>
+            API (Bearer Token)
+          </h3>
+          <p class="text-sm text-slate-600 mb-3">
+            For programmatic API access, include a JWT Bearer token in the Authorization header.
+          </p>
+          <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>curl -X POST http://localhost:3000/api/scrape/execute \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'</pre>
+          </div>
+        </div>
+
+        <!-- Public Endpoints -->
+        <div class="bg-blue-50 rounded-2xl p-6">
+          <h3 class="font-bold text-navy mb-2 flex items-center gap-2">
+            <i data-lucide="unlock" class="w-5 h-5 text-blue-500"></i>
+            Unauthenticated Endpoints
+          </h3>
+          <p class="text-sm text-slate-600">
+            The following endpoints do not require authentication:
+          </p>
+          <div class="mt-2 space-y-1 text-sm">
+            <p><code class="bg-white px-2 py-0.5 rounded font-mono text-xs">GET /api/health</code> — System health check</p>
+            <p><code class="bg-white px-2 py-0.5 rounded font-mono text-xs">POST /api/scrape/youtube-transcript</code> — YouTube transcript extraction</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MCP INTEGRATION SECTION -->
+  <!-- ================================================================= -->
+  <div x-show="activeSection === 'mcp'" x-cloak class="space-y-6" id="mcp-integration">
+    <div class="card p-8">
+      <h2 class="text-xl font-bold text-navy mb-1">MCP Integration</h2>
+      <p class="text-slate-500 text-sm mb-8">Connect LakeStream to AI tools using the Model Context Protocol</p>
+
+      <!-- What is MCP -->
+      <div class="bg-slate-50 rounded-2xl p-6 mb-8">
+        <h3 class="font-bold text-navy mb-2">What is MCP?</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          The <strong>Model Context Protocol (MCP)</strong> is an open standard that lets AI tools (like Claude, Cursor, and others)
+          call external functions as "tools." LakeStream ships an MCP server that exposes all scraping capabilities as tools
+          that any MCP-compatible AI client can use directly.
+        </p>
+      </div>
+
+      <!-- Configuration -->
+      <div class="space-y-6 mb-8">
+        <h3 class="font-bold text-navy">Setup</h3>
+
+        <div class="space-y-4">
+          <!-- Claude Code -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-6" x-data="{ open: true }">
+            <button @click="open = !open" class="w-full flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-navy rounded-lg flex items-center justify-center">
+                  <i data-lucide="terminal" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="font-bold text-navy">Claude Code</span>
+              </div>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+            </button>
+            <div x-show="open" x-transition class="mt-4">
+              <p class="text-sm text-slate-600 mb-3">Add to <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">.mcp.json</code> in your project root:</p>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "mcpServers": {
+    "lakestream": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "/path/to/LakeStream"
+    }
+  }
+}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Claude Desktop -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-6" x-data="{ open: false }">
+            <button @click="open = !open" class="w-full flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
+                  <i data-lucide="monitor" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="font-bold text-navy">Claude Desktop</span>
+              </div>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+            </button>
+            <div x-show="open" x-transition class="mt-4">
+              <p class="text-sm text-slate-600 mb-3">Add to your Claude Desktop config file:</p>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "mcpServers": {
+    "lakestream": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "/path/to/LakeStream"
+    }
+  }
+}</pre>
+              </div>
+              <p class="text-xs text-slate-500 mt-2">
+                macOS: <code class="bg-slate-100 px-1 rounded">~/Library/Application Support/Claude/claude_desktop_config.json</code><br>
+                Windows: <code class="bg-slate-100 px-1 rounded">%APPDATA%/Claude/claude_desktop_config.json</code>
+              </p>
+            </div>
+          </div>
+
+          <!-- Cursor / Other -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-6" x-data="{ open: false }">
+            <button @click="open = !open" class="w-full flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-slate-600 rounded-lg flex items-center justify-center">
+                  <i data-lucide="cpu" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="font-bold text-navy">Cursor / Windsurf / Other</span>
+              </div>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''"></i>
+            </button>
+            <div x-show="open" x-transition class="mt-4">
+              <p class="text-sm text-slate-600 mb-3">Use this server configuration with any MCP-compatible client:</p>
+              <div class="code-block bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+<pre>{
+  "command": "python",
+  "args": ["-m", "src.mcp_server"],
+  "cwd": "/path/to/LakeStream",
+  "transport": "stdio"
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Available Tools -->
+      <div>
+        <h3 class="font-bold text-navy mb-4">Available MCP Tools</h3>
+        <div class="space-y-3">
+          <div class="bg-slate-50 rounded-xl p-4">
+            <div class="flex items-center gap-2 mb-1">
+              <code class="text-sm font-mono font-bold text-navy">extract_youtube_transcript</code>
+              <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded">NEW</span>
+            </div>
+            <p class="text-xs text-slate-500">Extract full transcript from a YouTube video. Returns text, timestamped segments, and video metadata.</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <div class="flex items-center gap-2 mb-1">
+              <code class="text-sm font-mono font-bold text-navy">extract_blog_content</code>
+              <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded">NEW</span>
+            </div>
+            <p class="text-xs text-slate-500">Extract content from any web page as markdown. Returns text, word count, reading time, and page metadata.</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <code class="text-sm font-mono font-bold text-navy">submit_scrape_job</code>
+            <p class="text-xs text-slate-500 mt-1">Start a full domain scrape job with template detection and data extraction.</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <code class="text-sm font-mono font-bold text-navy">get_job_status</code>
+            <p class="text-xs text-slate-500 mt-1">Check the status of a running or completed scrape job.</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <code class="text-sm font-mono font-bold text-navy">get_job_results</code>
+            <p class="text-xs text-slate-500 mt-1">Retrieve extracted data from a completed scrape job.</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <code class="text-sm font-mono font-bold text-navy">list_domains</code>
+            <p class="text-xs text-slate-500 mt-1">List all domains that have been scraped with success rates and metadata.</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <code class="text-sm font-mono font-bold text-navy">list_templates</code>
+            <p class="text-xs text-slate-500 mt-1">List available scraping templates (WordPress, HubSpot, Webflow, etc.).</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Example Workflow -->
+      <div class="mt-8 bg-blue-50 rounded-2xl p-6">
+        <h3 class="font-bold text-navy mb-3">Example: Extract a YouTube transcript with Claude Code</h3>
+        <div class="space-y-2 text-sm text-slate-700">
+          <p>1. Ensure <code class="bg-white px-1.5 py-0.5 rounded text-xs font-mono">.mcp.json</code> is configured (see above)</p>
+          <p>2. Ask Claude: <em>"Extract the transcript from https://youtube.com/watch?v=dQw4w9WgXcQ"</em></p>
+          <p>3. Claude will call <code class="bg-white px-1.5 py-0.5 rounded text-xs font-mono">extract_youtube_transcript</code> and return the full transcript with metadata</p>
+          <p>4. Follow up: <em>"Summarize the key points"</em> or <em>"What are the main topics discussed?"</em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
