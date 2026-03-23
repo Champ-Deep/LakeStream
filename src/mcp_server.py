@@ -8,6 +8,7 @@ Run with:
 
 import json
 import sys
+from typing import Any
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
@@ -17,7 +18,9 @@ mcp = FastMCP(
     instructions=(
         "LakeStream is a B2B web scraping platform. Use these tools to scrape domains "
         "for blog posts, articles, contacts, tech stacks, pricing, and resources. "
-        "Submit a scrape job, then poll its status until complete, then get results."
+        "Submit a scrape job, then poll its status until complete, then get results. "
+        "You can also extract content directly: use extract_blog_content for web pages "
+        "and extract_youtube_transcript for YouTube video transcripts."
     ),
 )
 
@@ -81,12 +84,14 @@ async def submit_scrape_job(
     )
     await redis.aclose()
 
-    return json.dumps({
-        "job_id": str(job.id),
-        "status": job.status,
-        "domain": domain,
-        "message": f"Scrape job queued for {domain}. Use get_job_status to check progress.",
-    })
+    return json.dumps(
+        {
+            "job_id": str(job.id),
+            "status": job.status,
+            "domain": domain,
+            "message": f"Scrape job queued for {domain}. Use get_job_status to check progress.",
+        }
+    )
 
 
 @mcp.tool()
@@ -110,19 +115,21 @@ async def get_job_status(job_id: str) -> str:
 
     data_count = await count_scraped_data_by_job(pool, job.id)
 
-    return json.dumps({
-        "job_id": str(job.id),
-        "domain": job.domain,
-        "status": job.status,
-        "strategy_used": job.strategy_used,
-        "pages_scraped": job.pages_scraped,
-        "data_count": data_count,
-        "cost_usd": job.cost_usd,
-        "duration_ms": job.duration_ms,
-        "error_message": job.error_message,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-    })
+    return json.dumps(
+        {
+            "job_id": str(job.id),
+            "domain": job.domain,
+            "status": job.status,
+            "strategy_used": job.strategy_used,
+            "pages_scraped": job.pages_scraped,
+            "data_count": data_count,
+            "cost_usd": job.cost_usd,
+            "duration_ms": job.duration_ms,
+            "error_message": job.error_message,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        }
+    )
 
 
 @mcp.tool()
@@ -210,12 +217,14 @@ async def discover_and_scrape(
     await redis.enqueue_job("process_discovery_job", discovery_id=str(disc_job.id))
     await redis.aclose()
 
-    return json.dumps({
-        "discovery_id": str(disc_job.id),
-        "query": query,
-        "status": disc_job.status,
-        "message": "Discovery job queued. Use get_discovery_status to track progress.",
-    })
+    return json.dumps(
+        {
+            "discovery_id": str(disc_job.id),
+            "query": query,
+            "status": disc_job.status,
+            "message": "Discovery job queued. Use get_discovery_status to track progress.",
+        }
+    )
 
 
 @mcp.tool()
@@ -247,23 +256,27 @@ async def get_discovery_status(discovery_id: str) -> str:
                 pages_scraped = scrape_job.pages_scraped
                 cost_usd = scrape_job.cost_usd or 0.0
 
-        child_jobs.append({
-            "domain": d.domain,
-            "status": d.status,
-            "scrape_job_id": str(d.scrape_job_id) if d.scrape_job_id else None,
-            "pages_scraped": pages_scraped,
-            "cost_usd": cost_usd,
-        })
+        child_jobs.append(
+            {
+                "domain": d.domain,
+                "status": d.status,
+                "scrape_job_id": str(d.scrape_job_id) if d.scrape_job_id else None,
+                "pages_scraped": pages_scraped,
+                "cost_usd": cost_usd,
+            }
+        )
 
-    return json.dumps({
-        "discovery_id": discovery_id,
-        "query": disc_job.query,
-        "status": disc_job.status,
-        "domains_found": disc_job.domains_found,
-        "child_jobs": child_jobs,
-        "created_at": disc_job.created_at.isoformat() if disc_job.created_at else None,
-        "completed_at": disc_job.completed_at.isoformat() if disc_job.completed_at else None,
-    })
+    return json.dumps(
+        {
+            "discovery_id": discovery_id,
+            "query": disc_job.query,
+            "status": disc_job.status,
+            "domains_found": disc_job.domains_found,
+            "child_jobs": child_jobs,
+            "created_at": disc_job.created_at.isoformat() if disc_job.created_at else None,
+            "completed_at": disc_job.completed_at.isoformat() if disc_job.completed_at else None,
+        }
+    )
 
 
 @mcp.tool()
@@ -304,6 +317,142 @@ async def list_templates() -> str:
     records = [{"id": t.id, "name": t.name, "description": t.description} for t in templates]
 
     return json.dumps({"templates": records})
+
+
+@mcp.tool()
+async def extract_youtube_transcript(
+    url: str,
+    languages: list[str] | None = None,
+    include_timestamps: bool = True,
+) -> str:
+    """Extract the transcript from a YouTube video.
+
+    Returns the full transcript text, timestamped segments, and video metadata
+    (title, channel). Works with auto-generated and manual captions.
+
+    Args:
+        url: YouTube video URL (youtube.com/watch?v=, youtu.be/, or youtube.com/embed/)
+        languages: Preferred transcript languages in priority order.
+                   Defaults to ["en", "en-US", "en-GB"].
+        include_timestamps: Whether to include timestamped segments in output.
+                           Set to false for just the plain text. Default true.
+    """
+    from src.services.youtube import (
+        NoTranscriptFound,
+        TranscriptsDisabled,
+        VideoUnavailable,
+        extract_video_id,
+        fetch_transcript,
+        fetch_video_metadata,
+    )
+
+    video_id = extract_video_id(url)
+    if not video_id:
+        return json.dumps(
+            {
+                "error": (
+                    "Invalid YouTube URL. "
+                    "Provide a youtube.com/watch, youtu.be, or youtube.com/embed URL."
+                ),
+            }
+        )
+
+    # Fetch metadata (title, channel) — best-effort, don't fail if unavailable
+    try:
+        metadata = await fetch_video_metadata(video_id)
+    except Exception:
+        metadata = {"title": "", "channel": "", "channel_url": "", "thumbnail_url": ""}
+
+    # Fetch transcript
+    try:
+        transcript_data = fetch_transcript(video_id, languages=languages)
+    except (TranscriptsDisabled, NoTranscriptFound):
+        return json.dumps(
+            {
+                "error": "No transcript available for this video. Captions may be disabled.",
+                "video_id": video_id,
+                "metadata": metadata,
+            }
+        )
+    except VideoUnavailable:
+        return json.dumps({"error": "Video not found or unavailable.", "video_id": video_id})
+    except Exception as e:
+        return json.dumps({"error": f"Failed to fetch transcript: {e}", "video_id": video_id})
+
+    result: dict[str, Any] = {
+        "video_id": video_id,
+        "url": url,
+        "metadata": metadata,
+        "transcript_text": transcript_data["transcript_text"],
+        "language": transcript_data["language"],
+        "language_code": transcript_data["language_code"],
+        "is_generated": transcript_data["is_generated"],
+        "duration_seconds": transcript_data["duration_seconds"],
+        "segment_count": transcript_data["segment_count"],
+    }
+
+    if include_timestamps:
+        result["segments"] = transcript_data["segments"]
+
+    return json.dumps(result)
+
+
+@mcp.tool()
+async def extract_blog_content(url: str) -> str:
+    """Extract clean content from a blog post or web page as Markdown.
+
+    Returns the page content as clean Markdown with metadata (title, author,
+    description). Uses the same scraping engine as LakeStream's main pipeline
+    with automatic anti-bot escalation.
+
+    Args:
+        url: The blog post or web page URL to extract content from.
+    """
+    from src.services.scraper import ScraperService
+
+    try:
+        scraper = ScraperService(escalation_service=None)
+        result = await scraper.scrape(url, only_main_content=True)
+    except Exception as e:
+        return json.dumps(
+            {
+                "error": f"Failed to extract content: {e}",
+                "url": url,
+                "success": False,
+            }
+        )
+
+    if not result.get("success"):
+        return json.dumps(
+            {
+                "error": result.get("error", "Unknown extraction error"),
+                "url": url,
+                "success": False,
+            }
+        )
+
+    markdown = result.get("markdown", "")
+    word_count = len(markdown.split()) if markdown else 0
+    reading_time_minutes = round(word_count / 238, 1)
+
+    raw_meta = result.get("metadata", {})
+    title = raw_meta.get("og_title") or raw_meta.get("title", "")
+    description = raw_meta.get("og_description") or raw_meta.get("description", "")
+
+    return json.dumps(
+        {
+            "url": raw_meta.get("canonical") or raw_meta.get("url", url),
+            "title": title,
+            "author": raw_meta.get("author", ""),
+            "description": description,
+            "og_image": raw_meta.get("og_image", ""),
+            "word_count": word_count,
+            "reading_time_minutes": reading_time_minutes,
+            "markdown": markdown,
+            "tier_used": result.get("tier_used", ""),
+            "success": True,
+        }
+    )
 
 
 def main():
