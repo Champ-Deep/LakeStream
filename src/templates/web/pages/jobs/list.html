@@ -80,11 +80,6 @@
       <tbody
         id="jobs-table-body"
         class="divide-y divide-stone-100"
-        {% if jobs | selectattr('status', 'equalto', 'running') | list %}
-          hx-get="/partials/jobs-table-body{% if filter_status %}?status={{ filter_status }}{% endif %}"
-          hx-trigger="every 5s"
-          hx-swap="innerHTML"
-        {% endif %}
       >
         {% include "partials/jobs_table_rows.html" %}
       </tbody>
