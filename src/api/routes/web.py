@@ -2,11 +2,8 @@
 
 from uuid import UUID
 
-import structlog
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-
-log = structlog.get_logger()
 
 router = APIRouter(tags=["web"])
 
@@ -41,26 +38,6 @@ def _get_user_filter(request: Request) -> UUID | None:
         return None  # Admin sees everything
     uid = request.session.get("user_id")
     return UUID(uid) if uid else None
-
-
-async def _get_running_data_counts(pool, jobs) -> dict[str, int]:
-    """Get live scraped-item counts for running jobs."""
-    from src.db.queries.scraped_data import count_scraped_data_by_job
-
-    data_counts: dict[str, int] = {}
-    for job in jobs:
-        if job.status == "running":
-            data_counts[str(job.id)] = await count_scraped_data_by_job(pool, job.id)
-    return data_counts
-
-
-def _get_elapsed_ms(job) -> int | None:
-    """Calculate elapsed milliseconds for a running job."""
-    if job and job.status == "running" and job.created_at:
-        from datetime import UTC, datetime
-
-        return int((datetime.now(UTC) - job.created_at).total_seconds() * 1000)
-    return None
 
 
 # =============================================================================
@@ -116,11 +93,81 @@ async def login_submit(
     return RedirectResponse(url="/", status_code=302)
 
 
-@router.get("/signup")
+@router.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    """Signup page."""
+    if request.session.get("user_id"):
+        return RedirectResponse(url="/", status_code=302)
+    return get_templates().TemplateResponse(
+        "pages/signup.html",
+        {"request": request, "error": None, "email": None, "full_name": None, "org_name": None},
+    )
+
+
 @router.post("/signup")
-async def signup_disabled():
-    """Self-registration is disabled. Redirect to login."""
-    return RedirectResponse(url="/login", status_code=302)
+async def signup_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    org_name: str = Form(...),
+):
+    """Handle signup form submission."""
+    from src.db.pool import get_pool
+    from src.db.queries.users import create_organization, create_user, get_user_by_email
+    from src.services.auth import hash_password
+
+    pool = await get_pool()
+
+    # Check if email already exists
+    existing = await get_user_by_email(pool, email)
+    if existing:
+        return get_templates().TemplateResponse(
+            "pages/signup.html",
+            {
+                "request": request,
+                "error": "Email already registered",
+                "email": email,
+                "full_name": full_name,
+                "org_name": org_name,
+            },
+            status_code=400,
+        )
+
+    if len(password) < 8:
+        return get_templates().TemplateResponse(
+            "pages/signup.html",
+            {
+                "request": request,
+                "error": "Password must be at least 8 characters",
+                "email": email,
+                "full_name": full_name,
+                "org_name": org_name,
+            },
+            status_code=400,
+        )
+
+    # Create org + user
+    org = await create_organization(pool, org_name)
+    password_hash = hash_password(password)
+    user = await create_user(
+        pool,
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        org_id=org.id,
+        role="org_owner",
+    )
+
+    # Log them in
+    request.session["user_id"] = str(user.id)
+    request.session["org_id"] = str(user.org_id)
+    request.session["role"] = user.role
+    request.session["email"] = user.email
+    request.session["is_admin"] = user.is_admin
+    request.session["full_name"] = user.full_name or user.email
+
+    return RedirectResponse(url="/", status_code=302)
 
 
 @router.get("/logout")
@@ -206,8 +253,8 @@ async def dashboard(request: Request):
                         "success_rate": meta.success_rate or 0,
                         "block_count": meta.block_count or 0,
                     }
-    except Exception as e:
-        log.warning("tracked_domains_query_failed", error=str(e))
+    except Exception:
+        pass  # tracked_domains table may not exist yet
 
     return get_templates().TemplateResponse(
         "pages/dashboard.html",
@@ -317,37 +364,10 @@ async def jobs_list(request: Request, status: str | None = None):
     pool = await get_pool()
     user_filter = _get_user_filter(request)
     jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
-    data_counts = await _get_running_data_counts(pool, jobs)
 
     return get_templates().TemplateResponse(
         "pages/jobs/list.html",
-        {
-            "request": request,
-            "active_page": "jobs",
-            "jobs": jobs,
-            "filter_status": status,
-            "data_counts": data_counts,
-        },
-    )
-
-
-@router.get("/partials/jobs-table-body", response_class=HTMLResponse)
-async def jobs_table_body_partial(request: Request, status: str | None = None):
-    redirect = _require_login(request)
-    if redirect:
-        return redirect
-    """Jobs table body partial for HTMX polling."""
-    from src.db.pool import get_pool
-    from src.db.queries.jobs import list_jobs
-
-    pool = await get_pool()
-    user_filter = _get_user_filter(request)
-    jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
-    data_counts = await _get_running_data_counts(pool, jobs)
-
-    return get_templates().TemplateResponse(
-        "partials/jobs_table_rows.html",
-        {"request": request, "jobs": jobs, "data_counts": data_counts},
+        {"request": request, "active_page": "jobs", "jobs": jobs, "filter_status": status},
     )
 
 
@@ -390,22 +410,9 @@ async def job_status_page(request: Request, job_id: UUID):
 
     data_count = await count_scraped_data_by_job(pool, job_id)
 
-    type_counts = {}
-    if job.status in ("completed", "failed"):
-        from src.db.queries.scraped_data import get_data_type_counts
-
-        type_counts = await get_data_type_counts(pool, job_id)
-
     return get_templates().TemplateResponse(
         "pages/jobs/status.html",
-        {
-            "request": request,
-            "active_page": "jobs",
-            "job": job,
-            "data_count": data_count,
-            "elapsed_ms": _get_elapsed_ms(job),
-            "type_counts": type_counts,
-        },
+        {"request": request, "active_page": "jobs", "job": job, "data_count": data_count},
     )
 
 
@@ -417,28 +424,15 @@ async def job_status_partial(request: Request, job_id: UUID):
     """Job status partial for HTMX polling."""
     from src.db.pool import get_pool
     from src.db.queries.jobs import get_job
-    from src.db.queries.scraped_data import count_scraped_data_by_job, get_data_type_counts
+    from src.db.queries.scraped_data import count_scraped_data_by_job
 
     pool = await get_pool()
     job = await get_job(pool, job_id)
     data_count = await count_scraped_data_by_job(pool, job_id) if job else 0
 
-    headers = {}
-    type_counts = {}
-    if job and job.status in ("completed", "failed"):
-        headers["HX-Redirect"] = f"/jobs/{job_id}?status={job.status}"
-        type_counts = await get_data_type_counts(pool, job_id)
-
     return get_templates().TemplateResponse(
         "partials/job_status.html",
-        {
-            "request": request,
-            "job": job,
-            "data_count": data_count,
-            "elapsed_ms": _get_elapsed_ms(job),
-            "type_counts": type_counts,
-        },
-        headers=headers,
+        {"request": request, "job": job, "data_count": data_count},
     )
 
 
@@ -553,8 +547,8 @@ async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
 
         tracked_domains = await list_tracked_domains(pool)
         tracked_set = {td.domain for td in tracked_domains}
-    except Exception as e:
-        log.warning("tracked_domains_query_failed", error=str(e))
+    except Exception:
+        pass  # tracked_domains table may not exist yet
 
     return get_templates().TemplateResponse(
         "pages/domains/list.html",
@@ -593,7 +587,8 @@ async def domain_detail(request: Request, domain: str):
             WHERE domain = $1 AND user_id = $2
             GROUP BY data_type
             """,
-            domain, user_filter,
+            domain,
+            user_filter,
         )
     else:
         breakdown_rows = await pool.fetch(
@@ -641,6 +636,18 @@ async def help_index(request: Request):
 # =============================================================================
 
 
+@router.get("/settings/api-docs", response_class=HTMLResponse)
+async def api_docs_page(request: Request):
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+    """Full API documentation page."""
+    return get_templates().TemplateResponse(
+        "pages/settings/api_docs.html",
+        {"request": request, "active_page": "settings"},
+    )
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     redirect = _require_login(request)
@@ -653,39 +660,20 @@ async def settings_page(request: Request):
     settings = get_settings()
     webhook_trigger_url = f"{settings.base_url}/api/webhook/trigger"
 
-    # Load org settings and team members for initial render
+    # Load org proxy settings for initial render
     proxy_url = ""
-    webhook_url = ""
-    webhook_auto_send = False
-    webhook_include_metadata = False
-    team_members = []
     try:
         pool = await get_pool()
         org_id = getattr(request.state, "org_id", None)
         if not org_id:
             org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
         if org_id:
-            org_row = await pool.fetchrow(
-                "SELECT proxy_url, webhook_url, webhook_auto_send, webhook_include_metadata "
-                "FROM organizations WHERE id = $1",
-                org_id,
+            proxy_url = (
+                await pool.fetchval("SELECT proxy_url FROM organizations WHERE id = $1", org_id)
+                or ""
             )
-            if org_row:
-                proxy_url = org_row["proxy_url"] or ""
-                webhook_url = org_row["webhook_url"] or ""
-                webhook_auto_send = org_row["webhook_auto_send"] or False
-                webhook_include_metadata = org_row["webhook_include_metadata"] or False
-
-            # Fetch team members if user is org_owner
-            if request.session.get("role") == "org_owner":
-                members_records = await pool.fetch(
-                    "SELECT id, email, full_name, role, created_at FROM users "
-                    "WHERE org_id = $1 ORDER BY created_at DESC",
-                    org_id,
-                )
-                team_members = [dict(r) for r in members_records]
-    except Exception as e:
-        log.warning("settings_load_failed", error=str(e))
+    except Exception:
+        pass  # Settings page works without proxy info
 
     return get_templates().TemplateResponse(
         "pages/settings/index.html",
@@ -694,58 +682,8 @@ async def settings_page(request: Request):
             "active_page": "settings",
             "webhook_trigger_url": webhook_trigger_url,
             "proxy_url": proxy_url,
-            "webhook_url": webhook_url,
-            "webhook_auto_send": webhook_auto_send,
-            "webhook_include_metadata": webhook_include_metadata,
-            "team_members": team_members,
         },
     )
-
-@router.post("/settings/team/invite")
-async def team_invite(
-    request: Request,
-    email: str = Form(...),
-    full_name: str = Form(...),
-    password: str = Form(...),
-):
-    """Invite a new team member to the active organization."""
-    redirect = _require_login(request)
-    if redirect:
-        return redirect
-
-    if request.session.get("role") != "org_owner":
-        return RedirectResponse(url="/settings", status_code=302)
-
-    from src.db.pool import get_pool
-    from src.db.queries.users import create_user, get_user_by_email
-    from src.services.auth import hash_password
-
-    pool = await get_pool()
-    org_id_str = getattr(request.state, "org_id", None)
-
-    if not org_id_str:
-        return get_templates().TemplateResponse(
-            "pages/settings/index.html",
-            {"request": request, "active_page": "settings", "error": "No org found"},
-            status_code=400,
-        )
-
-    # Check if user exists
-    existing = await get_user_by_email(pool, email)
-    if existing:
-        return RedirectResponse(url="/settings?error=User+already+exists", status_code=302)
-
-    password_hash = hash_password(password)
-    await create_user(
-        pool,
-        email=email,
-        password_hash=password_hash,
-        full_name=full_name,
-        org_id=UUID(org_id_str),
-        role="member",
-    )
-
-    return RedirectResponse(url="/settings", status_code=302)
 
 
 # =============================================================================
@@ -773,29 +711,55 @@ async def download_job_csv(request: Request, job_id: UUID):
     job = await get_job(pool, job_id)
     if not job:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Non-admin can only download their own jobs
     user_filter = _get_user_filter(request)
     if user_filter and job.user_id != user_filter:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=403, detail="Access denied")
 
     data = await get_scraped_data_by_job(pool, job_id)
     if not data:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="No data found for this job")
 
     # Flatten to CSV
     fieldnames = [
-        "domain", "data_type", "url", "title", "published_date", "scraped_at",
-        "author", "excerpt", "word_count", "categories", "content",
-        "first_name", "last_name", "job_title", "email", "phone", "linkedin_url",
+        "domain",
+        "data_type",
+        "url",
+        "title",
+        "published_date",
+        "scraped_at",
+        "author",
+        "excerpt",
+        "word_count",
+        "categories",
+        "content",
+        "first_name",
+        "last_name",
+        "job_title",
+        "email",
+        "phone",
+        "linkedin_url",
         "total_articles",
-        "platform", "frameworks", "js_libraries", "analytics",
-        "resource_type", "description", "download_url",
-        "plan_name", "price", "billing_cycle", "features",
-        "has_free_trial", "cta_text",
+        "platform",
+        "frameworks",
+        "js_libraries",
+        "analytics",
+        "resource_type",
+        "description",
+        "download_url",
+        "plan_name",
+        "price",
+        "billing_cycle",
+        "features",
+        "has_free_trial",
+        "cta_text",
     ]
 
     def _join_list(meta, key):
@@ -807,39 +771,41 @@ async def download_job_csv(request: Request, job_id: UUID):
     writer.writeheader()
     for item in data:
         meta = item.metadata or {}
-        writer.writerow({
-            "domain": item.domain,
-            "data_type": item.data_type,
-            "url": item.url or "",
-            "title": item.title or "",
-            "published_date": str(item.published_date) if item.published_date else "",
-            "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
-            "author": meta.get("author", ""),
-            "excerpt": meta.get("excerpt", ""),
-            "word_count": meta.get("word_count", ""),
-            "categories": _join_list(meta, "categories"),
-            "content": meta.get("content", ""),
-            "first_name": meta.get("first_name", ""),
-            "last_name": meta.get("last_name", ""),
-            "job_title": meta.get("job_title", ""),
-            "email": meta.get("email", ""),
-            "phone": meta.get("phone", ""),
-            "linkedin_url": meta.get("linkedin_url", ""),
-            "total_articles": meta.get("total_articles", ""),
-            "platform": meta.get("platform", ""),
-            "frameworks": _join_list(meta, "frameworks"),
-            "js_libraries": _join_list(meta, "js_libraries"),
-            "analytics": _join_list(meta, "analytics"),
-            "resource_type": meta.get("resource_type", ""),
-            "description": meta.get("description", ""),
-            "download_url": meta.get("download_url", ""),
-            "plan_name": meta.get("plan_name", ""),
-            "price": meta.get("price", ""),
-            "billing_cycle": meta.get("billing_cycle", ""),
-            "features": _join_list(meta, "features"),
-            "has_free_trial": meta.get("has_free_trial", ""),
-            "cta_text": meta.get("cta_text", ""),
-        })
+        writer.writerow(
+            {
+                "domain": item.domain,
+                "data_type": item.data_type,
+                "url": item.url or "",
+                "title": item.title or "",
+                "published_date": str(item.published_date) if item.published_date else "",
+                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
+                "author": meta.get("author", ""),
+                "excerpt": meta.get("excerpt", ""),
+                "word_count": meta.get("word_count", ""),
+                "categories": _join_list(meta, "categories"),
+                "content": meta.get("content", ""),
+                "first_name": meta.get("first_name", ""),
+                "last_name": meta.get("last_name", ""),
+                "job_title": meta.get("job_title", ""),
+                "email": meta.get("email", ""),
+                "phone": meta.get("phone", ""),
+                "linkedin_url": meta.get("linkedin_url", ""),
+                "total_articles": meta.get("total_articles", ""),
+                "platform": meta.get("platform", ""),
+                "frameworks": _join_list(meta, "frameworks"),
+                "js_libraries": _join_list(meta, "js_libraries"),
+                "analytics": _join_list(meta, "analytics"),
+                "resource_type": meta.get("resource_type", ""),
+                "description": meta.get("description", ""),
+                "download_url": meta.get("download_url", ""),
+                "plan_name": meta.get("plan_name", ""),
+                "price": meta.get("price", ""),
+                "billing_cycle": meta.get("billing_cycle", ""),
+                "features": _join_list(meta, "features"),
+                "has_free_trial": meta.get("has_free_trial", ""),
+                "cta_text": meta.get("cta_text", ""),
+            }
+        )
 
     output.seek(0)
     domain = job.domain.replace(".", "_")
@@ -848,60 +814,6 @@ async def download_job_csv(request: Request, job_id: UUID):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.get("/download/job/{job_id}/json")
-async def download_job_json(request: Request, job_id: UUID):
-    """Download scraped data for a job as JSON (session-based auth)."""
-    redirect = _require_login(request)
-    if redirect:
-        return redirect
-
-    from fastapi import HTTPException
-    from fastapi.responses import JSONResponse
-
-    from src.db.pool import get_pool
-    from src.db.queries.jobs import get_job
-    from src.db.queries.scraped_data import get_scraped_data_by_job
-
-    pool = await get_pool()
-    job = await get_job(pool, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    user_filter = _get_user_filter(request)
-    if user_filter and job.user_id != user_filter:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    data = await get_scraped_data_by_job(pool, job_id)
-    if not data:
-        raise HTTPException(status_code=404, detail="No data found for this job")
-
-    records = [
-        {
-            "domain": item.domain,
-            "data_type": item.data_type,
-            "url": item.url,
-            "title": item.title,
-            "published_date": str(item.published_date) if item.published_date else None,
-            "scraped_at": item.scraped_at.isoformat() if item.scraped_at else None,
-            "metadata": item.metadata or {},
-        }
-        for item in data
-    ]
-
-    domain = job.domain.replace(".", "_")
-    filename = f"{domain}_{str(job_id)[:8]}.json"
-
-    return JSONResponse(
-        content={
-            "job_id": str(job_id),
-            "domain": job.domain,
-            "count": len(records),
-            "data": records,
-        },
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -936,17 +848,41 @@ async def download_all_csv(request: Request):
 
     if not data:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="No data found")
 
     fieldnames = [
-        "domain", "data_type", "url", "title", "published_date", "scraped_at",
-        "author", "excerpt", "word_count", "categories", "content",
-        "first_name", "last_name", "job_title", "email", "phone", "linkedin_url",
+        "domain",
+        "data_type",
+        "url",
+        "title",
+        "published_date",
+        "scraped_at",
+        "author",
+        "excerpt",
+        "word_count",
+        "categories",
+        "content",
+        "first_name",
+        "last_name",
+        "job_title",
+        "email",
+        "phone",
+        "linkedin_url",
         "total_articles",
-        "platform", "frameworks", "js_libraries", "analytics",
-        "resource_type", "description", "download_url",
-        "plan_name", "price", "billing_cycle", "features",
-        "has_free_trial", "cta_text",
+        "platform",
+        "frameworks",
+        "js_libraries",
+        "analytics",
+        "resource_type",
+        "description",
+        "download_url",
+        "plan_name",
+        "price",
+        "billing_cycle",
+        "features",
+        "has_free_trial",
+        "cta_text",
     ]
 
     def _join_list(meta, key):
@@ -958,39 +894,41 @@ async def download_all_csv(request: Request):
     writer.writeheader()
     for item in data:
         meta = item.metadata or {}
-        writer.writerow({
-            "domain": item.domain,
-            "data_type": item.data_type,
-            "url": item.url or "",
-            "title": item.title or "",
-            "published_date": str(item.published_date) if item.published_date else "",
-            "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
-            "author": meta.get("author", ""),
-            "excerpt": meta.get("excerpt", ""),
-            "word_count": meta.get("word_count", ""),
-            "categories": _join_list(meta, "categories"),
-            "content": meta.get("content", ""),
-            "first_name": meta.get("first_name", ""),
-            "last_name": meta.get("last_name", ""),
-            "job_title": meta.get("job_title", ""),
-            "email": meta.get("email", ""),
-            "phone": meta.get("phone", ""),
-            "linkedin_url": meta.get("linkedin_url", ""),
-            "total_articles": meta.get("total_articles", ""),
-            "platform": meta.get("platform", ""),
-            "frameworks": _join_list(meta, "frameworks"),
-            "js_libraries": _join_list(meta, "js_libraries"),
-            "analytics": _join_list(meta, "analytics"),
-            "resource_type": meta.get("resource_type", ""),
-            "description": meta.get("description", ""),
-            "download_url": meta.get("download_url", ""),
-            "plan_name": meta.get("plan_name", ""),
-            "price": meta.get("price", ""),
-            "billing_cycle": meta.get("billing_cycle", ""),
-            "features": _join_list(meta, "features"),
-            "has_free_trial": meta.get("has_free_trial", ""),
-            "cta_text": meta.get("cta_text", ""),
-        })
+        writer.writerow(
+            {
+                "domain": item.domain,
+                "data_type": item.data_type,
+                "url": item.url or "",
+                "title": item.title or "",
+                "published_date": str(item.published_date) if item.published_date else "",
+                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
+                "author": meta.get("author", ""),
+                "excerpt": meta.get("excerpt", ""),
+                "word_count": meta.get("word_count", ""),
+                "categories": _join_list(meta, "categories"),
+                "content": meta.get("content", ""),
+                "first_name": meta.get("first_name", ""),
+                "last_name": meta.get("last_name", ""),
+                "job_title": meta.get("job_title", ""),
+                "email": meta.get("email", ""),
+                "phone": meta.get("phone", ""),
+                "linkedin_url": meta.get("linkedin_url", ""),
+                "total_articles": meta.get("total_articles", ""),
+                "platform": meta.get("platform", ""),
+                "frameworks": _join_list(meta, "frameworks"),
+                "js_libraries": _join_list(meta, "js_libraries"),
+                "analytics": _join_list(meta, "analytics"),
+                "resource_type": meta.get("resource_type", ""),
+                "description": meta.get("description", ""),
+                "download_url": meta.get("download_url", ""),
+                "plan_name": meta.get("plan_name", ""),
+                "price": meta.get("price", ""),
+                "billing_cycle": meta.get("billing_cycle", ""),
+                "features": _join_list(meta, "features"),
+                "has_free_trial": meta.get("has_free_trial", ""),
+                "cta_text": meta.get("cta_text", ""),
+            }
+        )
 
     output.seek(0)
     return StreamingResponse(
@@ -1037,19 +975,21 @@ async def users_list(request: Request):
 
     users = []
     for row in rows:
-        users.append({
-            "id": row["id"],
-            "email": row["email"],
-            "full_name": row["full_name"],
-            "role": row["role"],
-            "is_admin": row["is_admin"],
-            "is_active": row["is_active"],
-            "org_name": row["org_name"],
-            "job_count": row["job_count"],
-            "data_count": row["data_count"],
-            "last_login_at": row["last_login_at"],
-            "created_at": row["created_at"],
-        })
+        users.append(
+            {
+                "id": row["id"],
+                "email": row["email"],
+                "full_name": row["full_name"],
+                "role": row["role"],
+                "is_admin": row["is_admin"],
+                "is_active": row["is_active"],
+                "org_name": row["org_name"],
+                "job_count": row["job_count"],
+                "data_count": row["data_count"],
+                "last_login_at": row["last_login_at"],
+                "created_at": row["created_at"],
+            }
+        )
 
     return get_templates().TemplateResponse(
         "pages/users/list.html",

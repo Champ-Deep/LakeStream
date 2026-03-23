@@ -155,7 +155,7 @@
             <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform"
               :class="showAdvanced ? 'rotate-180' : ''"></i>
           </button>
-          <div x-show="showAdvanced" x-collapse class="mt-3 space-y-3">
+          <div x-show="showAdvanced" x-transition class="mt-3 space-y-3">
             <div class="flex items-center gap-4">
               <label class="text-xs text-slate-500 w-24">Max pages</label>
               <input type="range" x-model="maxPages" min="10" max="500" step="10"
@@ -196,6 +196,125 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- YouTube Transcript Card -->
+  <div class="card p-6" x-data="youtubeTranscript()">
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
+          <i data-lucide="youtube" class="w-5 h-5 text-red-600"></i>
+        </div>
+        <div>
+          <h2 class="font-bold text-navy">YouTube Transcript</h2>
+          <p class="text-xs text-slate-400">Extract transcripts from any YouTube video instantly</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          @click="$dispatch('open-mcp-guide')"
+          class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-colors flex items-center gap-1.5"
+          title="Connect to AI tools via MCP"
+        >
+          <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+          MCP
+        </button>
+        <a href="/settings/api-docs#youtube-transcript"
+          class="text-xs text-slate-400 hover:text-brand-red transition-colors flex items-center gap-1">
+          <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+          API Docs
+        </a>
+      </div>
+    </div>
+
+    <!-- URL Input -->
+    <div class="flex gap-3">
+      <input
+        type="text"
+        x-model="url"
+        @keydown.enter.prevent="extract()"
+        placeholder="Paste YouTube URL (e.g. https://youtube.com/watch?v=...)"
+        class="input input-lg flex-1"
+        :class="{ 'border-error': error }"
+      >
+      <button
+        @click="extract()"
+        :disabled="loading || !url"
+        class="bg-red-600 hover:bg-red-700 text-white px-8 py-3.5 rounded-full font-bold shadow-lg
+          transition-all disabled:opacity-50 flex items-center gap-2 flex-shrink-0"
+      >
+        <template x-if="!loading">
+          <span class="flex items-center gap-2">
+            <i data-lucide="file-text" class="w-5 h-5"></i>
+            Extract
+          </span>
+        </template>
+        <template x-if="loading">
+          <div class="spinner border-white border-t-transparent"></div>
+        </template>
+      </button>
+    </div>
+
+    <!-- Error Message -->
+    <p x-show="error" x-text="error" class="mt-2 text-sm text-error" x-cloak></p>
+
+    <!-- Results -->
+    <div x-show="result" x-transition class="mt-6 space-y-4" x-cloak>
+      <!-- Video Info Bar -->
+      <div class="bg-slate-50 rounded-2xl p-4 flex items-start gap-4">
+        <img
+          x-show="result && result.metadata && result.metadata.thumbnail_url"
+          :src="result?.metadata?.thumbnail_url"
+          class="w-24 h-auto rounded-xl flex-shrink-0"
+          alt="Video thumbnail"
+        >
+        <div class="flex-1 min-w-0">
+          <h3 class="font-bold text-navy text-sm truncate" x-text="result?.metadata?.title || 'Untitled'"></h3>
+          <p class="text-xs text-slate-500 mt-0.5" x-text="result?.metadata?.channel || ''"></p>
+          <div class="flex items-center gap-4 mt-2 text-xs text-slate-400">
+            <span x-show="result?.duration_seconds">
+              <i data-lucide="clock" class="w-3 h-3 inline"></i>
+              <span x-text="formatDuration(result?.duration_seconds)"></span>
+            </span>
+            <span>
+              <i data-lucide="align-left" class="w-3 h-3 inline"></i>
+              <span x-text="(result?.transcript_text || '').split(/\s+/).length + ' words'"></span>
+            </span>
+            <span x-show="result?.language">
+              <i data-lucide="languages" class="w-3 h-3 inline"></i>
+              <span x-text="result?.language"></span>
+              <span x-show="result?.is_generated" class="text-warning">(auto-generated)</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transcript Text -->
+      <div class="relative">
+        <div
+          class="bg-white border border-slate-200 rounded-2xl p-4 max-h-80 overflow-y-auto text-sm text-slate-700 leading-relaxed font-mono whitespace-pre-wrap"
+          x-text="result?.transcript_text"
+        ></div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-3">
+        <button
+          @click="copyTranscript()"
+          class="px-4 py-2 bg-white border-2 border-slate-200 rounded-xl font-medium text-sm text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2"
+        >
+          <i data-lucide="copy" class="w-4 h-4"></i>
+          <span x-text="copied ? 'Copied!' : 'Copy Transcript'"></span>
+        </button>
+        <button
+          @click="downloadTxt()"
+          class="px-4 py-2 bg-white border-2 border-slate-200 rounded-xl font-medium text-sm text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2"
+        >
+          <i data-lucide="download" class="w-4 h-4"></i>
+          Download .txt
+        </button>
       </div>
     </div>
   </div>
@@ -321,21 +440,134 @@
 
 </div>
 
-<!-- Alpine.js collapse directive -->
-<script>
-  document.addEventListener('alpine:init', () => {
-    Alpine.directive('collapse', (el, { expression }, { effect }) => {
-      el.style.overflow = 'hidden';
-      el.style.transition = 'max-height 0.3s ease';
-      effect(() => {
-        const isOpen = Alpine.evaluate(el, expression !== '' ? expression : 'true');
-        if (isOpen) {
-          el.style.maxHeight = el.scrollHeight + 'px';
-        } else {
-          el.style.maxHeight = '0px';
-        }
-      });
-    });
-  });
-</script>
+<!-- MCP Connection Guide Modal -->
+<div x-data="mcpGuide()" @open-mcp-guide.window="open = true">
+  <template x-if="open">
+    <div class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="open = false">
+      <div class="absolute inset-0 bg-navy/60 backdrop-blur-sm" @click="open = false"></div>
+      <div class="relative bg-white rounded-3xl shadow-2xl max-w-lg w-full mx-4 p-8 max-h-[90vh] overflow-y-auto">
+        <button @click="open = false" class="absolute top-4 right-4 text-slate-400 hover:text-navy">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center shadow-lg">
+            <i data-lucide="cpu" class="w-6 h-6 text-white"></i>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-navy">Connect to AI Tools</h3>
+            <p class="text-sm text-slate-500">Use LakeStream tools from your favorite AI client via MCP</p>
+          </div>
+        </div>
+
+        <!-- Tab Buttons -->
+        <div class="flex gap-2 mb-6">
+          <button @click="tab = 'claude-code'"
+            :class="tab === 'claude-code' ? 'bg-navy text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+            Claude Code
+          </button>
+          <button @click="tab = 'claude-desktop'"
+            :class="tab === 'claude-desktop' ? 'bg-navy text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+            Claude Desktop
+          </button>
+          <button @click="tab = 'other'"
+            :class="tab === 'other' ? 'bg-navy text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+            class="px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+            Cursor / Other
+          </button>
+        </div>
+
+        <!-- Claude Code Tab -->
+        <div x-show="tab === 'claude-code'" class="space-y-4">
+          <p class="text-sm text-slate-600">Add this to your project's <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">.mcp.json</code> file:</p>
+          <div class="bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+            <pre>{
+  "mcpServers": {
+    "lakestream": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "/path/to/LakeStream"
+    }
+  }
+}</pre>
+          </div>
+          <p class="text-xs text-slate-500">Replace <code class="bg-slate-100 px-1 rounded">/path/to/LakeStream</code> with your actual project path. Claude Code will automatically discover and use all LakeStream MCP tools.</p>
+        </div>
+
+        <!-- Claude Desktop Tab -->
+        <div x-show="tab === 'claude-desktop'" class="space-y-4" x-cloak>
+          <p class="text-sm text-slate-600">Add this to your <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">claude_desktop_config.json</code>:</p>
+          <div class="bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+            <pre>{
+  "mcpServers": {
+    "lakestream": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "/path/to/LakeStream"
+    }
+  }
+}</pre>
+          </div>
+          <p class="text-xs text-slate-500">Config file location:
+            <br>macOS: <code class="bg-slate-100 px-1 rounded">~/Library/Application Support/Claude/claude_desktop_config.json</code>
+            <br>Windows: <code class="bg-slate-100 px-1 rounded">%APPDATA%/Claude/claude_desktop_config.json</code>
+          </p>
+        </div>
+
+        <!-- Other Tab -->
+        <div x-show="tab === 'other'" class="space-y-4" x-cloak>
+          <p class="text-sm text-slate-600">For Cursor, Windsurf, or any MCP-compatible client, add this server configuration:</p>
+          <div class="bg-slate-900 rounded-xl p-4 text-sm font-mono text-green-400 overflow-x-auto">
+            <pre>{
+  "command": "python",
+  "args": ["-m", "src.mcp_server"],
+  "cwd": "/path/to/LakeStream",
+  "transport": "stdio"
+}</pre>
+          </div>
+          <p class="text-xs text-slate-500">Check your client's documentation for the specific config file location and format. The MCP server uses stdio transport by default.</p>
+        </div>
+
+        <!-- Available Tools -->
+        <div class="mt-6 pt-6 border-t border-slate-200">
+          <h4 class="text-sm font-bold text-navy mb-3">Available MCP Tools</h4>
+          <div class="space-y-2 text-sm">
+            <div class="flex items-start gap-2">
+              <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded mt-0.5">NEW</span>
+              <div>
+                <span class="font-medium text-navy">extract_youtube_transcript</span>
+                <span class="text-slate-500"> — Get transcript from any YouTube video</span>
+              </div>
+            </div>
+            <div class="flex items-start gap-2">
+              <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded mt-0.5">NEW</span>
+              <div>
+                <span class="font-medium text-navy">extract_blog_content</span>
+                <span class="text-slate-500"> — Extract content from any web page</span>
+              </div>
+            </div>
+            <div class="flex items-start gap-2">
+              <span class="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-0.5 rounded mt-0.5">CORE</span>
+              <div>
+                <span class="font-medium text-navy">submit_scrape_job, get_job_status, get_job_results</span>
+                <span class="text-slate-500"> — Full domain scraping</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <a href="/settings/api-docs#mcp-integration"
+            class="text-sm text-brand-red hover:underline font-medium flex items-center gap-1">
+            View full API & MCP documentation
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
+
 {% endblock %}

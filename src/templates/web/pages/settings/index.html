@@ -22,12 +22,7 @@
         <p class="text-slate-500 text-sm">Real-time status of infrastructure services</p>
       </div>
     </div>
-    <div class="mt-6"
-      id="health-status"
-      hx-get="/partials/health"
-      hx-trigger="load, every 30s"
-      hx-swap="innerHTML"
-    >
+    <div class="mt-6" id="health-status" hx-get="/partials/health" hx-trigger="load, every 30s" hx-swap="innerHTML">
       <div class="space-y-3">
         <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
           <span class="text-slate-500">Checking status...</span>
@@ -50,56 +45,45 @@
           Without a proxy, scraping uses Playwright only.
         </p>
       </div>
-      <span x-show="proxyEnabled" x-cloak class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold whitespace-nowrap">Active</span>
-      <span x-show="!proxyEnabled" x-cloak class="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold whitespace-nowrap">Not configured</span>
+      <span x-show="proxyEnabled" x-cloak
+        class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold whitespace-nowrap">Active</span>
+      <span x-show="!proxyEnabled" x-cloak
+        class="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold whitespace-nowrap">Not
+        configured</span>
     </div>
 
     <div class="bg-slate-50 rounded-2xl p-6 mt-6 space-y-4">
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Proxy URL</label>
-        <input
-          type="text"
-          x-model="proxyUrl"
-          placeholder="socks5://user:pass@proxy.example.com:1080"
-          class="input flex-1 font-mono text-sm"
-        >
-        <p class="text-xs text-slate-400 mt-2">Supports HTTP, HTTPS, and SOCKS5 proxy URLs. Scrape jobs will route through this proxy when escalation to Playwright + Proxy is needed.</p>
+        <input type="text" x-model="proxyUrl" placeholder="socks5://user:pass@proxy.example.com:1080"
+          class="input flex-1 font-mono text-sm">
+        <p class="text-xs text-slate-400 mt-2">Supports HTTP, HTTPS, and SOCKS5 proxy URLs. Scrape jobs will route
+          through this proxy when escalation to Playwright + Proxy is needed.</p>
       </div>
 
       <!-- Save Result -->
       <div x-show="saveResult" x-cloak>
-        <div
-          :class="saveResult === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
-          class="border rounded-xl p-4 flex items-center gap-3"
-        >
+        <div :class="saveResult === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
+          class="border rounded-xl p-4 flex items-center gap-3">
           <template x-if="saveResult === 'success'">
             <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
           </template>
           <template x-if="saveResult === 'error'">
             <i data-lucide="x-circle" class="w-5 h-5 text-red-600"></i>
           </template>
-          <span
-            :class="saveResult === 'success' ? 'text-green-700' : 'text-red-700'"
-            class="text-sm font-medium"
-            x-text="saveMessage"
-          ></span>
+          <span :class="saveResult === 'success' ? 'text-green-700' : 'text-red-700'" class="text-sm font-medium"
+            x-text="saveMessage"></span>
         </div>
       </div>
 
       <div class="flex items-center justify-between pt-4 border-t border-slate-200">
-        <button
-          x-show="proxyUrl"
-          @click="clearProxy()"
-          class="text-sm text-red-500 hover:text-red-700 font-medium"
-          x-cloak
-        >
+        <button x-show="proxyUrl" @click="clearProxy()" class="text-sm text-red-500 hover:text-red-700 font-medium"
+          x-cloak>
           Remove Proxy
         </button>
         <div class="ml-auto">
-          <button
-            @click="saveProxy()"
-            class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2"
-          >
+          <button @click="saveProxy()"
+            class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2">
             <i data-lucide="save" class="w-4 h-4"></i>
             Save Proxy
           </button>
@@ -140,17 +124,10 @@
         <div>
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Webhook URL</label>
           <div class="flex items-center gap-3">
-            <input
-              type="text"
-              readonly
-              value="{{ webhook_trigger_url }}"
-              class="input font-mono text-sm bg-white flex-1"
-              id="trigger-url"
-            >
-            <button
-              onclick="copyToClipboard('trigger-url', this)"
-              class="px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2"
-            >
+            <input type="text" readonly value="{{ webhook_trigger_url }}"
+              class="input font-mono text-sm bg-white flex-1" id="trigger-url">
+            <button onclick="copyToClipboard('trigger-url', this)"
+              class="px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2">
               <i data-lucide="copy" class="w-4 h-4"></i>
               Copy
             </button>
@@ -163,9 +140,10 @@
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body Example</label>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Body
+            Example</label>
           <div class="code-block">
-<pre>{
+            <pre>{
   "domain": "example.com",
   "data_types": ["blog_url", "article", "contact"],
   "max_pages": 100,
@@ -177,7 +155,7 @@
         <div>
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Response</label>
           <div class="code-block">
-<pre>{
+            <pre>{
   "success": true,
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
   "status_url": "/jobs/550e8400-e29b-41d4-a716-446655440000"
@@ -202,19 +180,13 @@
       <div class="bg-slate-50 rounded-2xl p-6 space-y-6" x-data="webhookSettings()">
         <!-- Webhook URL Input -->
         <div>
-          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Your n8n Webhook URL</label>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Your n8n Webhook
+            URL</label>
           <div class="flex items-center gap-3">
-            <input
-              type="url"
-              x-model="exportUrl"
-              placeholder="https://your-n8n-instance.com/webhook/..."
-              class="input flex-1"
-            >
-            <button
-              @click="testWebhook()"
-              :disabled="!exportUrl || testing"
-              class="px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            <input type="url" x-model="exportUrl" placeholder="https://your-n8n-instance.com/webhook/..."
+              class="input flex-1">
+            <button @click="testWebhook()" :disabled="!exportUrl || testing"
+              class="px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-600 hover:border-brand-red transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
               <template x-if="testing">
                 <div class="spinner"></div>
               </template>
@@ -229,21 +201,16 @@
 
         <!-- Test Result -->
         <div x-show="testResult" x-cloak>
-          <div
-            :class="testResult === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
-            class="border rounded-xl p-4 flex items-center gap-3"
-          >
+          <div :class="testResult === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'"
+            class="border rounded-xl p-4 flex items-center gap-3">
             <template x-if="testResult === 'success'">
               <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
             </template>
             <template x-if="testResult === 'error'">
               <i data-lucide="x-circle" class="w-5 h-5 text-red-600"></i>
             </template>
-            <span
-              :class="testResult === 'success' ? 'text-green-700' : 'text-red-700'"
-              class="text-sm font-medium"
-              x-text="testMessage"
-            ></span>
+            <span :class="testResult === 'success' ? 'text-green-700' : 'text-red-700'" class="text-sm font-medium"
+              x-text="testMessage"></span>
           </div>
         </div>
 
@@ -267,10 +234,8 @@
           <p class="text-xs text-slate-400" x-show="saved" x-cloak>
             <i data-lucide="check" class="w-3 h-3 inline"></i> Settings saved
           </p>
-          <button
-            @click="saveSettings()"
-            class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2 ml-auto"
-          >
+          <button @click="saveSettings()"
+            class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2 ml-auto">
             <i data-lucide="save" class="w-4 h-4"></i>
             Save Settings
           </button>
@@ -278,94 +243,6 @@
       </div>
     </div>
   </div>
-
-  {% if request.session.role == 'org_owner' %}
-  <!-- Team Members Card -->
-  <div class="card p-8">
-    <div class="flex items-start gap-6">
-      <div class="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
-        <i data-lucide="users" class="w-7 h-7 text-white"></i>
-      </div>
-      <div class="flex-1">
-        <h2 class="text-xl font-bold text-navy mb-1">Team Members</h2>
-        <p class="text-slate-500 text-sm">
-          Manage your organization's team members and invite new users to collaborate.
-        </p>
-      </div>
-    </div>
-
-    <!-- Invite Form -->
-    <div class="mt-8 bg-slate-50 rounded-2xl p-6">
-      <h3 class="font-bold text-navy mb-4">Invite New Member</h3>
-      <form method="POST" action="/settings/team/invite" class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Full Name</label>
-            <input type="text" name="full_name" required class="input text-sm" placeholder="John Doe">
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Email Address</label>
-            <input type="email" name="email" required class="input text-sm" placeholder="john@example.com">
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Initial Password</label>
-            <input type="password" name="password" required class="input text-sm" placeholder="At least 8 characters" minlength="8">
-          </div>
-        </div>
-        <div class="flex justify-end pt-2">
-          <button type="submit" class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2">
-            <i data-lucide="user-plus" class="w-4 h-4"></i>
-            Invite Member
-          </button>
-        </div>
-        {% if request.query_params.error %}
-          <p class="text-red-500 mt-2 text-sm">{{ request.query_params.error }}</p>
-        {% endif %}
-      </form>
-    </div>
-
-    <!-- Active Members List -->
-    <div class="mt-8">
-      <h3 class="font-bold text-navy mb-4">Active Members</h3>
-      <div class="border rounded-xl overflow-hidden">
-        <table class="w-full text-left text-sm">
-          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-            <tr>
-              <th class="px-6 py-4 font-bold">Name</th>
-              <th class="px-6 py-4 font-bold">Role</th>
-              <th class="px-6 py-4 font-bold">Joined</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            {% for member in team_members %}
-            <tr class="hover:bg-slate-50 transition-colors">
-              <td class="px-6 py-4">
-                <div class="font-medium text-navy">{{ member.full_name }}</div>
-                <div class="text-slate-400 text-xs">{{ member.email }}</div>
-              </td>
-              <td class="px-6 py-4">
-                {% if member.role == 'org_owner' %}
-                  <span class="badge badge-success">Owner</span>
-                {% else %}
-                  <span class="badge badge-info text-blue-700 bg-blue-50 border-blue-200">Member</span>
-                {% endif %}
-              </td>
-              <td class="px-6 py-4 text-slate-500">
-                {{ member.created_at.strftime('%Y-%m-%d') if member.created_at else 'Unknown' }}
-              </td>
-            </tr>
-            {% endfor %}
-            {% if not team_members %}
-            <tr>
-              <td colspan="3" class="px-6 py-8 text-center text-slate-500">No team members found.</td>
-            </tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  {% endif %}
 
   <!-- Quick Export Card -->
   <div class="card p-8">
@@ -386,19 +263,8 @@
       <div class="bg-slate-50 rounded-2xl p-6">
         <h4 class="font-bold text-navy mb-2">Export All Data</h4>
         <p class="text-sm text-slate-500 mb-4">Send all scraped data to a webhook endpoint</p>
-        <form
-          hx-post="/api/export/webhook"
-          hx-target="#export-result"
-          hx-swap="innerHTML"
-          class="space-y-3"
-        >
-          <input
-            type="url"
-            name="url"
-            placeholder="https://webhook.url/..."
-            required
-            class="input text-sm"
-          >
+        <form hx-post="/api/export/webhook" hx-target="#export-result" hx-swap="innerHTML" class="space-y-3">
+          <input type="url" name="url" placeholder="https://webhook.url/..." required class="input text-sm">
           <button type="submit" class="w-full btn-secondary text-sm py-2.5">
             <i data-lucide="send" class="w-4 h-4 inline mr-2"></i>
             Send to Webhook
@@ -410,25 +276,9 @@
       <div class="bg-slate-50 rounded-2xl p-6">
         <h4 class="font-bold text-navy mb-2">Export by Domain</h4>
         <p class="text-sm text-slate-500 mb-4">Send data from a specific domain</p>
-        <form
-          hx-post="/api/export/webhook"
-          hx-target="#export-result"
-          hx-swap="innerHTML"
-          class="space-y-3"
-        >
-          <input
-            type="url"
-            name="url"
-            placeholder="https://webhook.url/..."
-            required
-            class="input text-sm"
-          >
-          <input
-            type="text"
-            name="domain"
-            placeholder="example.com"
-            class="input text-sm"
-          >
+        <form hx-post="/api/export/webhook" hx-target="#export-result" hx-swap="innerHTML" class="space-y-3">
+          <input type="url" name="url" placeholder="https://webhook.url/..." required class="input text-sm">
+          <input type="text" name="domain" placeholder="example.com" class="input text-sm">
           <button type="submit" class="w-full btn-secondary text-sm py-2.5">
             <i data-lucide="send" class="w-4 h-4 inline mr-2"></i>
             Send to Webhook
@@ -449,173 +299,125 @@
       <div class="flex-1">
         <h2 class="text-xl font-bold text-navy mb-1">API Reference</h2>
         <p class="text-slate-500 text-sm">
-          Available API endpoints for programmatic access
+          Complete API documentation with examples, MCP integration guide, and authentication details
         </p>
       </div>
     </div>
 
-    <div class="space-y-4">
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="badge badge-success">POST</span>
-          <code class="text-sm font-mono text-slate-700">/api/scrape/execute</code>
-        </div>
-        <span class="text-xs text-slate-400">Start a new scrape job</span>
-      </div>
-
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="badge badge-info">GET</span>
-          <code class="text-sm font-mono text-slate-700">/api/scrape/status/{`{job_id}`}</code>
-        </div>
-        <span class="text-xs text-slate-400">Get job status</span>
-      </div>
-
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="badge badge-info">GET</span>
-          <code class="text-sm font-mono text-slate-700">/api/export/csv/{`{job_id}`}</code>
-        </div>
-        <span class="text-xs text-slate-400">Download CSV</span>
-      </div>
-
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="badge badge-info">GET</span>
-          <code class="text-sm font-mono text-slate-700">/api/export/json/{`{job_id}`}</code>
-        </div>
-        <span class="text-xs text-slate-400">Download JSON (with rich metadata)</span>
-      </div>
-
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="badge badge-success">POST</span>
-          <code class="text-sm font-mono text-slate-700">/api/export/webhook</code>
-        </div>
-        <span class="text-xs text-slate-400">Send data to webhook</span>
-      </div>
-
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="badge badge-success">POST</span>
-          <code class="text-sm font-mono text-slate-700">/api/webhook/trigger</code>
-        </div>
-        <span class="text-xs text-slate-400">Trigger scrape via webhook</span>
-      </div>
+    <div class="flex flex-wrap gap-2 mb-6">
+      <a href="/settings/api-docs?section=scraping" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-colors">Scraping API</a>
+      <a href="/settings/api-docs?section=export" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-colors">Export API</a>
+      <a href="/settings/api-docs?section=webhooks" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium text-slate-600 transition-colors">Webhooks</a>
+      <a href="/settings/api-docs?section=mcp" class="px-3 py-1.5 bg-green-100 hover:bg-green-200 rounded-lg text-xs font-medium text-green-700 transition-colors">MCP Integration</a>
     </div>
+
+    <a href="/settings/api-docs"
+      class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all inline-flex items-center gap-2">
+      <i data-lucide="book-open" class="w-4 h-4"></i>
+      View Full Documentation
+    </a>
   </div>
 
 </div>
 
 <script>
-function proxySettings() {
-  return {
-    proxyUrl: '{{ proxy_url or "" }}',
-    proxyEnabled: {{ 'true' if proxy_url else 'false' }},
-    saveResult: null,
+  function proxySettings() {
+    return {
+      proxyUrl: '{{ proxy_url or "" }}',
+      proxyEnabled: {{ 'true' if proxy_url else 'false' }
+  },
+  saveResult: null,
     saveMessage: '',
 
-    async saveProxy() {
-      this.saveResult = null;
-      try {
-        const res = await fetch('/api/settings', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proxy_url: this.proxyUrl })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          this.proxyEnabled = data.proxy_enabled;
-          this.saveResult = 'success';
-          this.saveMessage = this.proxyUrl ? 'Proxy saved — Playwright + Proxy enabled' : 'Proxy removed — Proxy tier disabled';
-        } else {
-          this.saveResult = 'error';
-          this.saveMessage = 'Failed to save proxy settings';
-        }
-      } catch (e) {
+      async saveProxy() {
+    this.saveResult = null;
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxy_url: this.proxyUrl })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        this.proxyEnabled = data.proxy_enabled;
+        this.saveResult = 'success';
+        this.saveMessage = this.proxyUrl ? 'Proxy saved — Playwright + Proxy enabled' : 'Proxy removed — Proxy tier disabled';
+      } else {
         this.saveResult = 'error';
-        this.saveMessage = 'Network error: ' + e.message;
+        this.saveMessage = 'Failed to save proxy settings';
       }
-      setTimeout(() => this.saveResult = null, 5000);
-    },
+    } catch (e) {
+      this.saveResult = 'error';
+      this.saveMessage = 'Network error: ' + e.message;
+    }
+    setTimeout(() => this.saveResult = null, 5000);
+  },
 
     async clearProxy() {
-      this.proxyUrl = '';
-      await this.saveProxy();
-    }
+    this.proxyUrl = '';
+    await this.saveProxy();
+  }
   }
 }
 
-function copyToClipboard(inputId, button) {
-  const input = document.getElementById(inputId);
-  navigator.clipboard.writeText(input.value).then(() => {
-    const icon = button.querySelector('i');
-    icon.setAttribute('data-lucide', 'check');
-    lucide.createIcons();
-    setTimeout(() => {
-      icon.setAttribute('data-lucide', 'copy');
+  function copyToClipboard(inputId, button) {
+    const input = document.getElementById(inputId);
+    navigator.clipboard.writeText(input.value).then(() => {
+      const icon = button.querySelector('i');
+      icon.setAttribute('data-lucide', 'check');
       lucide.createIcons();
-    }, 2000);
-  });
-}
+      setTimeout(() => {
+        icon.setAttribute('data-lucide', 'copy');
+        lucide.createIcons();
+      }, 2000);
+    });
+  }
 
-function webhookSettings() {
-  return {
-    exportUrl: '{{ webhook_url or "" }}',
-    autoSendOnComplete: {{ 'true' if webhook_auto_send else 'false' }},
-    includeMetadata: {{ 'true' if webhook_include_metadata else 'false' }},
-    testing: false,
-    testResult: null,
-    testMessage: '',
-    saved: false,
+  function webhookSettings() {
+    return {
+      exportUrl: localStorage.getItem('webhook_export_url') || '',
+      autoSendOnComplete: localStorage.getItem('webhook_auto_send') === 'true',
+      includeMetadata: localStorage.getItem('webhook_include_metadata') === 'true',
+      testing: false,
+      testResult: null,
+      testMessage: '',
+      saved: false,
 
-    async testWebhook() {
-      if (!this.exportUrl) return;
-      this.testing = true;
-      this.testResult = null;
+      async testWebhook() {
+        if (!this.exportUrl) return;
+        this.testing = true;
+        this.testResult = null;
 
-      try {
-        const response = await fetch('/api/webhook/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: this.exportUrl })
-        });
+        try {
+          const response = await fetch('/api/webhook/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: this.exportUrl })
+          });
 
-        if (response.ok) {
-          this.testResult = 'success';
-          this.testMessage = 'Webhook connection successful!';
-        } else {
+          if (response.ok) {
+            this.testResult = 'success';
+            this.testMessage = 'Webhook connection successful!';
+          } else {
+            this.testResult = 'error';
+            this.testMessage = 'Failed to connect to webhook';
+          }
+        } catch (e) {
           this.testResult = 'error';
-          this.testMessage = 'Failed to connect to webhook';
+          this.testMessage = 'Network error: ' + e.message;
         }
-      } catch (e) {
-        this.testResult = 'error';
-        this.testMessage = 'Network error: ' + e.message;
-      }
 
-      this.testing = false;
-    },
+        this.testing = false;
+      },
 
-    async saveSettings() {
-      try {
-        const res = await fetch('/api/settings', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            webhook_url: this.exportUrl,
-            webhook_auto_send: this.autoSendOnComplete,
-            webhook_include_metadata: this.includeMetadata,
-          })
-        });
-        if (res.ok) {
-          this.saved = true;
-          setTimeout(() => this.saved = false, 3000);
-        }
-      } catch (e) {
-        // Network error — silent fail
+      saveSettings() {
+        localStorage.setItem('webhook_export_url', this.exportUrl);
+        localStorage.setItem('webhook_auto_send', this.autoSendOnComplete);
+        localStorage.setItem('webhook_include_metadata', this.includeMetadata);
+        this.saved = true;
+        setTimeout(() => this.saved = false, 3000);
       }
     }
   }
-}
 </script>
 {% endblock %}
