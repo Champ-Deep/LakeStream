@@ -324,41 +324,42 @@
   function proxySettings() {
     return {
       proxyUrl: '{{ proxy_url or "" }}',
-      proxyEnabled: {{ 'true' if proxy_url else 'false' }
-  },
-  saveResult: null,
-    saveMessage: '',
+      proxyEnabled: {{ 'true' if proxy_url else 'false' }},
+      saveResult: null,
+      saveMessage: '',
 
       async saveProxy() {
-    this.saveResult = null;
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proxy_url: this.proxyUrl })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        this.proxyEnabled = data.proxy_enabled;
-        this.saveResult = 'success';
-        this.saveMessage = this.proxyUrl ? 'Proxy saved — Playwright + Proxy enabled' : 'Proxy removed — Proxy tier disabled';
-      } else {
-        this.saveResult = 'error';
-        this.saveMessage = 'Failed to save proxy settings';
-      }
-    } catch (e) {
-      this.saveResult = 'error';
-      this.saveMessage = 'Network error: ' + e.message;
-    }
-    setTimeout(() => this.saveResult = null, 5000);
-  },
+        this.saveResult = null;
+        try {
+          const res = await fetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proxy_url: this.proxyUrl })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            this.proxyEnabled = data.proxy_enabled;
+            this.saveResult = 'success';
+            this.saveMessage = this.proxyUrl
+              ? 'Proxy saved — Playwright + Proxy enabled'
+              : 'Proxy removed — Proxy tier disabled';
+          } else {
+            this.saveResult = 'error';
+            this.saveMessage = 'Failed to save proxy settings';
+          }
+        } catch (e) {
+          this.saveResult = 'error';
+          this.saveMessage = 'Network error: ' + e.message;
+        }
+        setTimeout(() => this.saveResult = null, 5000);
+      },
 
-    async clearProxy() {
-    this.proxyUrl = '';
-    await this.saveProxy();
+      async clearProxy() {
+        this.proxyUrl = '';
+        await this.saveProxy();
+      }
+    }
   }
-  }
-}
 
   function copyToClipboard(inputId, button) {
     const input = document.getElementById(inputId);
