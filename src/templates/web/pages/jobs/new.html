@@ -11,8 +11,8 @@
       <i data-lucide="arrow-left" class="w-4 h-4"></i>
       Back to Jobs
     </a>
-    <h1 class="text-3xl font-extrabold text-navy mt-2">Start a New Scrape</h1>
-    <p class="text-slate-500 mt-1">Enter a website URL and choose what data to extract</p>
+    <h1 class="text-3xl font-extrabold text-navy dark:text-gray-100 mt-2">Start a New Scrape</h1>
+    <p class="text-slate-500 dark:text-gray-400 mt-1">Enter a website URL and choose what data to extract</p>
   </div>
 
   <!-- Main Form -->
@@ -104,7 +104,7 @@
 
       <!-- Domain Input -->
       <div id="quick-start-input">
-        <label for="domain" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+        <label for="domain" class="block text-sm font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
           Website URL
           <span class="text-brand-red">*</span>
         </label>
@@ -118,18 +118,18 @@
           :class="{ 'border-error': errors.domain }"
         >
         <p x-show="errors.domain" x-text="errors.domain" class="mt-2 text-sm text-error"></p>
-        <p class="mt-2 text-xs text-slate-400">Enter just the domain name or full URL</p>
+        <p class="mt-2 text-xs text-slate-400 dark:text-gray-500">Enter just the domain name or full URL</p>
       </div>
 
       <!-- Data Types -->
       <div id="data-type-checkboxes">
-        <label class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">
+        <label class="block text-sm font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-3">
           What to extract
           <span class="text-brand-red">*</span>
         </label>
         <div class="space-y-3">
           {% for dt in data_types %}
-          <label class="flex items-center gap-3 cursor-pointer group p-3 rounded-xl border-2 border-slate-200 hover:border-slate-300 transition-colors"
+          <label class="flex items-center gap-3 cursor-pointer group p-3 rounded-xl border-2 border-slate-200 dark:border-gray-600 hover:border-slate-300 dark:hover:border-gray-500 transition-colors"
                  :class="{ 'border-brand-red bg-red-50/30': dataTypes.includes('{{ dt.value }}') }">
             <input
               type="checkbox"
@@ -138,7 +138,7 @@
               {% if dt.default %}checked{% endif %}
               class="w-5 h-5 rounded border-slate-300 text-brand-red focus:ring-brand-red/20 transition-colors"
             >
-            <span class="text-navy font-medium group-hover:text-brand-red transition-colors">
+            <span class="text-navy dark:text-gray-100 font-medium group-hover:text-brand-red transition-colors">
               {{ dt.label }}
             </span>
           </label>
@@ -148,13 +148,13 @@
       </div>
 
       <!-- Advanced Options (Collapsible) -->
-      <div class="border-t border-slate-100 pt-6">
+      <div class="border-t border-slate-100 dark:border-gray-700 pt-6">
         <button
           type="button"
           @click="showAdvanced = !showAdvanced"
-          class="flex items-center justify-between w-full text-left p-3 rounded-xl hover:bg-slate-50 transition-colors"
+          class="flex items-center justify-between w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
         >
-          <span class="text-sm font-bold text-navy">Advanced options</span>
+          <span class="text-sm font-bold text-navy dark:text-gray-100">Advanced options</span>
           <i
             data-lucide="chevron-down"
             class="w-5 h-5 text-slate-400 transition-transform"
@@ -165,7 +165,7 @@
         <div x-show="showAdvanced" x-collapse class="mt-4 space-y-4 pl-3">
           <!-- Max Pages -->
           <div>
-            <label for="max-pages" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+            <label for="max-pages" class="block text-sm font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
               Maximum pages to scrape
             </label>
             <div class="flex items-center gap-4">
@@ -178,14 +178,14 @@
                 step="10"
                 class="flex-1 accent-brand-red"
               >
-              <span class="text-sm font-bold text-navy w-12 text-right" x-text="maxPages"></span>
+              <span class="text-sm font-bold text-navy dark:text-gray-100 w-12 text-right" x-text="maxPages"></span>
             </div>
-            <p class="mt-2 text-xs text-slate-400">Higher values take longer but find more data</p>
+            <p class="mt-2 text-xs text-slate-400 dark:text-gray-500">Higher values take longer but find more data</p>
           </div>
 
           <!-- Template Selection -->
           <div>
-            <label for="template" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+            <label for="template" class="block text-sm font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
               Template
             </label>
             <select
@@ -198,12 +198,12 @@
               <option value="{{ template.id }}">{{ template.name }}</option>
               {% endfor %}
             </select>
-            <p class="mt-2 text-xs text-slate-400">We automatically detect WordPress, HubSpot, and Webflow sites</p>
+            <p class="mt-2 text-xs text-slate-400 dark:text-gray-500">We automatically detect WordPress, HubSpot, and Webflow sites</p>
           </div>
 
           <!-- Priority -->
           <div>
-            <label for="priority" class="block text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">
+            <label for="priority" class="block text-sm font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
               Priority
             </label>
             <select
@@ -248,8 +248,8 @@
       <i data-lucide="info" class="w-6 h-6 text-white"></i>
     </div>
     <div>
-      <p class="font-bold text-navy">How it works</p>
-      <p class="text-sm text-slate-600 mt-1 leading-relaxed">
+      <p class="font-bold text-navy dark:text-gray-100">How it works</p>
+      <p class="text-sm text-slate-600 dark:text-gray-300 mt-1 leading-relaxed">
         We'll map the website structure, identify blog posts, team pages, and resources,
         then extract the data you selected. The process typically takes 1-5 minutes
         depending on site size.

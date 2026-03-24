@@ -1,12 +1,12 @@
 {% if job %}
 <div
-  class="bg-white rounded-xl border border-stone-200 p-6"
+  class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6"
   data-status="{{ job.status }}"
 >
   <!-- Progress Bar (for running jobs) -->
   {% if job.status == 'running' %}
   <div class="mb-6">
-    <div class="h-2 bg-stone-100 rounded-full overflow-hidden">
+    <div class="h-2 bg-stone-100 dark:bg-gray-800 rounded-full overflow-hidden">
       <div class="h-full bg-running progress-indeterminate" style="width: 25%;"></div>
     </div>
     <p class="text-xs text-running mt-2 text-center">
@@ -36,20 +36,20 @@
   <!-- Stats Grid -->
   <div class="grid grid-cols-3 gap-4">
     <!-- Pages Scraped -->
-    <div class="text-center p-4 bg-stone-50 rounded-lg">
-      <p class="text-2xl font-semibold text-charcoal">{{ job.pages_scraped }}</p>
+    <div class="text-center p-4 bg-stone-50 dark:bg-gray-800 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal dark:text-gray-100">{{ job.pages_scraped }}</p>
       <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Pages</p>
     </div>
 
     <!-- Data Found -->
-    <div class="text-center p-4 bg-stone-50 rounded-lg">
-      <p class="text-2xl font-semibold text-charcoal">{{ data_count }}</p>
+    <div class="text-center p-4 bg-stone-50 dark:bg-gray-800 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal dark:text-gray-100">{{ data_count }}</p>
       <p class="text-xs text-stone-400 uppercase tracking-wide mt-1">Items Found</p>
     </div>
 
     <!-- Duration -->
-    <div class="text-center p-4 bg-stone-50 rounded-lg">
-      <p class="text-2xl font-semibold text-charcoal">
+    <div class="text-center p-4 bg-stone-50 dark:bg-gray-800 rounded-lg">
+      <p class="text-2xl font-semibold text-charcoal dark:text-gray-100">
         {% if job.duration_ms %}
           {% set seconds = (job.duration_ms / 1000) | int %}
           {% if seconds < 60 %}
@@ -76,18 +76,18 @@
 
   <!-- Data Type Breakdown (completed/failed jobs) -->
   {% if type_counts is defined and type_counts %}
-  <div class="mt-4 pt-4 border-t border-stone-100">
+  <div class="mt-4 pt-4 border-t border-stone-100 dark:border-gray-700">
     <p class="text-xs text-stone-400 uppercase tracking-wide mb-2 text-center">Data Breakdown</p>
     <div class="flex flex-wrap justify-center gap-2">
       {% for dtype, count in type_counts.items() %}
       <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
-        {% if dtype == 'article' %}bg-purple-50 text-purple-700
-        {% elif dtype == 'contact' %}bg-green-50 text-green-700
-        {% elif dtype == 'blog_url' %}bg-blue-50 text-blue-700
-        {% elif dtype == 'tech_stack' %}bg-orange-50 text-orange-700
-        {% elif dtype == 'resource' %}bg-pink-50 text-pink-700
-        {% elif dtype == 'pricing' %}bg-stone-100 text-stone-600
-        {% else %}bg-stone-100 text-stone-600{% endif %}
+        {% if dtype == 'article' %}bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400
+        {% elif dtype == 'contact' %}bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400
+        {% elif dtype == 'blog_url' %}bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400
+        {% elif dtype == 'tech_stack' %}bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400
+        {% elif dtype == 'resource' %}bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400
+        {% elif dtype == 'pricing' %}bg-stone-100 dark:bg-gray-800 text-stone-600 dark:text-gray-400
+        {% else %}bg-stone-100 dark:bg-gray-800 text-stone-600 dark:text-gray-400{% endif %}
       ">
         {{ dtype | replace('_', ' ') | title }}
         <span class="font-bold">{{ count }}</span>
@@ -99,9 +99,9 @@
 
   <!-- Strategy Used -->
   {% if job.strategy_used %}
-  <div class="mt-4 pt-4 border-t border-stone-100 text-center">
+  <div class="mt-4 pt-4 border-t border-stone-100 dark:border-gray-700 text-center">
     <span class="text-xs text-stone-400 uppercase tracking-wide">Strategy: </span>
-    <span class="text-sm text-charcoal">
+    <span class="text-sm text-charcoal dark:text-gray-300">
       {% if job.strategy_used == 'playwright' %}
         <span class="inline-flex items-center gap-1">
           <span class="w-2 h-2 rounded-full bg-success"></span>
@@ -127,7 +127,7 @@
 
 
 {% else %}
-<div class="bg-white rounded-xl border border-stone-200 p-6 text-center">
-  <p class="text-stone-400">Job not found</p>
+<div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6 text-center">
+  <p class="text-stone-400 dark:text-gray-500">Job not found</p>
 </div>
 {% endif %}

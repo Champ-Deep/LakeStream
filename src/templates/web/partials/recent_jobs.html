@@ -1,9 +1,9 @@
 {% if jobs %}
-<div class="divide-y divide-stone-100">
+<div class="divide-y divide-stone-100 dark:divide-gray-700">
   {% for job in jobs %}
   <a
     href="/jobs/{{ job.id }}"
-    class="block px-6 py-4 hover:bg-stone-50 transition-colors"
+    class="block px-6 py-4 hover:bg-stone-50 dark:hover:bg-gray-800 transition-colors"
   >
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
@@ -22,7 +22,7 @@
 
         <!-- Domain & Status -->
         <div>
-          <p class="font-medium text-charcoal">{{ job.domain }}</p>
+          <p class="font-medium text-charcoal dark:text-gray-100">{{ job.domain }}</p>
           <p class="text-sm text-stone-400">
             {% if job.status == 'running' %}
               {{ job.pages_scraped }} pages scraped

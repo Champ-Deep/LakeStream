@@ -1,7 +1,7 @@
 {% for job in jobs %}
 <tr class="table-row-hover">
   <td class="px-6 py-4">
-    <a href="/jobs/{{ job.id }}" class="font-medium text-charcoal hover:text-accent block max-w-[200px] truncate" title="{{ job.domain }}">
+    <a href="/jobs/{{ job.id }}" class="font-medium text-charcoal dark:text-gray-100 hover:text-accent block max-w-[200px] truncate" title="{{ job.domain }}">
       {{ job.domain }}
     </a>
   </td>
@@ -20,7 +20,7 @@
       {{ job.status | capitalize }}
     </span>
   </td>
-  <td class="px-6 py-4 text-sm text-charcoal whitespace-nowrap">
+  <td class="px-6 py-4 text-sm text-charcoal dark:text-gray-300 whitespace-nowrap">
     {{ job.pages_scraped }}
   </td>
   <td class="px-6 py-4 text-sm text-slate whitespace-nowrap">
@@ -29,7 +29,7 @@
   <td class="px-6 py-4 text-right">
     <div class="flex items-center justify-end gap-2">
       {% if job.status == 'completed' %}
-      <a href="/download/job/{{ job.id }}" class="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-400 hover:text-navy" title="Download CSV">
+      <a href="/download/job/{{ job.id }}" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors text-slate-400 hover:text-navy dark:hover:text-gray-100" title="Download CSV">
         <i data-lucide="download" class="w-4 h-4"></i>
       </a>
       {% endif %}

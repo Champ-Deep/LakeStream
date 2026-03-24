@@ -8,8 +8,8 @@
   <!-- Page Header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-semibold text-charcoal">Jobs</h1>
-      <p class="text-slate mt-1">View and manage your scraping jobs</p>
+      <h1 class="text-2xl font-semibold text-charcoal dark:text-gray-100">Jobs</h1>
+      <p class="text-slate dark:text-gray-400 mt-1">View and manage your scraping jobs</p>
     </div>
     <a
       href="/jobs/new"
@@ -23,41 +23,41 @@
   </div>
 
   <!-- Filters -->
-  <div class="bg-white rounded-xl border border-stone-200 p-4">
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-4">
     <div class="flex items-center gap-2">
-      <span class="text-sm text-slate">Filter:</span>
+      <span class="text-sm text-slate dark:text-gray-400">Filter:</span>
       <a
         href="/jobs"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if not filter_status %}bg-accent text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+          {% if not filter_status %}bg-accent text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         All
       </a>
       <a
         href="/jobs?status=running"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if filter_status == 'running' %}bg-running text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+          {% if filter_status == 'running' %}bg-running text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Running
       </a>
       <a
         href="/jobs?status=completed"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if filter_status == 'completed' %}bg-success text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+          {% if filter_status == 'completed' %}bg-success text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Completed
       </a>
       <a
         href="/jobs?status=failed"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if filter_status == 'failed' %}bg-error text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+          {% if filter_status == 'failed' %}bg-error text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Failed
       </a>
       <a
         href="/jobs?status=pending"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if filter_status == 'pending' %}bg-warning text-white{% else %}text-slate hover:bg-stone-100{% endif %}"
+          {% if filter_status == 'pending' %}bg-warning text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Pending
       </a>
@@ -65,10 +65,10 @@
   </div>
 
   <!-- Jobs Table -->
-  <div class="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 overflow-x-auto">
     {% if jobs %}
     <table class="w-full min-w-full">
-      <thead class="bg-stone-50 border-b border-stone-200">
+      <thead class="bg-stone-50 dark:bg-gray-800 border-b border-stone-200 dark:border-gray-700">
         <tr>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Domain</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Status</th>
@@ -79,7 +79,7 @@
       </thead>
       <tbody
         id="jobs-table-body"
-        class="divide-y divide-stone-100"
+        class="divide-y divide-stone-100 dark:divide-gray-700"
       >
         {% include "partials/jobs_table_rows.html" %}
       </tbody>

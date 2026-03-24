@@ -5,19 +5,20 @@
 {% from "partials/result_detail.html" import render_result %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="space-y-6" x-data="{ activeTab: 'data' }">
 
   <!-- Page Header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-semibold text-charcoal">Extracted Data</h1>
-      <p class="text-slate mt-1">Browse and export your scraped data</p>
+      <h1 class="text-2xl font-semibold text-charcoal dark:text-gray-100">Extracted Data</h1>
+      <p class="text-slate dark:text-gray-400 mt-1">Browse and export your scraped data</p>
     </div>
     <div class="flex items-center gap-2">
       {% if results %}
       <a
         href="/download/all"
-        class="py-2.5 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors inline-flex items-center gap-2"
+        x-show="activeTab === 'data'"
+        class="py-2.5 px-4 bg-white dark:bg-gray-800 border border-stone-200 dark:border-gray-600 text-charcoal dark:text-gray-100 font-medium rounded-lg hover:bg-stone-50 dark:hover:bg-gray-700 transition-colors inline-flex items-center gap-2"
       >
         <i data-lucide="download" class="w-5 h-5"></i>
         Download CSV
@@ -26,24 +27,46 @@
     </div>
   </div>
 
+  <!-- Tabs -->
+  <div class="flex items-center gap-1 border-b border-stone-200 dark:border-gray-700">
+    <button
+      @click="activeTab = 'data'"
+      :class="activeTab === 'data' ? 'border-accent text-accent' : 'border-transparent text-slate dark:text-gray-400 hover:text-charcoal dark:hover:text-gray-200'"
+      class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+    >
+      Scraped Data
+    </button>
+    <button
+      @click="activeTab = 'transcripts'"
+      :class="activeTab === 'transcripts' ? 'border-accent text-accent' : 'border-transparent text-slate dark:text-gray-400 hover:text-charcoal dark:hover:text-gray-200'"
+      class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors inline-flex items-center gap-2"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      YouTube Transcripts
+    </button>
+  </div>
+
+  <!-- Scraped Data Tab -->
+  <div x-show="activeTab === 'data'">
+
   <!-- Filters -->
-  <div class="bg-white rounded-xl border border-stone-200 p-4">
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-4">
     <form
       hx-get="/results"
       hx-target="#results-container"
       hx-swap="innerHTML"
       hx-select="#results-container > *"
       hx-push-url="true"
+      hx-trigger="change from:find select"
       class="flex flex-wrap items-center gap-4"
     >
       <!-- Domain Filter -->
       <div class="flex items-center gap-2">
-        <label for="domain" class="text-sm text-slate">Domain:</label>
+        <label for="domain" class="text-sm text-slate dark:text-gray-400">Domain:</label>
         <select
           name="domain"
           id="domain"
-          hx-trigger="change"
-          class="px-3 py-2 rounded-lg border border-stone-300 bg-white text-sm focus:border-accent focus:ring-2 focus:ring-accent/20"
+          class="px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">All domains</option>
           {% for d in domains %}
@@ -54,12 +77,11 @@
 
       <!-- Data Type Filter -->
       <div class="flex items-center gap-2">
-        <label for="data_type" class="text-sm text-slate">Type:</label>
+        <label for="data_type" class="text-sm text-slate dark:text-gray-400">Type:</label>
         <select
           name="data_type"
           id="data_type"
-          hx-trigger="change"
-          class="px-3 py-2 rounded-lg border border-stone-300 bg-white text-sm focus:border-accent focus:ring-2 focus:ring-accent/20"
+          class="px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">All types</option>
           <option value="blog_url" {% if filter_data_type == 'blog_url' %}selected{% endif %}>Blog URLs</option>
@@ -83,28 +105,28 @@
   <div id="results-container">
     {% if results %}
     <!-- Results Table -->
-    <div class="bg-white rounded-xl border border-stone-200 overflow-hidden">
+    <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 overflow-hidden">
       <table class="w-full">
-        <thead class="bg-stone-50 border-b border-stone-200">
+        <thead class="bg-stone-50 dark:bg-gray-800 border-b border-stone-200 dark:border-gray-700">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Type</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Title / URL</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Domain</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-slate uppercase tracking-wide">Scraped</th>
-            <th class="px-6 py-3 text-right text-xs font-medium text-slate uppercase tracking-wide"></th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Type</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Title / URL</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Domain</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Scraped</th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-slate dark:text-gray-400 uppercase tracking-wide"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-stone-100" x-data="{ expandedId: null }">
+        <tbody class="divide-y divide-stone-100 dark:divide-gray-700" x-data="{ expandedId: null }">
           {% for result in results %}
           <tr class="table-row-hover">
             <td class="px-6 py-4">
               <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
-                {% if result.data_type == 'blog_url' %}bg-blue-50 text-blue-700
-                {% elif result.data_type == 'article' %}bg-purple-50 text-purple-700
-                {% elif result.data_type == 'contact' %}bg-green-50 text-green-700
-                {% elif result.data_type == 'tech_stack' %}bg-orange-50 text-orange-700
-                {% elif result.data_type == 'resource' %}bg-pink-50 text-pink-700
-                {% else %}bg-stone-100 text-stone-600{% endif %}
+                {% if result.data_type == 'blog_url' %}bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400
+                {% elif result.data_type == 'article' %}bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400
+                {% elif result.data_type == 'contact' %}bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400
+                {% elif result.data_type == 'tech_stack' %}bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400
+                {% elif result.data_type == 'resource' %}bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400
+                {% else %}bg-stone-100 dark:bg-gray-800 text-stone-600 dark:text-gray-400{% endif %}
               ">
                 {{ result.data_type | replace('_', ' ') | title }}
               </span>
@@ -112,7 +134,7 @@
             <td class="px-6 py-4">
               <div class="max-w-md">
                 {% if result.title %}
-                  <p class="font-medium text-charcoal truncate">{{ result.title }}</p>
+                  <p class="font-medium text-charcoal dark:text-gray-100 truncate">{{ result.title }}</p>
                 {% endif %}
                 {% if result.url %}
                   <a href="{{ result.url }}" target="_blank" class="text-sm text-accent hover:underline truncate block">
@@ -121,10 +143,10 @@
                 {% endif %}
               </div>
             </td>
-            <td class="px-6 py-4 text-sm text-charcoal">
+            <td class="px-6 py-4 text-sm text-charcoal dark:text-gray-300">
               {{ result.domain }}
             </td>
-            <td class="px-6 py-4 text-sm text-slate">
+            <td class="px-6 py-4 text-sm text-slate dark:text-gray-400">
               {{ result.scraped_at | timeago }}
             </td>
             <td class="px-6 py-4 text-right">
@@ -138,7 +160,7 @@
           </tr>
           <!-- Expanded Details Row -->
           <tr x-show="expandedId === '{{ result.id }}'" x-collapse>
-            <td colspan="5" class="px-6 py-4 bg-stone-50">
+            <td colspan="5" class="px-6 py-4 bg-stone-50 dark:bg-gray-800">
               <div class="max-w-3xl">
                 {{ render_result(result) }}
               </div>
@@ -159,14 +181,14 @@
 
     {% else %}
     <!-- Empty State -->
-    <div class="bg-white rounded-xl border border-stone-200 p-12 text-center">
-      <div class="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-12 text-center">
+      <div class="w-12 h-12 bg-stone-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
         <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
         </svg>
       </div>
-      <p class="text-stone-500 mb-2">No data found</p>
+      <p class="text-stone-500 dark:text-gray-400 mb-2">No data found</p>
       <p class="text-sm text-stone-400 mb-4">
         {% if filter_domain or filter_data_type %}
           Try adjusting your filters
@@ -185,6 +207,86 @@
       </a>
     </div>
     {% endif %}
+  </div>
+
+  </div><!-- /Scraped Data Tab -->
+
+  <!-- YouTube Transcripts Tab -->
+  <div x-show="activeTab === 'transcripts'" x-cloak x-data="transcriptHistory()">
+    <template x-if="transcripts.length > 0">
+      <div class="space-y-4">
+        <!-- Header -->
+        <div class="flex items-center justify-between">
+          <p class="text-sm text-slate dark:text-gray-400">
+            <span x-text="transcripts.length"></span> transcript<span x-show="transcripts.length !== 1">s</span> saved locally
+          </p>
+          <button @click="clearAll()" class="text-sm text-red-500 hover:text-red-700 hover:underline">Clear all</button>
+        </div>
+
+        <!-- Transcript Cards -->
+        <template x-for="t in transcripts" :key="t.id">
+          <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 overflow-hidden">
+            <!-- Card Header -->
+            <div class="px-6 py-4 flex items-center justify-between gap-4">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 bg-red-50 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg class="w-4 h-4 text-red-600 dark:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                </div>
+                <div class="min-w-0">
+                  <p class="font-medium text-charcoal dark:text-gray-100 truncate" x-text="t.title"></p>
+                  <p class="text-xs text-slate dark:text-gray-400">
+                    <span x-text="t.channel"></span>
+                    <span x-show="t.duration_seconds"> &middot; <span x-text="formatDuration(t.duration_seconds)"></span></span>
+                    <span x-show="t.language"> &middot; <span x-text="t.language"></span></span>
+                    &middot; <span x-text="timeAgo(t.extracted_at)"></span>
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <button @click="copyTranscript(t)" class="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-gray-800 transition-colors text-slate-400 hover:text-charcoal dark:hover:text-gray-100" title="Copy transcript">
+                  <svg x-show="copied !== t.id" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <svg x-show="copied === t.id" class="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </button>
+                <button @click="downloadTxt(t)" class="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-gray-800 transition-colors text-slate-400 hover:text-charcoal dark:hover:text-gray-100" title="Download .txt">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                </button>
+                <button @click="expandedId = expandedId === t.id ? null : t.id" class="text-accent hover:underline text-sm">
+                  <span x-text="expandedId === t.id ? 'Hide' : 'View'"></span>
+                </button>
+                <button @click="removeTranscript(t)" class="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-slate-400 hover:text-red-500" title="Remove">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+            </div>
+            <!-- Expanded Transcript -->
+            <div x-show="expandedId === t.id" x-collapse class="border-t border-stone-200 dark:border-gray-700">
+              <div class="px-6 py-4">
+                <a :href="t.url" target="_blank" class="text-sm text-accent hover:underline mb-3 block" x-text="t.url"></a>
+                <div class="bg-stone-50 dark:bg-gray-800 rounded-lg p-4 max-h-96 overflow-y-auto">
+                  <p class="text-sm text-charcoal dark:text-gray-300 whitespace-pre-line leading-relaxed" x-text="t.transcript_text"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <template x-if="transcripts.length === 0">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-12 text-center">
+        <div class="w-12 h-12 bg-red-50 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        </div>
+        <p class="text-stone-500 dark:text-gray-400 mb-2">No transcripts yet</p>
+        <p class="text-sm text-stone-400 dark:text-gray-500 mb-4">Extract a YouTube transcript from the dashboard to see it here</p>
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 py-2 px-4 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-dark transition-colors"
+        >
+          Go to Dashboard
+        </a>
+      </div>
+    </template>
   </div>
 
 </div>

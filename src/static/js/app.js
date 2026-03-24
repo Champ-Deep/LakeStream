@@ -36,6 +36,20 @@ document.body.addEventListener('htmx:responseError', (event) => {
 // Alpine.js initialization
 document.addEventListener('alpine:init', () => {
 
+  // Dark mode store
+  Alpine.store('darkMode', {
+    on: localStorage.getItem('darkMode') === 'true' ||
+        (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches),
+    toggle() {
+      this.on = !this.on;
+      localStorage.setItem('darkMode', this.on);
+      document.documentElement.classList.toggle('dark', this.on);
+    },
+    init() {
+      document.documentElement.classList.toggle('dark', this.on);
+    }
+  });
+
   // Toast notification store
   Alpine.store('toast', {
     message: '',
@@ -322,6 +336,7 @@ document.addEventListener('alpine:init', () => {
         const data = await response.json();
         if (data.success) {
           this.result = data;
+          this._saveToHistory(data);
           Alpine.store('toast').show('Transcript extracted!', 'success');
         } else {
           this.error = data.error || 'Failed to extract transcript';
@@ -358,6 +373,88 @@ document.addEventListener('alpine:init', () => {
       const m = Math.floor(seconds / 60);
       const s = Math.floor(seconds % 60);
       return m + 'm ' + s + 's';
+    },
+
+    _saveToHistory(data) {
+      try {
+        const history = JSON.parse(localStorage.getItem('yt_transcripts') || '[]');
+        const entry = {
+          id: data.video_id,
+          url: this.url.trim(),
+          title: data.metadata?.title || 'Untitled',
+          channel: data.metadata?.channel || '',
+          duration_seconds: data.duration_seconds,
+          language: data.language,
+          segment_count: data.segment_count,
+          transcript_text: data.transcript_text,
+          extracted_at: new Date().toISOString(),
+        };
+        // Replace if same video_id already exists
+        const idx = history.findIndex(h => h.id === entry.id);
+        if (idx >= 0) history.splice(idx, 1);
+        history.unshift(entry);
+        // Keep last 50
+        localStorage.setItem('yt_transcripts', JSON.stringify(history.slice(0, 50)));
+      } catch (e) { /* localStorage full or unavailable */ }
+    }
+  }));
+
+  // YouTube Transcript History component (results page)
+  Alpine.data('transcriptHistory', () => ({
+    transcripts: [],
+    expandedId: null,
+    copied: null,
+
+    init() {
+      try {
+        this.transcripts = JSON.parse(localStorage.getItem('yt_transcripts') || '[]');
+      } catch (e) { this.transcripts = []; }
+    },
+
+    formatDuration(seconds) {
+      if (!seconds) return '';
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return m + 'm ' + s + 's';
+    },
+
+    timeAgo(iso) {
+      const diff = Date.now() - new Date(iso).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      const days = Math.floor(hrs / 24);
+      return days + 'd ago';
+    },
+
+    copyTranscript(t) {
+      navigator.clipboard.writeText(t.transcript_text).then(() => {
+        this.copied = t.id;
+        setTimeout(() => this.copied = null, 2000);
+      });
+    },
+
+    downloadTxt(t) {
+      const filename = (t.title || 'transcript').replace(/[^a-z0-9]/gi, '_').substring(0, 50) + '.txt';
+      const blob = new Blob([t.transcript_text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    removeTranscript(t) {
+      this.transcripts = this.transcripts.filter(x => x.id !== t.id);
+      localStorage.setItem('yt_transcripts', JSON.stringify(this.transcripts));
+    },
+
+    clearAll() {
+      this.transcripts = [];
+      localStorage.removeItem('yt_transcripts');
     }
   }));
 

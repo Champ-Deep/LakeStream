@@ -534,3 +534,108 @@ input[type="checkbox"] {
   border-right: none;
   border-bottom: none;
 }
+
+/* =============================================================================
+   DARK MODE OVERRIDES
+   ============================================================================= */
+
+.dark .card {
+  background: #111827;
+  border-color: #374151;
+}
+
+.dark .card:hover {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.dark .card-highlight {
+  background: #111827;
+}
+
+.dark .card-glass {
+  background: rgba(17, 24, 39, 0.7);
+  border-color: rgba(55, 65, 81, 0.4);
+}
+
+.dark .glass-dropdown {
+  background: rgba(17, 24, 39, 0.88);
+  border-color: rgba(55, 65, 81, 0.5);
+}
+
+.dark .brand-border-gradient {
+  background: #111827;
+}
+
+.dark .input {
+  background: #1f2937;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+.dark .input:focus {
+  border-color: #E8033A;
+  box-shadow: 0 0 0 3px rgba(232, 3, 58, 0.2);
+}
+
+.dark .input::placeholder {
+  color: #6b7280;
+}
+
+.dark .select {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+.dark .select:focus {
+  border-color: #E8033A;
+}
+
+.dark .btn-secondary {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+
+.dark .table-row-hover:hover {
+  background-color: #1f2937;
+}
+
+.dark .code-block {
+  background: #030712;
+  border-color: #374151;
+}
+
+.dark .checkbox-wrapper {
+  border-color: #374151;
+}
+
+.dark .checkbox-wrapper:hover {
+  border-color: #4b5563;
+  background: #1f2937;
+}
+
+.dark .tooltip-arrow {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+/* Dark scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Dark focus states */
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  box-shadow: 0 0 0 3px rgba(232, 3, 58, 0.2);
+}

@@ -9,11 +9,11 @@
   <a href="/jobs" class="text-sm text-accent hover:underline inline-block">&larr; Back to Jobs</a>
 
   <!-- Job Header -->
-  <div class="bg-white rounded-xl border border-stone-200 p-6">
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6">
     <div class="flex items-start justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-charcoal">{{ job.domain }}</h1>
-        <p class="text-slate mt-1">Started {{ job.created_at | timeago }}</p>
+        <h1 class="text-2xl font-semibold text-charcoal dark:text-gray-100">{{ job.domain }}</h1>
+        <p class="text-slate dark:text-gray-400 mt-1">Started {{ job.created_at | timeago }}</p>
       </div>
 
       <!-- Status Badge -->
@@ -54,20 +54,20 @@
       </a>
       <a
         href="/download/job/{{ job.id }}"
-        class="py-3 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors flex items-center gap-2"
+        class="py-3 px-4 bg-white dark:bg-gray-800 border border-stone-200 dark:border-gray-600 text-charcoal dark:text-gray-100 font-medium rounded-lg hover:bg-stone-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
       >
         <i data-lucide="download" class="w-4 h-4"></i>
         Download CSV
       </a>
       <a
         href="/download/job/{{ job.id }}/json"
-        class="py-3 px-4 bg-white border border-stone-200 text-charcoal font-medium rounded-lg hover:bg-stone-50 transition-colors"
+        class="py-3 px-4 bg-white dark:bg-gray-800 border border-stone-200 dark:border-gray-600 text-charcoal dark:text-gray-100 font-medium rounded-lg hover:bg-stone-50 dark:hover:bg-gray-700 transition-colors"
       >
         Export JSON
       </a>
     {% elif job.status == 'running' %}
       <button
-        class="flex-1 py-3 px-4 bg-stone-100 text-stone-400 font-medium rounded-lg cursor-not-allowed"
+        class="flex-1 py-3 px-4 bg-stone-100 dark:bg-gray-800 text-stone-400 dark:text-gray-500 font-medium rounded-lg cursor-not-allowed"
         disabled
       >
         <span class="flex items-center justify-center gap-2">
@@ -87,7 +87,7 @@
       </a>
     {% else %}
       <button
-        class="flex-1 py-3 px-4 bg-stone-100 text-stone-400 font-medium rounded-lg cursor-not-allowed"
+        class="flex-1 py-3 px-4 bg-stone-100 dark:bg-gray-800 text-stone-400 dark:text-gray-500 font-medium rounded-lg cursor-not-allowed"
         disabled
       >
         Queued - waiting to start
@@ -107,29 +107,29 @@
         <p class="text-sm font-medium {% if job.status == 'failed' %}text-error{% else %}text-warning{% endif %}">
           {% if job.status == 'failed' %}Error Details{% else %}Warning{% endif %}
         </p>
-        <p class="text-sm text-slate mt-1">{{ job.error_message }}</p>
+        <p class="text-sm text-slate dark:text-gray-400 mt-1">{{ job.error_message }}</p>
       </div>
     </div>
   </div>
   {% endif %}
 
   <!-- Job Details -->
-  <div class="bg-white rounded-xl border border-stone-200 p-6">
-    <h2 class="text-sm font-medium text-slate uppercase tracking-wide mb-4">Job Details</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6">
+    <h2 class="text-sm font-medium text-slate dark:text-gray-400 uppercase tracking-wide mb-4">Job Details</h2>
 
     <dl class="space-y-4">
       <div class="flex justify-between">
-        <dt class="text-slate">Job ID</dt>
-        <dd class="text-charcoal font-mono text-sm">{{ job.id }}</dd>
+        <dt class="text-slate dark:text-gray-400">Job ID</dt>
+        <dd class="text-charcoal dark:text-gray-200 font-mono text-sm">{{ job.id }}</dd>
       </div>
       <div class="flex justify-between">
-        <dt class="text-slate">Template</dt>
-        <dd class="text-charcoal">{{ job.template_id | title }}</dd>
+        <dt class="text-slate dark:text-gray-400">Template</dt>
+        <dd class="text-charcoal dark:text-gray-200">{{ job.template_id | title }}</dd>
       </div>
       {% if job.strategy_used %}
       <div class="flex justify-between">
-        <dt class="text-slate">Strategy</dt>
-        <dd class="text-charcoal">
+        <dt class="text-slate dark:text-gray-400">Strategy</dt>
+        <dd class="text-charcoal dark:text-gray-200">
           {% if job.strategy_used == 'playwright' %}
             Playwright
           {% elif job.strategy_used == 'playwright_proxy' %}
@@ -143,13 +143,13 @@
       </div>
       {% endif %}
       <div class="flex justify-between">
-        <dt class="text-slate">Created</dt>
-        <dd class="text-charcoal">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') if job.created_at else '-' }}</dd>
+        <dt class="text-slate dark:text-gray-400">Created</dt>
+        <dd class="text-charcoal dark:text-gray-200">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') if job.created_at else '-' }}</dd>
       </div>
       {% if job.completed_at %}
       <div class="flex justify-between">
-        <dt class="text-slate">Completed</dt>
-        <dd class="text-charcoal">{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd>
+        <dt class="text-slate dark:text-gray-400">Completed</dt>
+        <dd class="text-charcoal dark:text-gray-200">{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd>
       </div>
       {% endif %}
     </dl>

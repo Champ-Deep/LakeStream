@@ -5,26 +5,26 @@
   {% if result.data_type == 'contact' %}
   {# Contact card layout #}
   <div class="flex items-start gap-4">
-    <div class="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center flex-shrink-0">
-      <i data-lucide="user" class="w-5 h-5 text-green-600"></i>
+    <div class="w-10 h-10 bg-green-50 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+      <i data-lucide="user" class="w-5 h-5 text-green-600 dark:text-green-400"></i>
     </div>
     <div class="flex-1 space-y-2">
       {% if result.metadata.get('first_name') or result.metadata.get('last_name') %}
-        <p class="font-bold text-navy">
+        <p class="font-bold text-navy dark:text-gray-100">
           {{ result.metadata.get('first_name', '') }} {{ result.metadata.get('last_name', '') }}
         </p>
       {% endif %}
       {% if result.metadata.get('job_title') %}
-        <p class="text-sm text-slate-500">{{ result.metadata.job_title }}</p>
+        <p class="text-sm text-slate-500 dark:text-gray-400">{{ result.metadata.job_title }}</p>
       {% endif %}
       <div class="flex flex-wrap gap-3 text-sm">
         {% if result.metadata.get('email') %}
-          <span class="flex items-center gap-1.5 text-slate-600">
+          <span class="flex items-center gap-1.5 text-slate-600 dark:text-gray-300">
             <i data-lucide="mail" class="w-3.5 h-3.5"></i> {{ result.metadata.email }}
           </span>
         {% endif %}
         {% if result.metadata.get('phone') %}
-          <span class="flex items-center gap-1.5 text-slate-600">
+          <span class="flex items-center gap-1.5 text-slate-600 dark:text-gray-300">
             <i data-lucide="phone" class="w-3.5 h-3.5"></i> {{ result.metadata.phone }}
           </span>
         {% endif %}
@@ -65,22 +65,22 @@
     {# OG image thumbnail #}
     {% if result.metadata.get('og_image') %}
       <img src="{{ result.metadata.og_image }}" alt=""
-        class="w-full max-w-md rounded-lg border border-slate-200 max-h-48 object-cover" loading="lazy">
+        class="w-full max-w-md rounded-lg border border-slate-200 dark:border-gray-700 max-h-48 object-cover" loading="lazy">
     {% endif %}
 
     {# Excerpt #}
     {% if result.metadata.get('excerpt') %}
-      <p class="text-sm text-slate-600 leading-relaxed">{{ result.metadata.excerpt[:300] }}{% if result.metadata.excerpt|length > 300 %}...{% endif %}</p>
+      <p class="text-sm text-slate-600 dark:text-gray-300 leading-relaxed">{{ result.metadata.excerpt[:300] }}{% if result.metadata.excerpt|length > 300 %}...{% endif %}</p>
     {% endif %}
 
     {# Full content preview #}
     {% if result.metadata.get('content') %}
-      <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
-        <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{{ result.metadata.content[:500] }}{% if result.metadata.content|length > 500 %}...{% endif %}</p>
+      <div class="border border-slate-200 dark:border-gray-700 rounded-lg p-3 bg-slate-50 dark:bg-gray-800">
+        <p class="text-sm text-slate-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">{{ result.metadata.content[:500] }}{% if result.metadata.content|length > 500 %}...{% endif %}</p>
         {% if result.metadata.content|length > 500 %}
           <details class="mt-2">
             <summary class="text-sm text-brand-red cursor-pointer hover:underline">Show full content</summary>
-            <p class="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-line max-h-96 overflow-y-auto">{{ result.metadata.content[:5000] }}{% if result.metadata.content|length > 5000 %}<br><em class="text-slate-400">Content truncated — export for full text</em>{% endif %}</p>
+            <p class="mt-2 text-sm text-slate-700 dark:text-gray-300 leading-relaxed whitespace-pre-line max-h-96 overflow-y-auto">{{ result.metadata.content[:5000] }}{% if result.metadata.content|length > 5000 %}<br><em class="text-slate-400 dark:text-gray-500">Content truncated — export for full text</em>{% endif %}</p>
           </details>
         {% endif %}
       </div>
@@ -97,7 +97,7 @@
 
     {# Rich metadata (og:, twitter, canonical) #}
     {% if result.metadata.get('og_description') or result.metadata.get('twitter_site') or result.metadata.get('canonical_url') %}
-      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 space-y-1">
+      <div class="bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 rounded-lg p-3 text-xs text-slate-500 dark:text-gray-400 space-y-1">
         {% if result.metadata.get('og_description') %}
           <p><span class="text-slate-400">og:description:</span> {{ result.metadata.og_description[:200] }}</p>
         {% endif %}
@@ -177,7 +177,7 @@
       </p>
     {% endif %}
     {% if result.metadata.get('total_articles') %}
-      <p class="text-sm text-slate-600">{{ result.metadata.total_articles }} articles found</p>
+      <p class="text-sm text-slate-600 dark:text-gray-300">{{ result.metadata.total_articles }} articles found</p>
     {% endif %}
     {% if result.metadata.get('article_urls') %}
       <details class="text-sm">
@@ -188,7 +188,7 @@
           {% for url in result.metadata.article_urls[:20] %}
             <li>
               <a href="{{ url }}" target="_blank"
-                class="text-slate-600 hover:text-brand-red truncate block">
+                class="text-slate-600 dark:text-gray-300 hover:text-brand-red truncate block">
                 {{ url[:80] }}{% if url|length > 80 %}...{% endif %}
               </a>
             </li>
@@ -210,7 +210,7 @@
       <span class="badge badge-neutral capitalize">{{ result.metadata.resource_type }}</span>
     {% endif %}
     {% if result.metadata.get('description') %}
-      <p class="text-sm text-slate-600">{{ result.metadata.description[:200] }}{% if result.metadata.description|length > 200 %}...{% endif %}</p>
+      <p class="text-sm text-slate-600 dark:text-gray-400">{{ result.metadata.description[:200] }}{% if result.metadata.description|length > 200 %}...{% endif %}</p>
     {% endif %}
     <div class="flex gap-3 text-sm">
       {% if result.metadata.get('gated') %}
@@ -229,7 +229,7 @@
 
   {% else %}
   {# Fallback: unknown types #}
-  <pre class="text-sm text-slate-700 bg-white p-4 rounded-lg overflow-x-auto border border-slate-200">{{ result.metadata | tojson(indent=2) }}</pre>
+  <pre class="text-sm text-slate-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-4 rounded-lg overflow-x-auto border border-slate-200 dark:border-gray-700">{{ result.metadata | tojson(indent=2) }}</pre>
   {% endif %}
 
 </div>

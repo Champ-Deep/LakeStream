@@ -1,9 +1,9 @@
 <div class="space-y-3">
   <!-- Database Status -->
-  <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+  <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-800 rounded-xl">
     <div class="flex items-center gap-3">
-      <i data-lucide="database" class="w-4 h-4 text-slate-400"></i>
-      <span class="text-sm font-medium text-navy">Database</span>
+      <i data-lucide="database" class="w-4 h-4 text-slate-400 dark:text-gray-500"></i>
+      <span class="text-sm font-medium text-navy dark:text-gray-100">Database</span>
     </div>
     <div class="flex items-center gap-2">
       {% if health.database == 'connected' %}
@@ -15,10 +15,10 @@
   </div>
 
   <!-- Redis Status -->
-  <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+  <div class="flex items-center justify-between p-3 bg-slate-50 dark:bg-gray-800 rounded-xl">
     <div class="flex items-center gap-3">
-      <i data-lucide="server" class="w-4 h-4 text-slate-400"></i>
-      <span class="text-sm font-medium text-navy">Redis</span>
+      <i data-lucide="server" class="w-4 h-4 text-slate-400 dark:text-gray-500"></i>
+      <span class="text-sm font-medium text-navy dark:text-gray-100">Redis</span>
     </div>
     <div class="flex items-center gap-2">
       {% if health.redis == 'connected' %}

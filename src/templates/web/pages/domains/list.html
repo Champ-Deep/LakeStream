@@ -8,8 +8,8 @@
   <!-- Page Header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-semibold text-navy">Domain Analytics</h1>
-      <p class="text-slate-500 mt-1">Track performance and health of scraped domains</p>
+      <h1 class="text-2xl font-semibold text-navy dark:text-gray-100">Domain Analytics</h1>
+      <p class="text-slate-500 dark:text-gray-400 mt-1">Track performance and health of scraped domains</p>
     </div>
     <button
       @click="open = true"
@@ -24,16 +24,16 @@
   {% if tracked_domains %}
   <div class="card p-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold text-navy">Tracked Sites</h2>
+      <h2 class="text-lg font-semibold text-navy dark:text-gray-100">Tracked Sites</h2>
       <span class="text-xs text-slate-400">{{ tracked_domains | length }} site{{ 's' if tracked_domains | length != 1 else '' }} tracked</span>
     </div>
-    <div class="divide-y divide-slate-100">
+    <div class="divide-y divide-slate-100 dark:divide-gray-700">
       {% for td in tracked_domains %}
       <div class="flex items-center justify-between py-3 {% if loop.first %}pt-0{% endif %} {% if loop.last %}pb-0{% endif %}">
         <div class="flex items-center gap-3">
           <span class="w-2 h-2 rounded-full {% if td.is_active %}bg-emerald-500{% else %}bg-slate-300{% endif %}"></span>
           <div>
-            <span class="text-sm font-medium text-navy">{{ td.domain }}</span>
+            <span class="text-sm font-medium text-navy dark:text-gray-100">{{ td.domain }}</span>
             <div class="flex items-center gap-2 mt-0.5">
               <span class="text-xs text-slate-400 capitalize">{{ td.scrape_frequency }}</span>
               {% if td.next_scrape_at %}
@@ -80,21 +80,21 @@
       <a
         href="/domains?sort_by=last_scraped_at"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if sort_by == 'last_scraped_at' %}bg-brand-red text-white{% else %}text-slate-500 hover:bg-slate-100{% endif %}"
+          {% if sort_by == 'last_scraped_at' %}bg-brand-red text-white{% else %}text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800{% endif %}"
       >
         Recent
       </a>
       <a
         href="/domains?sort_by=success_rate"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if sort_by == 'success_rate' %}bg-brand-red text-white{% else %}text-slate-500 hover:bg-slate-100{% endif %}"
+          {% if sort_by == 'success_rate' %}bg-brand-red text-white{% else %}text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800{% endif %}"
       >
         Success Rate
       </a>
       <a
         href="/domains?sort_by=domain"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
-          {% if sort_by == 'domain' %}bg-brand-red text-white{% else %}text-slate-500 hover:bg-slate-100{% endif %}"
+          {% if sort_by == 'domain' %}bg-brand-red text-white{% else %}text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800{% endif %}"
       >
         Name
       </a>
@@ -105,7 +105,7 @@
   <div class="card overflow-hidden">
     {% if domains %}
     <table class="w-full">
-      <thead class="bg-slate-50 border-b border-slate-200">
+      <thead class="bg-slate-50 dark:bg-gray-800 border-b border-slate-200 dark:border-gray-700">
         <tr>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Domain</th>
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Success Rate</th>
@@ -114,12 +114,12 @@
           <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Health</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100">
+      <tbody class="divide-y divide-slate-100 dark:divide-gray-700">
         {% for domain in domains %}
         <tr class="table-row-hover">
           <td class="px-6 py-4">
             <div class="flex items-center gap-2">
-              <a href="/domains/{{ domain.domain }}" class="font-medium text-navy hover:text-brand-red">
+              <a href="/domains/{{ domain.domain }}" class="font-medium text-navy dark:text-gray-100 hover:text-brand-red">
                 {{ domain.domain }}
               </a>
               {% if domain.domain in tracked_set %}
@@ -133,7 +133,7 @@
           <td class="px-6 py-4">
             {% set rate = (domain.success_rate * 100) | int if domain.success_rate else 0 %}
             <div class="flex items-center gap-2">
-              <div class="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div class="w-16 h-2 bg-slate-100 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
                   class="h-full rounded-full
                     {% if rate >= 80 %}bg-success{% elif rate >= 50 %}bg-warning{% else %}bg-error{% endif %}"
@@ -145,8 +145,12 @@
               </span>
             </div>
           </td>
-          <td class="px-6 py-4 text-sm text-navy">
-            {% if domain.last_successful_strategy == 'basic_http' %}
+          <td class="px-6 py-4 text-sm text-navy dark:text-gray-300">
+            {% if domain.last_successful_strategy == 'playwright' %}
+              Playwright
+            {% elif domain.last_successful_strategy == 'playwright_proxy' %}
+              Playwright + Proxy
+            {% elif domain.last_successful_strategy == 'basic_http' %}
               Basic HTTP
             {% elif domain.last_successful_strategy == 'headless_browser' %}
               Headless
@@ -252,7 +256,7 @@
 
       <!-- Modal Content -->
       <div
-        class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        class="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
         x-show="open"
         x-transition:enter="transition ease-out duration-200"
         x-transition:enter-start="opacity-0 scale-95"
@@ -262,9 +266,9 @@
         x-transition:leave-end="opacity-0 scale-95"
       >
         <!-- Modal Header -->
-        <div class="flex items-center justify-between p-6 border-b border-slate-100">
+        <div class="flex items-center justify-between p-6 border-b border-slate-100 dark:border-gray-700">
           <div>
-            <h3 class="text-lg font-semibold text-navy">Add Site for Tracking</h3>
+            <h3 class="text-lg font-semibold text-navy dark:text-gray-100">Add Site for Tracking</h3>
             <p class="text-sm text-slate-500 mt-0.5">Automatically scrape this site on a schedule</p>
           </div>
           <button @click="open = false" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
