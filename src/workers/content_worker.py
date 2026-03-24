@@ -47,11 +47,6 @@ _ERROR_MARKERS = ("error", "404", "not found", "page not found")
 class ContentWorker(BaseWorker):
     """Fetches each URL once and runs all applicable extractors."""
 
-    def __init__(self, raw_only: bool = False, **kwargs):
-        super().__init__(**kwargs)
-        self.raw_only = raw_only
-        self.stats: dict[str, int] = {"blocked": 0, "skipped": 0, "errors": 0, "fetched": 0}
-
     async def execute(  # type: ignore[override]
         self,
         classified_urls: list[dict],
@@ -77,7 +72,6 @@ class ContentWorker(BaseWorker):
         article_urls_from_blogs: list[str] = []
 
         # --- Phase 1: Process all classified URLs ---
-        processed_count = 0
         for entry in classified_urls:
             url = entry["url"]
             data_type = entry.get("data_type", DataType.PAGE)
@@ -98,12 +92,6 @@ class ContentWorker(BaseWorker):
                 all_results.extend(records)
             except Exception as e:
                 self.log.error("process_url_error", url=url, error=str(e))
-                self.stats["errors"] += 1
-
-            # Heartbeat every 5 URLs to signal the job is still active
-            processed_count += 1
-            if processed_count % 5 == 0:
-                await self._send_heartbeat()
 
         # --- Phase 2: Fetch article URLs discovered from blog landing pages ---
         if "article" in data_types and article_urls_from_blogs:
@@ -111,7 +99,6 @@ class ContentWorker(BaseWorker):
                 "processing_blog_articles",
                 count=len(article_urls_from_blogs),
             )
-            phase2_count = 0
             for url in article_urls_from_blogs:
                 if url in fetched_urls:
                     continue
@@ -121,13 +108,8 @@ class ContentWorker(BaseWorker):
                     all_results.extend(records)
                 except Exception as e:
                     self.log.error("article_process_error", url=url, error=str(e))
-                    self.stats["errors"] += 1
 
-                phase2_count += 1
-                if phase2_count % 5 == 0:
-                    await self._send_heartbeat()
-
-        self.log.info("content_worker_done", total_records=len(all_results), **self.stats)
+        self.log.info("content_worker_done", total_records=len(all_results))
         return all_results
 
     # ------------------------------------------------------------------
@@ -144,30 +126,18 @@ class ContentWorker(BaseWorker):
         fetch_result = await self.fetch_page(url)
         if fetch_result.blocked:
             self.log.warning("blocked", url=url, status=fetch_result.status_code)
-            self.stats["blocked"] += 1
             return []
 
         html = fetch_result.html
         if not html or len(html) < 100:
-            self.log.warning("empty_html", url=url, html_length=len(html) if html else 0)
-            self.stats["skipped"] += 1
-            return []
-
-        # Skip HTTP error pages (404 Not Found, 410 Gone)
-        if fetch_result.status_code in (404, 410):
-            self.log.debug(
-                "skipping_http_error_page", url=url, status_code=fetch_result.status_code,
-            )
-            self.stats["skipped"] += 1
             return []
 
         parser = HtmlParser(html, url)
         title = parser.extract_title()
 
-        # Skip error pages (title-based fallback for soft 404s)
+        # Skip error pages
         if title and any(m in title.lower() for m in _ERROR_MARKERS):
             self.log.debug("skipping_error_page", url=url, title=title)
-            self.stats["skipped"] += 1
             return []
 
         rich_meta = extract_rich_metadata(html, url)
@@ -175,26 +145,6 @@ class ContentWorker(BaseWorker):
 
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
-
-        if self.raw_only:
-            if records:
-                try:
-                    await self.export_results(records)
-                except Exception:
-                    return []
-            return [
-                ScrapedData(
-                    id=UUID(int=0),
-                    job_id=UUID(self.job_id),
-                    domain=self.domain,
-                    data_type=rec["data_type"],
-                    url=rec.get("url", url),
-                    title=rec.get("title"),
-                    metadata=rec.get("metadata", {}),
-                    scraped_at=datetime.now(UTC),
-                )
-                for rec in records
-            ]
 
         # --- Specialized extraction based on URL classification ---
 
@@ -229,13 +179,8 @@ class ContentWorker(BaseWorker):
                     records.append(tech_rec)
 
         # Batch insert all records for this URL
-        self.stats["fetched"] += 1
         if records:
-            try:
-                await self.export_results(records)
-            except Exception:
-                self.stats["errors"] += 1
-                return []
+            await self.export_results(records)
 
         # Convert to ScrapedData for return value
         return [
@@ -413,16 +358,6 @@ class ContentWorker(BaseWorker):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    async def _send_heartbeat(self) -> None:
-        """Update the job's last_activity_at timestamp. Non-fatal on failure."""
-        if self._pool is None:
-            return
-        try:
-            from src.db.queries.jobs import update_heartbeat
-            await update_heartbeat(self._pool, UUID(self.job_id))
-        except Exception:
-            pass  # Non-fatal — don't let heartbeat failure kill the job
 
     def _filter_article_links(self, links: list[str], source_url: str) -> list[str]:
         """Remove homepage, non-HTML, and off-domain links. From BlogExtractorWorker."""

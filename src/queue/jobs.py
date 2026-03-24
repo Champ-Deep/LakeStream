@@ -58,15 +58,13 @@ async def process_scrape_job(
         worker_kwargs = dict(
             domain=domain, job_id=job_id, pool=pool,
             org_id=org_id, user_id=user_id, tier_override=tier, proxy_url=proxy_url,
-            raw_only=raw_only,
         )
 
         # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
         mapper = DomainMapperWorker(
             domain=domain,
             job_id=job_id,
-            org_id=org_id,
-            pool=pool
+            org_id=org_id
         )
         classified_urls = await mapper.execute(max_pages=max_pages)
 
@@ -89,14 +87,12 @@ async def process_scrape_job(
                         0, {"url": homepage, "data_type": "page", "confidence": 1.0},
                     )
 
-            content_worker = ContentWorker(**worker_kwargs)
+            content_worker = ContentWorker(**worker_kwargs, raw_only=raw_only)
             results = await content_worker.execute(classified_urls, data_types)
             total_data = len(results)
-            worker_stats = content_worker.stats
         except Exception as e:
             log.error("content_worker_error", error=str(e))
             errors.append(f"content_worker: {str(e)}")
-            worker_stats = {}
 
         # 4. Mark job complete or failed based on data extracted
         duration_ms = int((time.time() - start_time) * 1000)
@@ -123,11 +119,7 @@ async def process_scrape_job(
                 log.warning("job_failed_no_data", job_id=job_id, domain=domain, errors=errors)
             else:
                 # No errors but no data - domain might be empty or blocked
-                strategy = domain_meta.last_successful_strategy if domain_meta else None
-                hint = ""
-                if strategy == "playwright" or strategy is None:
-                    hint = " Try escalating to Playwright + Proxy."
-                error_msg = f"No data extracted from {domain}.{hint}"
+                error_msg = "No data extracted from domain (empty site or blocked)"
                 await job_queries.update_job_status(
                     pool,
                     uid,
@@ -138,22 +130,7 @@ async def process_scrape_job(
                     completed_at=datetime.now(),
                 )
                 log.warning("job_failed_empty_site", job_id=job_id, domain=domain)
-
-            # Push back tracked domain schedule on failure (exponential backoff)
-            from src.db.queries.tracked_domains import mark_scraped_failed
-
-            await mark_scraped_failed(pool, domain)
         else:
-            # Build warning if some URLs were blocked/skipped
-            warning_parts = []
-            if worker_stats.get("blocked"):
-                warning_parts.append(f"{worker_stats['blocked']} blocked")
-            if worker_stats.get("skipped"):
-                warning_parts.append(f"{worker_stats['skipped']} skipped")
-            if worker_stats.get("errors"):
-                warning_parts.append(f"{worker_stats['errors']} errors")
-            warning_msg = f"({', '.join(warning_parts)})" if warning_parts else None
-
             # Data extracted successfully - mark as COMPLETED
             await job_queries.update_job_status(
                 pool,
@@ -163,7 +140,6 @@ async def process_scrape_job(
                 duration_ms=duration_ms,
                 pages_scraped=total_data,
                 completed_at=datetime.now(),
-                error_message=warning_msg,
             )
 
             # 5. Check if domain is tracked and has webhook configured (only for successful jobs)
@@ -216,9 +192,6 @@ async def process_scrape_job(
             error_message=str(e),
             duration_ms=duration_ms,
         )
-        # Push back tracked domain schedule on failure (exponential backoff)
-        from src.db.queries.tracked_domains import mark_scraped_failed
-
-        await mark_scraped_failed(pool, domain)
         log.error("job_failed", job_id=job_id, domain=domain, error=str(e))
+        raise
         raise
