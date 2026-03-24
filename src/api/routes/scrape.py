@@ -84,6 +84,7 @@ async def get_status(job_id: UUID) -> ScrapeStatusResponse:
 @router.post("/youtube-transcript")
 async def youtube_transcript(request: Request):
     """Extract transcript from a YouTube video URL. Returns immediately (no job queue)."""
+    from src.db.pool import get_pool
     from src.services.youtube import (
         NoTranscriptFound,
         TranscriptsDisabled,
@@ -105,16 +106,29 @@ async def youtube_transcript(request: Request):
     if not video_id:
         return {"success": False, "error": "Invalid YouTube URL"}
 
+    # Get proxy URL from org settings (needed on cloud hosts where YouTube blocks IPs)
+    proxy_url = None
+    try:
+        pool = await get_pool()
+        org_id = getattr(request.state, "org_id", None)
+        if not org_id:
+            org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+        proxy_url = await pool.fetchval(
+            "SELECT proxy_url FROM organizations WHERE id = $1", org_id
+        ) or None
+    except Exception:
+        pass  # proceed without proxy if DB lookup fails
+
     # Fetch metadata (best-effort)
     metadata = {"title": "", "channel": "", "channel_url": "", "thumbnail_url": ""}
     try:
-        metadata = await fetch_video_metadata(video_id)
+        metadata = await fetch_video_metadata(video_id, proxy_url=proxy_url)
     except Exception as e:
         logger.warning("youtube_metadata_failed", video_id=video_id, error=str(e))
 
     # Fetch transcript
     try:
-        transcript_data = fetch_transcript(video_id, languages=languages)
+        transcript_data = fetch_transcript(video_id, languages=languages, proxy_url=proxy_url)
     except TranscriptsDisabled:
         return {
             "success": False,

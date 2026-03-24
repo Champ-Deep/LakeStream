@@ -43,7 +43,9 @@ def extract_video_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-async def fetch_video_metadata(video_id: str) -> dict[str, Any]:
+async def fetch_video_metadata(
+    video_id: str, proxy_url: str | None = None
+) -> dict[str, Any]:
     """Fetch video metadata via YouTube oEmbed (no API key required).
 
     Returns title, channel name, channel URL, and thumbnail URL.
@@ -52,7 +54,7 @@ async def fetch_video_metadata(video_id: str) -> dict[str, Any]:
         f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
     )
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(proxy=proxy_url, timeout=10.0) as client:
         response = await client.get(oembed_url)
         response.raise_for_status()
         data = response.json()
@@ -68,11 +70,16 @@ async def fetch_video_metadata(video_id: str) -> dict[str, Any]:
 def fetch_transcript(
     video_id: str,
     languages: list[str] | None = None,
+    proxy_url: str | None = None,
 ) -> dict[str, Any]:
     """Fetch transcript for a YouTube video.
 
     Returns full plain text, timestamped segments, language info,
     and estimated duration.
+
+    Args:
+        proxy_url: Optional proxy URL to route requests through (needed on cloud hosts
+                   where YouTube blocks IPs).
 
     Raises:
         TranscriptsDisabled: Video has captions disabled.
@@ -82,7 +89,13 @@ def fetch_transcript(
     if languages is None:
         languages = ["en", "en-US", "en-GB"]
 
-    ytt_api = YouTubeTranscriptApi()
+    proxy_config = None
+    if proxy_url:
+        from youtube_transcript_api.proxies import GenericProxyConfig
+
+        proxy_config = GenericProxyConfig(https_url=proxy_url)
+
+    ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
     transcript = ytt_api.fetch(video_id, languages=languages)
 
     # Collect snippets in one pass (transcript is an iterator)

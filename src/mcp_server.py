@@ -357,15 +357,29 @@ async def extract_youtube_transcript(
             }
         )
 
+    # Get proxy URL from org settings (needed on cloud hosts where YouTube blocks IPs)
+    proxy_url = None
+    try:
+        from src.db.pool import get_pool
+
+        pool = await get_pool()
+        org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+        if org_id:
+            proxy_url = await pool.fetchval(
+                "SELECT proxy_url FROM organizations WHERE id = $1", org_id
+            ) or None
+    except Exception:
+        pass  # proceed without proxy if DB lookup fails
+
     # Fetch metadata (title, channel) — best-effort, don't fail if unavailable
     try:
-        metadata = await fetch_video_metadata(video_id)
+        metadata = await fetch_video_metadata(video_id, proxy_url=proxy_url)
     except Exception:
         metadata = {"title": "", "channel": "", "channel_url": "", "thumbnail_url": ""}
 
     # Fetch transcript
     try:
-        transcript_data = fetch_transcript(video_id, languages=languages)
+        transcript_data = fetch_transcript(video_id, languages=languages, proxy_url=proxy_url)
     except (TranscriptsDisabled, NoTranscriptFound):
         return json.dumps(
             {
