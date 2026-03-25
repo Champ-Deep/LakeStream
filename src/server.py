@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -75,6 +76,15 @@ app.add_middleware(
     https_only=_is_production,
     same_site="lax",
     max_age=86400,  # 24 hours
+)
+# CORS: outermost middleware (added last in Starlette LIFO) — handles preflight
+# before auth. Allows Chrome extensions + local dev + Railway domains.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app)",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 # Mount static files

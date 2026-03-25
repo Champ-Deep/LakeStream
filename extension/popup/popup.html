@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 360px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+    .header { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 16px 20px; }
+    .header h1 { font-size: 16px; font-weight: 700; }
+    .header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+    .body { padding: 16px 20px; }
+    .section { margin-bottom: 16px; }
+    .section label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 6px; }
+    input[type="text"], input[type="url"] { width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 13px; transition: border-color 0.2s; }
+    input:focus { outline: none; border-color: #ef4444; }
+    .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-scrape { background: #1e293b; color: white; margin-top: 8px; }
+    .btn-scrape:hover { background: #334155; }
+    .btn-scrape:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-top: 12px; }
+    .status-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .status-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .connected { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #16a34a; margin-bottom: 12px; }
+    .connected .dot { width: 8px; height: 8px; background: #16a34a; border-radius: 50%; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .stat { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center; }
+    .stat .num { font-size: 20px; font-weight: 700; color: #ef4444; }
+    .stat .label { font-size: 10px; color: #64748b; text-transform: uppercase; }
+    .page-info { font-size: 12px; color: #64748b; margin-bottom: 8px; padding: 8px 12px; background: white; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .page-info strong { color: #1e293b; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>LakeStream Scraper</h1>
+    <p>Extract B2B contacts from LinkedIn & Apollo</p>
+  </div>
+
+  <div class="body">
+    <!-- Setup view (no API key configured) -->
+    <div id="setup-view">
+      <div class="section">
+        <label>LakeStream URL</label>
+        <input type="url" id="server-url" placeholder="https://your-lakestream.up.railway.app">
+      </div>
+      <div class="section">
+        <label>API Key</label>
+        <input type="text" id="api-key" placeholder="ls_abc123...">
+        <p style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
+          Get your key from Settings &rarr; API Keys
+        </p>
+      </div>
+      <button class="btn btn-primary" id="save-btn">Save & Connect</button>
+    </div>
+
+    <!-- Connected view -->
+    <div id="connected-view" class="hidden">
+      <div class="connected">
+        <span class="dot"></span>
+        Connected to <strong id="connected-url"></strong>
+      </div>
+
+      <div id="page-info" class="page-info hidden">
+        <strong id="page-platform"></strong> detected &mdash; <span id="page-count"></span> contacts found
+      </div>
+
+      <button class="btn btn-scrape" id="scrape-btn" disabled>
+        Scrape This Page
+      </button>
+
+      <div class="stats" id="stats">
+        <div class="stat">
+          <div class="num" id="stat-total">0</div>
+          <div class="label">Total Sent</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="stat-session">0</div>
+          <div class="label">This Session</div>
+        </div>
+      </div>
+
+      <button class="btn" id="disconnect-btn" style="margin-top: 12px; background: #f1f5f9; color: #64748b; font-size: 11px;">
+        Disconnect
+      </button>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

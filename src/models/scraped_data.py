@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DataType(StrEnum):
@@ -82,4 +82,18 @@ class PricingMetadata(BaseModel):
     cta_text: str | None = None
 
 
+# --- Ingest API models (Chrome extension, external tools) ---
+
+
+class IngestRecord(BaseModel):
+    data_type: str  # contact, article, tech_stack, etc.
+    url: str | None = None
+    title: str | None = None
+    metadata: dict = {}  # type: ignore[assignment]
+
+
+class IngestPayload(BaseModel):
+    domain: str = Field(min_length=1)
+    source: str = "chrome_extension"  # stored as strategy_used on the virtual job
+    records: list[IngestRecord] = Field(..., min_length=1, max_length=500)
 

@@ -8,6 +8,9 @@ This middleware:
 5. Redirects unauthenticated users to /login for protected web routes
 """
 
+import asyncio
+import hashlib
+
 import jwt
 import structlog
 from fastapi import Depends, HTTPException, Request, status
@@ -72,16 +75,37 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        # Extract token from Authorization header OR access_token cookie
-        token = None
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header.replace("Bearer ", "")
-        elif "access_token" in request.cookies:
-            token = request.cookies["access_token"]
-
+        # 1. Check for API key auth (X-API-Key header) — used by Chrome extension
+        api_key_header = request.headers.get("X-API-Key")
         authenticated = False
-        if token:
+
+        if api_key_header:
+            try:
+                from src.db.queries.api_keys import get_api_key_by_hash, touch_api_key
+
+                key_hash = hashlib.sha256(api_key_header.encode()).hexdigest()
+                pool = await get_pool()
+                key_record = await get_api_key_by_hash(pool, key_hash)
+                if key_record:
+                    request.state.user_id = str(key_record["user_id"])
+                    request.state.org_id = str(key_record["org_id"])
+                    request.state.role = "member"
+                    request.state.is_admin = False
+                    authenticated = True
+                    asyncio.create_task(touch_api_key(pool, key_record["id"]))
+            except Exception as exc:
+                log.warning("api_key_auth_error", error=str(exc))
+
+        # 2. Extract token from Authorization header OR access_token cookie
+        token = None
+        if not authenticated:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.replace("Bearer ", "")
+            elif "access_token" in request.cookies:
+                token = request.cookies["access_token"]
+
+        if not authenticated and token:
             try:
                 payload = decode_access_token(token)
                 org_id = payload["org_id"]

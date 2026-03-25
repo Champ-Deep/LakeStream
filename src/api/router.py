@@ -1,11 +1,13 @@
 from fastapi import APIRouter
 
 from src.api.routes import (
+    api_keys,
     auth,
     discover,
     domains,
     exports,
     health,
+    ingest,
     scrape,
     settings,
     signals,
@@ -18,7 +20,9 @@ api_router = APIRouter()
 
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
+api_router.include_router(api_keys.router, tags=["auth"])
 api_router.include_router(scrape.router, tags=["scrape"])
+api_router.include_router(ingest.router, tags=["ingest"])
 api_router.include_router(discover.router)
 api_router.include_router(domains.router, tags=["domains"])
 api_router.include_router(templates.router, tags=["templates"])
