@@ -1,4 +1,8 @@
+from __future__ import annotations
+
+import itertools
 import json
+import threading
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -13,6 +17,26 @@ from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 from src.scraping.fetcher.captcha_detector import detect_captcha
 
 log = structlog.get_logger()
+
+# Module-level round-robin state for proxy pool rotation.
+# Persists across fetcher instances within a single worker process.
+_pool_cycle: itertools.cycle[str] | None = None
+_pool_lock = threading.Lock()
+
+
+def _next_pool_proxy() -> str | None:
+    """Pick next proxy from pool via round-robin. None if pool empty."""
+    global _pool_cycle
+    settings = get_settings()
+    if not settings.proxy_pool_urls:
+        return None
+    urls = [u.strip() for u in settings.proxy_pool_urls.split(",") if u.strip()]
+    if not urls:
+        return None
+    with _pool_lock:
+        if _pool_cycle is None:
+            _pool_cycle = itertools.cycle(urls)
+        return next(_pool_cycle)
 
 
 class LakePlaywrightProxyFetcher:
@@ -167,9 +191,17 @@ class LakePlaywrightProxyFetcher:
         )
 
     def _get_proxy_chain(self) -> list[dict[str, Any]]:
-        """Get all available proxy configs in priority order for failover."""
+        """Get all available proxy configs in priority order for failover.
+
+        Priority: Pool (round-robin) → Custom → Bright Data → Smartproxy → None
+        """
         settings = get_settings()
         chain: list[dict[str, Any]] = []
+
+        # Self-hosted proxy pool (cheapest — just VPS cost)
+        pool_url = _next_pool_proxy()
+        if pool_url:
+            chain.append({"server": pool_url})
 
         if settings.custom_proxy_url:
             proxy_config: dict[str, Any] = {"server": settings.custom_proxy_url}
