@@ -6,6 +6,7 @@ import structlog
 
 from src.db.queries import jobs as job_queries
 from src.models.job import JobStatus
+from src.models.scraped_data import DataType
 
 log = structlog.get_logger()
 
@@ -20,6 +21,7 @@ async def process_scrape_job(
     data_types: list[str],
     tier: str | None = None,
     raw_only: bool = False,
+    region: str | None = None,
 ) -> dict:
     """Main scrape job processor. Orchestrates all workers for a domain.
 
@@ -57,7 +59,8 @@ async def process_scrape_job(
         # Common kwargs for BaseWorker subclasses
         worker_kwargs = dict(
             domain=domain, job_id=job_id, pool=pool,
-            org_id=org_id, user_id=user_id, tier_override=tier, proxy_url=proxy_url,
+            org_id=org_id, user_id=user_id, tier_override=tier,
+            proxy_url=proxy_url, region=region,
         )
 
         # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
@@ -194,4 +197,168 @@ async def process_scrape_job(
         )
         log.error("job_failed", job_id=job_id, domain=domain, error=str(e))
         raise
+
+
+async def process_linkedin_scrape_job(
+    ctx: dict,
+    *,
+    job_id: str,
+    search_url: str,
+    max_pages: int = 5,
+    session_cookies: list[dict] | None = None,
+) -> dict:
+    """LinkedIn Sales Navigator scrape job processor."""
+    pool = ctx["pool"]
+    start_time = time.time()
+    uid = UUID(job_id)
+
+    log.info("linkedin_job_started", job_id=job_id, search_url=search_url, max_pages=max_pages)
+    await job_queries.update_job_status(pool, uid, JobStatus.RUNNING)
+
+    job_record = await job_queries.get_job(pool, uid)
+    org_id = str(job_record.org_id) if job_record and job_record.org_id else None
+    user_id = str(job_record.user_id) if job_record and job_record.user_id else None
+
+    try:
+        from src.services.linkedin_scraper import LinkedInScraper
+
+        scraper = LinkedInScraper()
+        contacts = await scraper.scrape_search_results(
+            search_url, max_pages=max_pages, cookies=session_cookies,
+        )
+
+        # Save contacts to scraped_data
+        total_data = 0
+        if contacts:
+            from src.db.queries.scraped_data import batch_insert_scraped_data
+
+            records = []
+            for c in contacts:
+                name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip()
+                records.append({
+                    "job_id": uid,
+                    "domain": "linkedin.com",
+                    "data_type": DataType.CONTACT,
+                    "url": c.get("linkedin_url"),
+                    "title": name or c.get("name"),
+                    "metadata": c,
+                    **({"org_id": UUID(org_id)} if org_id else {}),
+                    **({"user_id": UUID(user_id)} if user_id else {}),
+                })
+
+            total_data = await batch_insert_scraped_data(pool, records)
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        if total_data > 0:
+            await job_queries.update_job_status(
+                pool, uid, JobStatus.COMPLETED,
+                strategy_used="linkedin_server",
+                duration_ms=duration_ms,
+                pages_scraped=total_data,
+                completed_at=datetime.now(),
+            )
+        else:
+            await job_queries.update_job_status(
+                pool, uid, JobStatus.FAILED,
+                error_message="No contacts extracted (auth may have expired)",
+                duration_ms=duration_ms,
+                completed_at=datetime.now(),
+            )
+
+        log.info(
+            "linkedin_job_completed",
+            job_id=job_id, contacts=total_data, duration_ms=duration_ms,
+        )
+        return {"job_id": job_id, "contacts": total_data, "duration_ms": duration_ms}
+
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        await job_queries.update_job_status(
+            pool, uid, JobStatus.FAILED,
+            error_message=str(e), duration_ms=duration_ms,
+        )
+        log.error("linkedin_job_failed", job_id=job_id, error=str(e))
+        raise
+
+
+async def process_apollo_scrape_job(
+    ctx: dict,
+    *,
+    job_id: str,
+    search_url: str,
+    max_pages: int = 10,
+    session_cookies: list[dict] | None = None,
+) -> dict:
+    """Apollo.io people search scrape job processor."""
+    pool = ctx["pool"]
+    start_time = time.time()
+    uid = UUID(job_id)
+
+    log.info("apollo_job_started", job_id=job_id, search_url=search_url, max_pages=max_pages)
+    await job_queries.update_job_status(pool, uid, JobStatus.RUNNING)
+
+    job_record = await job_queries.get_job(pool, uid)
+    org_id = str(job_record.org_id) if job_record and job_record.org_id else None
+    user_id = str(job_record.user_id) if job_record and job_record.user_id else None
+
+    try:
+        from src.services.apollo_scraper import ApolloScraper
+
+        scraper = ApolloScraper()
+        contacts = await scraper.scrape_people_search(
+            search_url, max_pages=max_pages, cookies=session_cookies,
+        )
+
+        total_data = 0
+        if contacts:
+            from src.db.queries.scraped_data import batch_insert_scraped_data
+
+            records = []
+            for c in contacts:
+                name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip()
+                records.append({
+                    "job_id": uid,
+                    "domain": "apollo.io",
+                    "data_type": DataType.CONTACT,
+                    "url": c.get("linkedin_url") or c.get("profile_url"),
+                    "title": name or c.get("name"),
+                    "metadata": c,
+                    **({"org_id": UUID(org_id)} if org_id else {}),
+                    **({"user_id": UUID(user_id)} if user_id else {}),
+                })
+
+            total_data = await batch_insert_scraped_data(pool, records)
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        if total_data > 0:
+            await job_queries.update_job_status(
+                pool, uid, JobStatus.COMPLETED,
+                strategy_used="apollo_server",
+                duration_ms=duration_ms,
+                pages_scraped=total_data,
+                completed_at=datetime.now(),
+            )
+        else:
+            await job_queries.update_job_status(
+                pool, uid, JobStatus.FAILED,
+                error_message="No contacts extracted (auth may have expired)",
+                duration_ms=duration_ms,
+                completed_at=datetime.now(),
+            )
+
+        log.info(
+            "apollo_job_completed",
+            job_id=job_id, contacts=total_data, duration_ms=duration_ms,
+        )
+        return {"job_id": job_id, "contacts": total_data, "duration_ms": duration_ms}
+
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        await job_queries.update_job_status(
+            pool, uid, JobStatus.FAILED,
+            error_message=str(e), duration_ms=duration_ms,
+        )
+        log.error("apollo_job_failed", job_id=job_id, error=str(e))
         raise

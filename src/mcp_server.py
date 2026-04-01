@@ -32,6 +32,7 @@ async def submit_scrape_job(
     tier: str | None = None,
     max_pages: int = 100,
     template_id: str | None = None,
+    region: str | None = None,
 ) -> str:
     """Submit a web scraping job for a B2B domain.
 
@@ -46,6 +47,8 @@ async def submit_scrape_job(
         max_pages: Maximum pages to scrape (1-500, default 100)
         template_id: Platform template: wordpress, hubspot, webflow, generic, directory.
                      Leave empty for auto-detection (recommended).
+        region: Geo-target region for proxy selection: us, eu, uk, de, asia, in, au.
+                Leave empty for default routing.
     """
     from src.config.settings import get_settings
     from src.db.pool import get_pool
@@ -61,6 +64,7 @@ async def submit_scrape_job(
         tier=tier,
         max_pages=max_pages,
         template_id=template_id,
+        region=region,
     )
 
     pool = await get_pool()
@@ -81,6 +85,7 @@ async def submit_scrape_job(
         data_types=input_model.data_types,
         tier=input_model.tier,
         raw_only=input_model.raw_only,
+        region=input_model.region,
     )
     await redis.aclose()
 
@@ -467,6 +472,130 @@ async def extract_blog_content(url: str) -> str:
             "success": True,
         }
     )
+
+
+@mcp.tool()
+async def extract_pdf_content(url: str) -> str:
+    """Extract text, tables, and metadata from a PDF document URL.
+
+    Returns the PDF content as clean Markdown with extracted tables.
+    Useful for processing whitepapers, reports, datasheets, and other
+    B2B documents linked from company websites.
+
+    Args:
+        url: The URL of the PDF document to extract content from.
+    """
+    import httpx
+
+    from src.scraping.parser.pdf_parser import parse_pdf, pdf_to_markdown
+
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return json.dumps({
+                    "error": f"HTTP {resp.status_code}",
+                    "url": url,
+                    "success": False,
+                })
+
+            result = parse_pdf(resp.content)
+            markdown = pdf_to_markdown(result)
+
+            return json.dumps({
+                "url": url,
+                "markdown": markdown,
+                "word_count": result.word_count,
+                "page_count": result.page_count,
+                "table_count": len(result.tables),
+                "metadata": result.metadata,
+                "success": True,
+            })
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "url": url,
+            "success": False,
+        })
+
+
+@mcp.tool()
+async def scrape_linkedin_search(
+    search_url: str,
+    max_pages: int = 5,
+) -> str:
+    """Scrape contacts from LinkedIn Sales Navigator search results.
+
+    Requires authenticated session cookies (set up via Chrome extension
+    cookie export or settings). Returns contact data including name,
+    title, company, location, and LinkedIn URL.
+
+    This is an async job — returns a job_id to poll with get_job_status.
+
+    Args:
+        search_url: Full LinkedIn Sales Navigator search URL
+                    (e.g. https://www.linkedin.com/sales/search/people?query=...)
+        max_pages: Maximum result pages to scrape (1-20, default 5).
+                   LinkedIn rate-limits aggressively, so keep this low.
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(base_url=settings.base_url, timeout=30) as client:
+            resp = await client.post(
+                "/api/scrape/linkedin",
+                json={
+                    "search_url": search_url,
+                    "max_pages": min(max_pages, 20),
+                },
+            )
+            data = resp.json()
+            return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e), "success": False})
+
+
+@mcp.tool()
+async def scrape_apollo_search(
+    search_url: str,
+    max_pages: int = 10,
+) -> str:
+    """Scrape contacts from Apollo.io people search results.
+
+    Requires authenticated session cookies (set up via Chrome extension
+    cookie export or settings). Returns contact data including name,
+    title, company, email, phone, and LinkedIn URL.
+
+    This is an async job — returns a job_id to poll with get_job_status.
+
+    Args:
+        search_url: Full Apollo.io search URL
+                    (e.g. https://app.apollo.io/#/people?...)
+        max_pages: Maximum result pages to scrape (1-30, default 10).
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(base_url=settings.base_url, timeout=30) as client:
+            resp = await client.post(
+                "/api/scrape/apollo",
+                json={
+                    "search_url": search_url,
+                    "max_pages": min(max_pages, 30),
+                },
+            )
+            data = resp.json()
+            return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e), "success": False})
 
 
 def main():

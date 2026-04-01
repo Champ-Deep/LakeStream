@@ -133,6 +133,68 @@
     return extractFromSearchTable();
   }
 
+  // --- Multi-Page Extraction ---
+
+  let multiPageRunning = false;
+  let multiPageCancelled = false;
+
+  function getNextPageButton() {
+    const selectors = [
+      'button[aria-label="Next"]',
+      'button[aria-label="next"]',
+      '.zp_bWS5y:last-child button',
+      'button.pagination-next',
+    ];
+    for (const sel of selectors) {
+      const btn = document.querySelector(sel);
+      if (btn && !btn.disabled) return btn;
+    }
+    return null;
+  }
+
+  async function extractAllPages(maxPages = 30) {
+    multiPageRunning = true;
+    multiPageCancelled = false;
+    const allContacts = [];
+    const seenNames = new Set();
+
+    for (let page = 1; page <= maxPages; page++) {
+      if (multiPageCancelled) break;
+
+      updateFABProgress(page, allContacts.length);
+
+      // Wait for table to load
+      await new Promise((r) => setTimeout(r, 1500));
+
+      const contacts = extractContacts();
+      for (const c of contacts) {
+        const key = c.email || c.profile_url || c.name;
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          allContacts.push(c);
+        }
+      }
+
+      if (page < maxPages) {
+        const nextBtn = getNextPageButton();
+        if (!nextBtn) break;
+        nextBtn.click();
+        // Apollo is less aggressive — 1-2s delay
+        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500));
+      }
+    }
+
+    multiPageRunning = false;
+    return allContacts;
+  }
+
+  function updateFABProgress(page, total) {
+    const textEl = document.getElementById('lakestream-fab-text');
+    if (textEl) {
+      textEl.textContent = `Page ${page}... (${total} contacts)`;
+    }
+  }
+
   // --- Floating Action Button ---
 
   function createFAB() {
@@ -141,23 +203,38 @@
     const fab = document.createElement('div');
     fab.id = 'lakestream-fab';
     fab.innerHTML = `
-      <button id="lakestream-scrape-btn" style="
-        position: fixed; bottom: 24px; right: 24px; z-index: 99999;
-        background: linear-gradient(135deg, #ef4444, #dc2626);
-        color: white; border: none; border-radius: 50px;
-        padding: 12px 20px; font-size: 13px; font-weight: 600;
-        cursor: pointer; box-shadow: 0 4px 16px rgba(239,68,68,0.4);
-        display: flex; align-items: center; gap: 8px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        transition: all 0.2s;
-      ">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        <span id="lakestream-fab-text">Scrape with LakeStream</span>
-      </button>
+      <div style="position: fixed; bottom: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+        <button id="lakestream-all-pages-btn" style="
+          background: linear-gradient(135deg, #7c3aed, #6d28d9);
+          color: white; border: none; border-radius: 50px;
+          padding: 10px 16px; font-size: 12px; font-weight: 600;
+          cursor: pointer; box-shadow: 0 4px 16px rgba(124,58,237,0.4);
+          display: flex; align-items: center; gap: 6px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          transition: all 0.2s;
+        ">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span id="lakestream-all-text">Extract All Pages</span>
+        </button>
+        <button id="lakestream-scrape-btn" style="
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          color: white; border: none; border-radius: 50px;
+          padding: 12px 20px; font-size: 13px; font-weight: 600;
+          cursor: pointer; box-shadow: 0 4px 16px rgba(239,68,68,0.4);
+          display: flex; align-items: center; gap: 8px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          transition: all 0.2s;
+        ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span id="lakestream-fab-text">Scrape with LakeStream</span>
+        </button>
+      </div>
     `;
     document.body.appendChild(fab);
 
@@ -171,6 +248,7 @@
       btn.style.boxShadow = '0 4px 16px rgba(239,68,68,0.4)';
     });
 
+    // Single page scrape
     btn.addEventListener('click', async () => {
       const textEl = document.getElementById('lakestream-fab-text');
       const contacts = extractContacts();
@@ -210,6 +288,53 @@
       }, 3000);
     });
 
+    // Multi-page "Extract All Pages" button
+    const allBtn = document.getElementById('lakestream-all-pages-btn');
+    const allText = document.getElementById('lakestream-all-text');
+
+    allBtn.addEventListener('click', async () => {
+      if (multiPageRunning) {
+        multiPageCancelled = true;
+        allText.textContent = 'Stopping...';
+        return;
+      }
+
+      allBtn.disabled = true;
+      allText.textContent = 'Extracting...';
+
+      try {
+        const contacts = await extractAllPages(30);
+
+        if (contacts.length === 0) {
+          allText.textContent = 'No contacts found';
+        } else {
+          allText.textContent = `Sending ${contacts.length}...`;
+
+          const result = await chrome.runtime.sendMessage({
+            action: 'ingest',
+            contacts,
+            domain: 'apollo.io',
+            source: 'apollo',
+          });
+
+          if (result?.success) {
+            allText.textContent = `${contacts.length} contacts sent!`;
+            allBtn.style.background = 'linear-gradient(135deg, #16a34a, #15803d)';
+          } else {
+            allText.textContent = result?.error || 'Failed';
+          }
+        }
+      } catch (e) {
+        allText.textContent = 'Error: ' + e.message;
+      }
+
+      allBtn.disabled = false;
+      setTimeout(() => {
+        allText.textContent = 'Extract All Pages';
+        allBtn.style.background = 'linear-gradient(135deg, #7c3aed, #6d28d9)';
+      }, 3000);
+    });
+
     // Update contact count
     const contacts = extractContacts();
     if (contacts.length > 0) {
@@ -231,6 +356,22 @@
         domain: 'apollo.io',
         source: 'apollo',
       });
+    } else if (message.action === 'extractAllPages') {
+      extractAllPages(message.maxPages || 30).then((contacts) => {
+        chrome.runtime.sendMessage({
+          action: 'ingest',
+          contacts,
+          domain: 'apollo.io',
+          source: 'apollo',
+        }).then((result) => {
+          chrome.runtime.sendMessage({
+            action: 'multiPageComplete',
+            count: contacts.length,
+            success: result?.success || false,
+          });
+        });
+      });
+      sendResponse({ started: true });
     }
     return true;
   });

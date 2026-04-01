@@ -44,6 +44,7 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             max_pages=input.max_pages,
             data_types=input.data_types,
             tier=input.tier,
+            region=input.region,
         )
         await redis.aclose()
     except Exception as e:
@@ -79,6 +80,186 @@ async def get_status(job_id: UUID) -> ScrapeStatusResponse:
         error_message=job.error_message,
         data_count=data_count,
     )
+
+
+@router.post("/linkedin", status_code=202, response_model=ExecuteScrapeResponse)
+async def scrape_linkedin(request: Request) -> ExecuteScrapeResponse:
+    """Scrape LinkedIn Sales Navigator search results. Async job-based.
+
+    Body: {search_url: str, max_pages: int = 5, session_cookies: list[dict] | None}
+    """
+    pool = await get_pool()
+    body = await request.json()
+    search_url = body.get("search_url", "").strip()
+    max_pages = body.get("max_pages", 5)
+    session_cookies = body.get("session_cookies")
+
+    if not search_url:
+        raise HTTPException(status_code=400, detail="search_url is required")
+
+    org_id_str = getattr(request.state, "org_id", None)
+    org_id = UUID(org_id_str) if org_id_str else None
+    user_id_str = getattr(request.state, "user_id", None)
+    user_id = UUID(user_id_str) if user_id_str else None
+
+    from src.models.job import ScrapeJobInput
+
+    input_data = ScrapeJobInput(
+        domain="linkedin.com",
+        data_types=["contact"],
+        max_pages=max_pages,
+    )
+    job = await job_queries.create_job(pool, input_data, org_id=org_id, user_id=user_id)
+
+    try:
+        from arq.connections import RedisSettings
+        from arq.connections import create_pool as create_arq_pool
+
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        redis = await create_arq_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis.enqueue_job(
+            "process_linkedin_scrape_job",
+            job_id=str(job.id),
+            search_url=search_url,
+            max_pages=max_pages,
+            session_cookies=session_cookies,
+        )
+        await redis.aclose()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {e}")
+
+    return ExecuteScrapeResponse(
+        job_id=job.id,
+        status=job.status,
+        message=f"LinkedIn scrape job queued ({max_pages} pages)",
+    )
+
+
+@router.post("/apollo", status_code=202, response_model=ExecuteScrapeResponse)
+async def scrape_apollo(request: Request) -> ExecuteScrapeResponse:
+    """Scrape Apollo.io people search results. Async job-based.
+
+    Body: {search_url: str, max_pages: int = 10, session_cookies: list[dict] | None}
+    """
+    pool = await get_pool()
+    body = await request.json()
+    search_url = body.get("search_url", "").strip()
+    max_pages = body.get("max_pages", 10)
+    session_cookies = body.get("session_cookies")
+
+    if not search_url:
+        raise HTTPException(status_code=400, detail="search_url is required")
+
+    org_id_str = getattr(request.state, "org_id", None)
+    org_id = UUID(org_id_str) if org_id_str else None
+    user_id_str = getattr(request.state, "user_id", None)
+    user_id = UUID(user_id_str) if user_id_str else None
+
+    from src.models.job import ScrapeJobInput
+
+    input_data = ScrapeJobInput(
+        domain="apollo.io",
+        data_types=["contact"],
+        max_pages=max_pages,
+    )
+    job = await job_queries.create_job(pool, input_data, org_id=org_id, user_id=user_id)
+
+    try:
+        from arq.connections import RedisSettings
+        from arq.connections import create_pool as create_arq_pool
+
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        redis = await create_arq_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis.enqueue_job(
+            "process_apollo_scrape_job",
+            job_id=str(job.id),
+            search_url=search_url,
+            max_pages=max_pages,
+            session_cookies=session_cookies,
+        )
+        await redis.aclose()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {e}")
+
+    return ExecuteScrapeResponse(
+        job_id=job.id,
+        status=job.status,
+        message=f"Apollo scrape job queued ({max_pages} pages)",
+    )
+
+
+@router.post("/pdf")
+async def extract_pdf(request: Request):
+    """Extract text, tables, and metadata from a PDF URL. Returns immediately (no job queue)."""
+    body = await request.json()
+    url = body.get("url", "").strip()
+
+    if not url:
+        return {"success": False, "error": "URL is required"}
+
+    import httpx
+
+    from src.scraping.parser.pdf_parser import parse_pdf, pdf_to_markdown
+
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return {"success": False, "error": f"HTTP {resp.status_code}"}
+
+            content_type = resp.headers.get("content-type", "")
+            if "pdf" not in content_type and not url.lower().endswith(".pdf"):
+                return {"success": False, "error": f"Not a PDF (content-type: {content_type})"}
+
+            result = parse_pdf(resp.content)
+            markdown = pdf_to_markdown(result)
+
+            return {
+                "success": True,
+                "url": url,
+                "text": result.text,
+                "markdown": markdown,
+                "tables": result.tables,
+                "metadata": result.metadata,
+                "word_count": result.word_count,
+                "page_count": result.page_count,
+                "table_count": len(result.tables),
+            }
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.error("pdf_extraction_failed", url=url, error=str(e))
+        return {"success": False, "error": f"Failed to extract PDF: {e}"}
+
+
+@router.post("/session-cookies")
+async def store_session_cookies(request: Request):
+    """Store authenticated session cookies from Chrome extension for server-side scraping.
+
+    Body: {domain: str, cookies: list[dict]}
+    """
+    body = await request.json()
+    domain = body.get("domain", "").strip()
+    cookies = body.get("cookies", [])
+
+    if not domain or not cookies:
+        raise HTTPException(status_code=400, detail="domain and cookies are required")
+
+    from src.services.session_manager import AuthenticatedSessionManager
+
+    mgr = AuthenticatedSessionManager()
+    await mgr.create_session(domain, cookies)
+
+    return {
+        "success": True,
+        "domain": domain,
+        "cookie_count": len(cookies),
+        "message": f"Session stored for {domain} — server-side scraping ready",
+    }
 
 
 @router.post("/youtube-transcript")

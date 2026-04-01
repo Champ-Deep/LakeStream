@@ -131,8 +131,8 @@ async def list_jobs(
     idx = 1
 
     if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
+        conditions.append(f"domain ILIKE ${idx}")
+        vals.append(f"%{domain}%")
         idx += 1
     if status:
         conditions.append(f"status = ${idx}")

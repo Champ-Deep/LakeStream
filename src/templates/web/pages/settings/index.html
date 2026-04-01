@@ -389,6 +389,13 @@
 </div>
 
 <script>
+  function getAuthHeaders(extra = {}) {
+    const token = document.cookie.split('; ').find(c => c.startsWith('access_token='))?.split('=')[1];
+    const headers = { ...extra };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  }
+
   function apiKeyManager() {
     return {
       keys: [],
@@ -405,7 +412,9 @@
       async loadKeys() {
         this.loading = true;
         try {
-          const res = await fetch('/api/auth/api-keys');
+          const res = await fetch('/api/auth/api-keys', {
+            headers: getAuthHeaders(),
+          });
           if (res.ok) this.keys = await res.json();
         } catch (e) { /* ignore */ }
         this.loading = false;
@@ -418,7 +427,7 @@
         try {
           const res = await fetch('/api/auth/api-keys', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ name: this.newKeyName.trim() })
           });
           if (res.ok) {
@@ -434,7 +443,10 @@
       async revokeKey(id, name) {
         if (!confirm(`Revoke API key "${name}"? This cannot be undone.`)) return;
         try {
-          await fetch(`/api/auth/api-keys/${id}`, { method: 'DELETE' });
+          await fetch(`/api/auth/api-keys/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(),
+          });
           await this.loadKeys();
           if (this.newRawKey) this.newRawKey = null;
         } catch (e) { /* ignore */ }

@@ -28,6 +28,10 @@ class ScrapeJobInput(BaseModel):
         default=False,
         description="Save only raw page content (skip article/contact/tech extraction).",
     )
+    region: str | None = Field(
+        default=None,
+        description="Geo-target region for proxy selection: us, eu, uk, de, asia, in, au.",
+    )
     priority: int = Field(default=5, ge=1, le=10)
 
 

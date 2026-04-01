@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "LakeStream Scraper",
-  "version": "1.0.0",
-  "description": "Extract B2B contacts from LinkedIn Sales Navigator and Apollo.io into LakeStream",
-  "permissions": ["storage", "activeTab"],
+  "version": "1.1.0",
+  "description": "Extract structured data from any website — tables, lists, card grids. Smart extractors for LinkedIn Sales Nav & Apollo.",
+  "permissions": ["storage", "activeTab", "downloads", "cookies"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "https://www.apollo.io/*"
+    "https://*.linkedin.com/*",
+    "https://www.apollo.io/*",
+    "https://app.apollo.io/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
@@ -28,6 +30,11 @@
     {
       "matches": ["https://www.apollo.io/*"],
       "js": ["content/apollo.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/auto-detect.js"],
       "run_at": "document_idle"
     }
   ],

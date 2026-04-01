@@ -19,6 +19,8 @@ class FetchResult(BaseModel):
     duration_ms: int
     blocked: bool = False
     captcha_detected: bool = False
+    content_bytes: bytes | None = None  # Binary content (PDF, DOCX)
+    content_type: str = "text/html"
 
 
 class FetchOptions(BaseModel):
@@ -27,3 +29,4 @@ class FetchOptions(BaseModel):
     wait_for_selector: str | None = None
     headers: dict[str, str] = {}
     proxy_url: str | None = None  # Org-level proxy override from settings UI
+    region: str | None = None  # Geo-target: "us", "eu", "asia", etc.

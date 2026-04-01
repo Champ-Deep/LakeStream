@@ -353,7 +353,7 @@ async def top_domains_partial(request: Request):
 
 
 @router.get("/jobs", response_class=HTMLResponse)
-async def jobs_list(request: Request, status: str | None = None):
+async def jobs_list(request: Request, status: str | None = None, q: str | None = None):
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -363,11 +363,13 @@ async def jobs_list(request: Request, status: str | None = None):
 
     pool = await get_pool()
     user_filter = _get_user_filter(request)
-    jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
+    # Use q as domain search filter
+    domain_filter = q.strip() if q and q.strip() else None
+    jobs = await list_jobs(pool, status=status, domain=domain_filter, user_id=user_filter, limit=50)
 
     return get_templates().TemplateResponse(
         "pages/jobs/list.html",
-        {"request": request, "active_page": "jobs", "jobs": jobs, "filter_status": status},
+        {"request": request, "active_page": "jobs", "jobs": jobs, "filter_status": status, "filter_q": q},
     )
 
 
@@ -446,6 +448,7 @@ async def results_browse(
     request: Request,
     domain: str | None = None,
     data_type: str | None = None,
+    q: str | None = None,
     page: int = 1,
 ):
     redirect = _require_login(request)
@@ -487,6 +490,10 @@ async def results_browse(
         conditions.append(f"data_type = ${idx}")
         vals.append(data_type)
         idx += 1
+    if q and q.strip():
+        conditions.append(f"(title ILIKE ${idx} OR url ILIKE ${idx} OR domain ILIKE ${idx})")
+        vals.append(f"%{q.strip()}%")
+        idx += 1
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     vals.extend([limit, offset])
@@ -515,6 +522,7 @@ async def results_browse(
             "domains": domains,
             "filter_domain": domain,
             "filter_data_type": data_type,
+            "filter_q": q,
             "page": page,
             "total": total,
             "limit": limit,

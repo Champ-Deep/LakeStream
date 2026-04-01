@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     custom_proxy_username: str = ""
     custom_proxy_password: str = ""
     proxy_pool_urls: str = ""  # Comma-separated VPS Squid URLs: "http://vps1:3128,http://vps2:3128"
+    # JSON proxy pool with region tags: [{"url":"http://vps1:3128","region":"us"}, ...]
+    # Falls back to parsing proxy_pool_urls if empty.
+    proxy_pool_config: str = ""
 
     max_concurrent_jobs: int = 10
     max_scrape_pages_per_job: int = 500
