@@ -192,6 +192,152 @@ async def scrape_apollo(request: Request) -> ExecuteScrapeResponse:
     )
 
 
+@router.post("/extract")
+async def extract_structured(request: Request):
+    """Extract structured data from a URL.
+
+    Body: {
+      url: str,
+      prompt?: str,       # Natural language — what to extract (no schema needed)
+      schema?: {...},     # CSS-selector schema (optional if prompt provided)
+      region?: str,
+      mode?: "css"|"ai"|"auto"|"prompt",
+      instructions?: str  # Extra hints for AI modes
+    }
+
+    Modes:
+    - prompt: LLM extracts freeform from a natural language description (no schema required)
+    - css: CSS selector-based, fast, deterministic (requires schema)
+    - ai: LLM-powered via OpenRouter (requires schema)
+    - auto: try CSS first, fallback to AI if <50% fields found (requires schema)
+    """
+    body = await request.json()
+    url = body.get("url", "").strip()
+    schema_data = body.get("schema")
+    prompt = body.get("prompt", "").strip()
+    region = body.get("region")
+    mode = body.get("mode", "prompt" if not body.get("schema") else "css")
+    instructions = body.get("instructions", "")
+
+    if not url:
+        return {"success": False, "error": "url is required"}
+    if not schema_data and not prompt:
+        return {"success": False, "error": "Either 'schema' or 'prompt' is required"}
+
+    # Fetch the page
+    from src.models.scraping import FetchOptions, ScrapingTier
+    from src.scraping.fetcher.factory import create_fetcher
+
+    options = FetchOptions(region=region)
+    fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+    fetch_result = await fetcher.fetch(url, options)
+
+    if fetch_result.blocked:
+        return {"success": False, "error": f"Page blocked (HTTP {fetch_result.status_code})"}
+    if not fetch_result.html or len(fetch_result.html) < 100:
+        return {"success": False, "error": "No content retrieved"}
+
+    # Prompt-only mode: freeform LLM extraction (no schema needed)
+    if mode == "prompt" or (prompt and not schema_data):
+        from src.config.settings import get_settings
+        from src.services.llm_extractor import LLMExtractor, _strip_html_to_text
+
+        settings = get_settings()
+        if not settings.openrouter_api_key:
+            return {"success": False, "error": "AI extraction disabled (OPENROUTER_API_KEY not set)"}
+
+        text = _strip_html_to_text(fetch_result.html)
+        llm = LLMExtractor()
+        data = await llm.extract_freeform(text, prompt or instructions)
+        return {"success": True, "data": data, "mode": "prompt", "url": url}
+
+    # Schema-based extraction path (css / ai / auto)
+    from src.models.extraction import ExtractionSchema
+    from src.scraping.parser.schema_extractor import SchemaExtractor
+
+    try:
+        schema = ExtractionSchema(**schema_data)
+    except Exception as e:
+        return {"success": False, "error": f"Invalid schema: {e}"}
+
+    result = None
+    mode_used = mode
+
+    # CSS extraction
+    if mode in ("css", "auto"):
+        extractor = SchemaExtractor(fetch_result.html, url)
+        result = extractor.extract(schema)
+        mode_used = "css"
+
+        # Auto mode: fallback to AI if <50% fields found
+        if mode == "auto" and len(schema.fields) > 0:
+            coverage = result.fields_found / len(schema.fields)
+            if coverage < 0.5:
+                mode_used = "ai"
+                result = None
+
+    # AI extraction (mode=ai, or auto fallback)
+    if result is None and mode in ("ai", "auto"):
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        if not settings.openrouter_api_key:
+            return {"success": False, "error": "AI extraction disabled (OPENROUTER_API_KEY not set)"}
+
+        from src.services.llm_extractor import LLMExtractor
+
+        llm = LLMExtractor()
+        result = await llm.extract_from_html(fetch_result.html, schema, instructions)
+        result.url = url
+        mode_used = "ai"
+
+    if result is None:
+        return {"success": False, "error": "No extraction result"}
+
+    return {
+        "success": True,
+        "data": result.data,
+        "schema_name": result.schema_name,
+        "fields_found": result.fields_found,
+        "fields_missing": result.fields_missing,
+        "mode": mode_used,
+        "url": result.url,
+    }
+
+
+@router.post("/browse")
+async def browse_with_agent(request: Request):
+    """Run an AI browser agent for a multi-step autonomous web task.
+
+    Body: {task: str, start_url?: str, max_steps?: int}
+    Returns: {success: bool, result: str, steps_taken: int, urls_visited: list[str]}
+
+    The agent can navigate, click buttons, fill forms, paginate, and extract data
+    across multiple pages. Requires OPENROUTER_API_KEY to be set.
+    """
+    from src.config.settings import get_settings
+
+    body = await request.json()
+    task = body.get("task", "").strip()
+    start_url = body.get("start_url", "").strip() or None
+    max_steps = min(int(body.get("max_steps", 20)), 50)
+
+    if not task:
+        return {"success": False, "error": "task is required"}
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        return {"success": False, "error": "AI browser disabled (OPENROUTER_API_KEY not set)"}
+
+    from src.services.browser_agent import run_browser_task
+
+    try:
+        return await run_browser_task(task, start_url=start_url, max_steps=max_steps)
+    except Exception as e:
+        logger.error("browser_agent_failed", task=task[:100], error=str(e))
+        return {"success": False, "error": f"Browser agent failed: {e}"}
+
+
 @router.post("/pdf")
 async def extract_pdf(request: Request):
     """Extract text, tables, and metadata from a PDF URL. Returns immediately (no job queue)."""
@@ -294,11 +440,14 @@ async def youtube_transcript(request: Request):
         org_id = getattr(request.state, "org_id", None)
         if not org_id:
             org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
-        proxy_url = await pool.fetchval(
+        raw_proxy = await pool.fetchval(
             "SELECT proxy_url FROM organizations WHERE id = $1", org_id
-        ) or None
-    except Exception:
-        pass  # proceed without proxy if DB lookup fails
+        )
+        proxy_url = raw_proxy or None
+        if not proxy_url:
+            logger.warning("youtube_no_proxy_configured", video_id=video_id, org_id=str(org_id))
+    except Exception as e:
+        logger.warning("youtube_proxy_lookup_failed", video_id=video_id, error=str(e))
 
     # Fetch metadata (best-effort)
     metadata = {"title": "", "channel": "", "channel_url": "", "thumbnail_url": ""}
@@ -308,6 +457,7 @@ async def youtube_transcript(request: Request):
         logger.warning("youtube_metadata_failed", video_id=video_id, error=str(e))
 
     # Fetch transcript
+    _IP_BLOCK_MARKERS = ("blocking requests from your ip", "ipblocked", "requestblocked")
     try:
         transcript_data = fetch_transcript(video_id, languages=languages, proxy_url=proxy_url)
     except TranscriptsDisabled:
@@ -320,6 +470,14 @@ async def youtube_transcript(request: Request):
     except (NoTranscriptFound, VideoUnavailable) as e:
         return {"success": False, "error": str(e), "video_id": video_id}
     except Exception as e:
+        err_lower = str(e).lower()
+        if any(marker in err_lower for marker in _IP_BLOCK_MARKERS):
+            logger.warning("youtube_ip_blocked", video_id=video_id, proxy_configured=bool(proxy_url))
+            msg = (
+                "YouTube is blocking this server's IP address. "
+                "To fix this, set a proxy URL in Settings → Proxy Configuration."
+            )
+            return {"success": False, "error": msg, "video_id": video_id, "metadata": metadata}
         logger.error("youtube_transcript_failed", video_id=video_id, error=str(e))
         return {"success": False, "error": f"Failed to fetch transcript: {e}"}
 
