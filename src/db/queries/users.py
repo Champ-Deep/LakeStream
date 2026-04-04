@@ -141,6 +141,30 @@ async def get_user_by_id(pool: Pool, user_id: UUID) -> User | None:
     return User(**row) if row else None
 
 
+async def update_user(
+    pool: Pool,
+    user_id: UUID,
+    full_name: str,
+    email: str,
+) -> User | None:
+    """Update a user's full name and email.
+
+    Returns:
+        Updated User object, or None if user not found.
+
+    Raises:
+        asyncpg.UniqueViolationError: If the new email is already taken.
+    """
+    query = """
+        UPDATE users
+        SET full_name = $1, email = $2, updated_at = NOW()
+        WHERE id = $3
+        RETURNING *
+    """
+    row = await pool.fetchrow(query, full_name, email, user_id)
+    return User(**row) if row else None
+
+
 async def update_last_login(pool: Pool, user_id: UUID) -> None:
     """Update user's last login timestamp.
 

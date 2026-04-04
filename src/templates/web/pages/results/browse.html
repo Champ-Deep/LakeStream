@@ -60,6 +60,24 @@
       hx-trigger="change from:find select"
       class="flex flex-wrap items-center gap-4"
     >
+      <!-- Text Search -->
+      <div class="flex items-center gap-2 flex-1 max-w-xs">
+        <input
+          type="text"
+          name="q"
+          value="{{ filter_q or '' }}"
+          placeholder="Search titles, URLs..."
+          class="w-full px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
+          hx-get="/results"
+          hx-target="#results-container"
+          hx-swap="innerHTML"
+          hx-select="#results-container > *"
+          hx-push-url="true"
+          hx-trigger="keyup changed delay:400ms"
+          hx-include="[name='domain'], [name='data_type']"
+        >
+      </div>
+
       <!-- Domain Filter -->
       <div class="flex items-center gap-2">
         <label for="domain" class="text-sm text-slate dark:text-gray-400">Domain:</label>
@@ -95,7 +113,7 @@
       </div>
 
       <!-- Clear Filters -->
-      {% if filter_domain or filter_data_type %}
+      {% if filter_domain or filter_data_type or filter_q %}
       <a href="/results" class="text-sm text-accent hover:underline">Clear filters</a>
       {% endif %}
     </form>

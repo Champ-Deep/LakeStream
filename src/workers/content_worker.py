@@ -18,6 +18,7 @@ from src.models.scraped_data import (
     BlogUrlMetadata,
     ContactMetadata,
     DataType,
+    DocumentMetadata,
     PricingMetadata,
     ResourceMetadata,
     ScrapedData,
@@ -37,9 +38,10 @@ log = structlog.get_logger()
 MIN_ARTICLE_WORDS = 200
 
 _SKIP_EXTENSIONS = frozenset({
-    ".pdf", ".doc", ".docx", ".zip", ".png", ".jpg", ".jpeg",
+    ".doc", ".docx", ".zip", ".png", ".jpg", ".jpeg",
     ".gif", ".svg", ".webp", ".mp3", ".mp4", ".avi",
 })
+# PDF is handled separately — not skipped
 
 _ERROR_MARKERS = ("error", "404", "not found", "page not found")
 
@@ -127,6 +129,10 @@ class ContentWorker(BaseWorker):
         if fetch_result.blocked:
             self.log.warning("blocked", url=url, status=fetch_result.status_code)
             return []
+
+        # --- PDF handling ---
+        if fetch_result.content_type and "pdf" in fetch_result.content_type:
+            return await self._process_pdf(url, fetch_result)
 
         html = fetch_result.html
         if not html or len(html) < 100:
@@ -374,3 +380,58 @@ class ContentWorker(BaseWorker):
                 continue
             filtered.append(link)
         return filtered
+
+    async def _process_pdf(
+        self, url: str, fetch_result: object,
+    ) -> list[ScrapedData]:
+        """Extract content from a PDF document."""
+        from src.scraping.parser.pdf_parser import parse_pdf, pdf_to_markdown
+
+        content_bytes = getattr(fetch_result, "content_bytes", None)
+        if not content_bytes:
+            self.log.warning("pdf_no_content", url=url)
+            return []
+
+        try:
+            result = parse_pdf(content_bytes)
+        except ValueError as e:
+            self.log.warning("pdf_parse_error", url=url, error=str(e))
+            return []
+
+        if not result.text and not result.tables:
+            return []
+
+        markdown = pdf_to_markdown(result)
+
+        metadata = DocumentMetadata(
+            source_type="pdf",
+            page_count=result.page_count,
+            author=result.metadata.get("author"),
+            tables=result.tables,
+            word_count=result.word_count,
+            text_content=markdown,
+        )
+
+        record = {
+            "job_id": UUID(self.job_id),
+            "domain": self.domain,
+            "data_type": DataType.DOCUMENT,
+            "url": url,
+            "title": result.metadata.get("title") or f"PDF: {url.split('/')[-1]}",
+            "metadata": metadata.model_dump(),
+        }
+
+        await self.export_results([record])
+
+        return [
+            ScrapedData(
+                id=UUID(int=0),
+                job_id=UUID(self.job_id),
+                domain=self.domain,
+                data_type=DataType.DOCUMENT,
+                url=url,
+                title=record["title"],
+                metadata=record["metadata"],
+                scraped_at=datetime.now(UTC),
+            )
+        ]

@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}LakeStream{% endblock %}</title>
 
+  <!-- Apply dark mode immediately (before Alpine) to prevent flash of white -->
+  <script>
+    if (localStorage.getItem('darkMode') === 'true' ||
+        (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
   <!-- Tailwind CSS (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -129,7 +137,7 @@
           {% if request.session.get('is_admin') %}
           <a href="/users"
              class="px-4 py-2 text-sm font-medium rounded-xl transition-all
-               {% if active_page == 'users' %}bg-slate-100 text-navy{% else %}text-slate-500 hover:text-navy hover:bg-slate-50{% endif %}">
+               {% if active_page == 'users' %}bg-slate-100 dark:bg-gray-800 text-navy dark:text-gray-100{% else %}text-slate-500 dark:text-gray-400 hover:text-navy dark:hover:text-gray-100 hover:bg-slate-50 dark:hover:bg-gray-800{% endif %}">
             <span class="flex items-center gap-1">
               <i data-lucide="users" class="w-4 h-4"></i>
               Users
@@ -181,6 +189,14 @@
               x-transition
               class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl border border-slate-200 dark:border-gray-700 shadow-lg py-2 z-50"
             >
+              <a
+                href="/account"
+                class="w-full text-left px-4 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 flex items-center gap-2"
+              >
+                <i data-lucide="user-cog" class="w-4 h-4"></i>
+                My Account
+              </a>
+              <div class="border-t border-slate-100 dark:border-gray-700 my-1"></div>
               <a
                 href="/logout"
                 class="w-full text-left px-4 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 hover:text-error flex items-center gap-2"

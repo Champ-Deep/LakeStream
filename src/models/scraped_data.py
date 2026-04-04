@@ -13,6 +13,8 @@ class DataType(StrEnum):
     TECH_STACK = "tech_stack"
     PRICING = "pricing"
     PAGE = "page"  # Uncategorized pages — not sent to content workers
+    DOCUMENT = "document"  # PDF/DOCX documents
+    EXTRACTED = "extracted"  # Schema-based extraction results
 
 
 
@@ -80,6 +82,15 @@ class PricingMetadata(BaseModel):
     features: list[str] = []
     has_free_trial: bool = False
     cta_text: str | None = None
+
+
+class DocumentMetadata(BaseModel):
+    source_type: str = "pdf"  # pdf, docx
+    page_count: int = 0
+    author: str | None = None
+    tables: list[list[list[str]]] = []
+    word_count: int = 0
+    text_content: str = ""
 
 
 # --- Ingest API models (Chrome extension, external tools) ---

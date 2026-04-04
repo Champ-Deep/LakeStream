@@ -4,7 +4,7 @@ from typing import Annotated
 
 import typer
 
-from src.cli.commands import auth, discover, domains, export, scrape
+from src.cli.commands import auth, browse, discover, domains, export, extract, scrape
 
 app = typer.Typer(
     name="lakestream",
@@ -16,6 +16,8 @@ app = typer.Typer(
 app.add_typer(auth.app, name="auth", help="Login, logout, and manage credentials.")
 app.command(name="scrape")(scrape.scrape)
 app.command(name="status")(scrape.status)
+app.command(name="extract")(extract.extract)
+app.command(name="browse")(browse.browse)
 app.command(name="discover")(discover.discover)
 app.command(name="domains")(domains.domains)
 app.command(name="export")(export.export)

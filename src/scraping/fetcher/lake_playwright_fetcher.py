@@ -58,6 +58,10 @@ class LakePlaywrightFetcher:
 
         domain = urlparse(url).netloc
 
+        # PDF shortcut — download binary via httpx (no browser needed)
+        if url.lower().endswith(".pdf"):
+            return await self._fetch_pdf(url, start)
+
         try:
             # Get Redis client (lazy initialization)
             redis_client = await self._get_redis_client()
@@ -148,6 +152,45 @@ class LakePlaywrightFetcher:
             blocked=blocked,
             captcha_detected=captcha,
         )
+
+    async def _fetch_pdf(self, url: str, start: float) -> FetchResult:
+        """Download PDF via httpx (no browser needed)."""
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.get(url)
+                duration_ms = int((time.time() - start) * 1000)
+
+                return FetchResult(
+                    url=url,
+                    status_code=resp.status_code,
+                    html="",
+                    headers=dict(resp.headers),
+                    tier_used=ScrapingTier.PLAYWRIGHT,
+                    cost_usd=TIER_COSTS["playwright"],
+                    duration_ms=duration_ms,
+                    blocked=resp.status_code in (403, 429, 503),
+                    captcha_detected=False,
+                    content_bytes=resp.content,
+                    content_type=resp.headers.get(
+                        "content-type", "application/pdf"
+                    ),
+                )
+        except Exception as exc:
+            duration_ms = int((time.time() - start) * 1000)
+            log.warning("pdf_download_error", url=url, error=str(exc))
+            return FetchResult(
+                url=url,
+                status_code=0,
+                html="",
+                headers={},
+                tier_used=ScrapingTier.PLAYWRIGHT,
+                cost_usd=TIER_COSTS["playwright"],
+                duration_ms=duration_ms,
+                blocked=True,
+                captcha_detected=False,
+            )
 
     async def _get_redis_client(self) -> redis.Redis:
         """Lazy Redis client initialization.

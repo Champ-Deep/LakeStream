@@ -4,41 +4,82 @@
   <meta charset="utf-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { width: 360px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
-    .header { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 16px 20px; }
-    .header h1 { font-size: 16px; font-weight: 700; }
-    .header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
-    .body { padding: 16px 20px; }
-    .section { margin-bottom: 16px; }
+    body { width: 420px; max-height: 560px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+    .header { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 15px; font-weight: 700; }
+    .header p { font-size: 11px; opacity: 0.85; margin-top: 1px; }
+    .header .version { font-size: 10px; opacity: 0.6; }
+    .body { padding: 14px 16px; }
+    .section { margin-bottom: 14px; }
     .section label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 6px; }
     input[type="text"], input[type="url"] { width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 13px; transition: border-color 0.2s; }
     input:focus { outline: none; border-color: #ef4444; }
-    .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn:active { transform: scale(0.98); }
     .btn-primary { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
     .btn-primary:hover { opacity: 0.9; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-scrape { background: #1e293b; color: white; margin-top: 8px; }
     .btn-scrape:hover { background: #334155; }
     .btn-scrape:disabled { opacity: 0.5; cursor: not-allowed; }
-    .status { padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-top: 12px; }
+    .status { padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-top: 10px; }
     .status-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
     .status-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     .status-info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
-    .connected { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #16a34a; margin-bottom: 12px; }
+    .connected { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #16a34a; margin-bottom: 10px; }
     .connected .dot { width: 8px; height: 8px; background: #16a34a; border-radius: 50%; }
-    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
-    .stat { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center; }
-    .stat .num { font-size: 20px; font-weight: 700; color: #ef4444; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .stat { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; text-align: center; }
+    .stat .num { font-size: 18px; font-weight: 700; color: #ef4444; }
     .stat .label { font-size: 10px; color: #64748b; text-transform: uppercase; }
+    .hidden { display: none; }
+
+    /* --- Data Preview --- */
+    .detect-banner { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; margin-bottom: 10px; font-size: 12px; color: #0369a1; }
+    .detect-banner svg { flex-shrink: 0; }
+    .detect-banner strong { color: #0c4a6e; }
+
+    .preview-container { background: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+    .preview-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .preview-header .badge { font-size: 11px; font-weight: 600; color: #64748b; }
+    .preview-header .badge strong { color: #1e293b; }
+    .preview-nav { display: flex; align-items: center; gap: 6px; }
+    .preview-nav button { background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: #475569; }
+    .preview-nav button:hover { background: #f1f5f9; }
+    .preview-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+    .preview-nav .counter { font-size: 11px; color: #94a3b8; }
+
+    .preview-table-wrap { overflow-x: auto; max-height: 220px; overflow-y: auto; }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .preview-table thead { position: sticky; top: 0; z-index: 1; }
+    .preview-table th { background: #f1f5f9; padding: 6px 10px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .preview-table td { padding: 5px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-table tr:hover td { background: #f8fafc; }
+    .preview-table td a { color: #2563eb; text-decoration: none; }
+
+    .export-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .export-row .btn { flex: 1; padding: 8px; font-size: 12px; }
+    .btn-csv { background: #059669; color: white; }
+    .btn-csv:hover { background: #047857; }
+    .btn-copy { background: #7c3aed; color: white; }
+    .btn-copy:hover { background: #6d28d9; }
+    .btn-send { background: #1e293b; color: white; }
+    .btn-send:hover { background: #334155; }
+
+    .no-data { text-align: center; padding: 24px 16px; color: #94a3b8; font-size: 13px; }
+    .no-data svg { margin-bottom: 8px; opacity: 0.5; }
+
     .page-info { font-size: 12px; color: #64748b; margin-bottom: 8px; padding: 8px 12px; background: white; border-radius: 8px; border: 1px solid #e2e8f0; }
     .page-info strong { color: #1e293b; }
-    .hidden { display: none; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>LakeStream Scraper</h1>
-    <p>Extract B2B contacts from LinkedIn & Apollo</p>
+    <div>
+      <h1>LakeStream Scraper</h1>
+      <p>Extract data from any website</p>
+    </div>
+    <span class="version">v1.1</span>
   </div>
 
   <div class="body">
@@ -56,22 +97,70 @@
         </p>
       </div>
       <button class="btn btn-primary" id="save-btn">Save & Connect</button>
+      <p style="font-size: 11px; color: #94a3b8; margin-top: 8px; text-align: center;">
+        Or use without connecting &mdash; CSV & clipboard export always available
+      </p>
     </div>
 
     <!-- Connected view -->
     <div id="connected-view" class="hidden">
-      <div class="connected">
+      <div class="connected" id="connected-bar">
         <span class="dot"></span>
         Connected to <strong id="connected-url"></strong>
       </div>
 
+      <!-- Smart extractor info (LinkedIn/Apollo) -->
       <div id="page-info" class="page-info hidden">
         <strong id="page-platform"></strong> detected &mdash; <span id="page-count"></span> contacts found
       </div>
 
-      <button class="btn btn-scrape" id="scrape-btn" disabled>
+      <!-- Smart extractor scrape button -->
+      <button class="btn btn-scrape" id="scrape-btn" style="display:none;">
         Scrape This Page
       </button>
+
+      <!-- Generic data preview -->
+      <div id="data-preview" class="hidden">
+        <div class="detect-banner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span><strong id="pattern-count">0</strong> data tables detected on this page</span>
+        </div>
+
+        <div class="preview-container">
+          <div class="preview-header">
+            <span class="badge"><strong id="row-count">0</strong> rows</span>
+            <div class="preview-nav">
+              <button id="prev-table" title="Previous table">&larr;</button>
+              <span class="counter" id="table-counter">1/1</span>
+              <button id="next-table" title="Next table">&rarr;</button>
+            </div>
+          </div>
+          <div class="preview-table-wrap">
+            <table class="preview-table" id="preview-table">
+              <thead id="preview-thead"></thead>
+              <tbody id="preview-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="export-row">
+          <button class="btn btn-csv" id="export-csv">Download CSV</button>
+          <button class="btn btn-copy" id="export-copy">Copy</button>
+        </div>
+        <button class="btn btn-send" id="send-lakestream" style="display:none;">
+          Send to LakeStream
+        </button>
+        <button class="btn" id="export-all-csv" style="margin-top: 4px; background: #065f46; color: white; font-size: 11px; display: none;">
+          Export All Tables as CSV
+        </button>
+      </div>
+
+      <!-- No data state -->
+      <div id="no-data" class="no-data hidden">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <p>No structured data detected on this page</p>
+        <p style="font-size: 11px; margin-top: 4px;">Try a page with tables, lists, or card grids</p>
+      </div>
 
       <div class="stats" id="stats">
         <div class="stat">
@@ -84,8 +173,56 @@
         </div>
       </div>
 
-      <button class="btn" id="disconnect-btn" style="margin-top: 12px; background: #f1f5f9; color: #64748b; font-size: 11px;">
+      <button class="btn" id="export-cookies-btn" style="margin-top: 10px; background: #0ea5e9; color: white; font-size: 12px; display: none;">
+        🔑 Setup Server Auth (send cookies)
+      </button>
+
+      <button class="btn" id="disconnect-btn" style="margin-top: 10px; background: #f1f5f9; color: #64748b; font-size: 11px;">
         Disconnect
+      </button>
+    </div>
+
+    <!-- Disconnected but still usable view -->
+    <div id="standalone-view" class="hidden">
+      <div id="standalone-preview" class="hidden">
+        <div class="detect-banner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span><strong id="standalone-pattern-count">0</strong> data tables detected</span>
+        </div>
+
+        <div class="preview-container">
+          <div class="preview-header">
+            <span class="badge"><strong id="standalone-row-count">0</strong> rows</span>
+            <div class="preview-nav">
+              <button id="standalone-prev-table">&larr;</button>
+              <span class="counter" id="standalone-table-counter">1/1</span>
+              <button id="standalone-next-table">&rarr;</button>
+            </div>
+          </div>
+          <div class="preview-table-wrap">
+            <table class="preview-table" id="standalone-preview-table">
+              <thead id="standalone-preview-thead"></thead>
+              <tbody id="standalone-preview-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="export-row">
+          <button class="btn btn-csv" id="standalone-export-csv">Download CSV</button>
+          <button class="btn btn-copy" id="standalone-export-copy">Copy</button>
+        </div>
+        <button class="btn" id="standalone-export-all-csv" style="margin-top: 4px; background: #065f46; color: white; font-size: 11px; display: none;">
+          Export All Tables as CSV
+        </button>
+      </div>
+
+      <div id="standalone-no-data" class="no-data hidden">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <p>No structured data detected</p>
+      </div>
+
+      <button class="btn btn-primary" id="setup-btn" style="margin-top: 12px; font-size: 12px;">
+        Connect to LakeStream
       </button>
     </div>
 

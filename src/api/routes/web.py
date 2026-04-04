@@ -353,7 +353,7 @@ async def top_domains_partial(request: Request):
 
 
 @router.get("/jobs", response_class=HTMLResponse)
-async def jobs_list(request: Request, status: str | None = None):
+async def jobs_list(request: Request, status: str | None = None, q: str | None = None):
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -363,11 +363,13 @@ async def jobs_list(request: Request, status: str | None = None):
 
     pool = await get_pool()
     user_filter = _get_user_filter(request)
-    jobs = await list_jobs(pool, status=status, user_id=user_filter, limit=50)
+    # Use q as domain search filter
+    domain_filter = q.strip() if q and q.strip() else None
+    jobs = await list_jobs(pool, status=status, domain=domain_filter, user_id=user_filter, limit=50)
 
     return get_templates().TemplateResponse(
         "pages/jobs/list.html",
-        {"request": request, "active_page": "jobs", "jobs": jobs, "filter_status": status},
+        {"request": request, "active_page": "jobs", "jobs": jobs, "filter_status": status, "filter_q": q},
     )
 
 
@@ -446,6 +448,7 @@ async def results_browse(
     request: Request,
     domain: str | None = None,
     data_type: str | None = None,
+    q: str | None = None,
     page: int = 1,
 ):
     redirect = _require_login(request)
@@ -487,6 +490,10 @@ async def results_browse(
         conditions.append(f"data_type = ${idx}")
         vals.append(data_type)
         idx += 1
+    if q and q.strip():
+        conditions.append(f"(title ILIKE ${idx} OR url ILIKE ${idx} OR domain ILIKE ${idx})")
+        vals.append(f"%{q.strip()}%")
+        idx += 1
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     vals.extend([limit, offset])
@@ -515,6 +522,7 @@ async def results_browse(
             "domains": domains,
             "filter_domain": domain,
             "filter_data_type": data_type,
+            "filter_q": q,
             "page": page,
             "total": total,
             "limit": limit,
@@ -1110,3 +1118,80 @@ async def delete_user(request: Request, user_id: UUID):
 
     await pool.execute("DELETE FROM users WHERE id = $1", user_id)
     return RedirectResponse(url="/users", status_code=302)
+
+
+@router.post("/users/{user_id}/edit")
+async def edit_user(
+    request: Request,
+    user_id: UUID,
+    full_name: str = Form(...),
+    email: str = Form(...),
+):
+    """Edit a user's name and email (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from asyncpg import UniqueViolationError
+
+    from src.db.pool import get_pool
+    from src.db.queries.users import update_user
+
+    pool = await get_pool()
+    try:
+        await update_user(pool, user_id, full_name.strip(), email.strip().lower())
+    except UniqueViolationError:
+        return RedirectResponse(url="/users?error=email_exists", status_code=302)
+    return RedirectResponse(url="/users?success=updated", status_code=302)
+
+
+@router.get("/account", response_class=HTMLResponse)
+async def account_page(request: Request):
+    """Self-service account settings page."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.db.queries.users import get_user_by_id
+
+    pool = await get_pool()
+    user_id = UUID(request.session["user_id"])
+    user = await get_user_by_id(pool, user_id)
+
+    return get_templates().TemplateResponse(
+        "pages/account/index.html",
+        {
+            "request": request,
+            "active_page": "account",
+            "user": user,
+        },
+    )
+
+
+@router.post("/account/update")
+async def account_update(
+    request: Request,
+    full_name: str = Form(...),
+    email: str = Form(...),
+):
+    """Update the logged-in user's name and email."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from asyncpg import UniqueViolationError
+
+    from src.db.pool import get_pool
+    from src.db.queries.users import update_user
+
+    pool = await get_pool()
+    user_id = UUID(request.session["user_id"])
+    try:
+        updated = await update_user(pool, user_id, full_name.strip(), email.strip().lower())
+        if updated:
+            # Keep session email in sync
+            request.session["email"] = updated.email
+    except UniqueViolationError:
+        return RedirectResponse(url="/account?error=email_exists", status_code=302)
+    return RedirectResponse(url="/account?success=updated", status_code=302)

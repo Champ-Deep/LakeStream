@@ -29,6 +29,7 @@ class BaseWorker(ABC):
         user_id: str | None = None,
         tier_override: str | None = None,
         proxy_url: str | None = None,
+        region: str | None = None,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -38,6 +39,7 @@ class BaseWorker(ABC):
         self.user_id = user_id
         self._tier_override = ScrapingTier(tier_override) if tier_override else None
         self.proxy_url = proxy_url or ""
+        self.region = region
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
@@ -62,6 +64,8 @@ class BaseWorker(ABC):
         options = options or FetchOptions()
         if self.proxy_url:
             options.proxy_url = self.proxy_url
+        if self.region:
+            options.region = self.region
 
         domain = urlparse(url).netloc or self.domain
 

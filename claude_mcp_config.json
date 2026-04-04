@@ -1,0 +1,31 @@
+{
+  "_comment": "LakeStream MCP Server — add this block to your Claude Desktop or Claude Code MCP config.",
+  "_instructions": [
+    "1. Copy the 'mcpServers' block into your Claude Desktop config:",
+    "   Mac: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "   Win: %APPDATA%/Claude/claude_desktop_config.json",
+    "2. Replace /path/to/LakeStream with the actual repo path.",
+    "3. Fill in your DATABASE_URL, REDIS_URL, and OPENROUTER_API_KEY.",
+    "4. Restart Claude Desktop.",
+    "",
+    "For Claude Code: run 'claude mcp add lakestream' or add via Settings → MCP.",
+    "",
+    "For Open WebUI / any OpenAI-tools-compatible system:",
+    "  Run: python -m src.mcp_server --transport http",
+    "  Then add tool URL: http://localhost:8001/mcp"
+  ],
+  "mcpServers": {
+    "lakestream": {
+      "command": "python",
+      "args": ["-m", "src.mcp_server"],
+      "cwd": "/path/to/LakeStream",
+      "env": {
+        "DATABASE_URL": "postgresql://postgres:password@localhost:5432/lakestream",
+        "REDIS_URL": "redis://localhost:6379",
+        "OPENROUTER_API_KEY": "sk-or-your-key-here",
+        "LLM_EXTRACTION_MODEL": "anthropic/claude-3.5-haiku",
+        "JWT_SECRET": "your-jwt-secret"
+      }
+    }
+  }
+}

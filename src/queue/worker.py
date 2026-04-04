@@ -4,7 +4,11 @@ from arq.cron import cron
 
 from src.config.settings import get_settings
 from src.queue.discover_jobs import check_tracked_searches, process_discovery_job
-from src.queue.jobs import process_scrape_job
+from src.queue.jobs import (
+    process_apollo_scrape_job,
+    process_linkedin_scrape_job,
+    process_scrape_job,
+)
 from src.workers.scheduled_scraper import check_scheduled_scrapes
 from src.workers.signal_processor import process_signals
 
@@ -51,7 +55,12 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_scrape_job, process_discovery_job]
+    functions = [
+        process_scrape_job,
+        process_discovery_job,
+        process_linkedin_scrape_job,
+        process_apollo_scrape_job,
+    ]
     on_startup = startup
     on_shutdown = shutdown
 

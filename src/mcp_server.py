@@ -16,11 +16,19 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP(
     "LakeStream",
     instructions=(
-        "LakeStream is a B2B web scraping platform. Use these tools to scrape domains "
-        "for blog posts, articles, contacts, tech stacks, pricing, and resources. "
-        "Submit a scrape job, then poll its status until complete, then get results. "
-        "You can also extract content directly: use extract_blog_content for web pages "
-        "and extract_youtube_transcript for YouTube video transcripts."
+        "LakeStream is a B2B web scraping and data extraction platform.\n\n"
+        "QUICK EXTRACTION (one call, no setup):\n"
+        "- scrape_and_extract(url, prompt) — fetch a URL and extract anything using natural language\n"
+        "- extract_blog_content(url) — get clean Markdown from any web page\n"
+        "- extract_youtube_transcript(url) — get transcript from YouTube\n"
+        "- extract_pdf_content(url) — extract text/tables from PDF\n\n"
+        "AUTONOMOUS BROWSER (multi-step tasks):\n"
+        "- browse(task, start_url) — AI agent that navigates, clicks, fills forms across pages\n\n"
+        "SCHEMA-BASED EXTRACTION (precise, reusable):\n"
+        "- extract_structured(url, schema, prompt) — CSS selectors OR natural language prompt\n\n"
+        "ASYNC SCRAPING JOBS (full-site crawls):\n"
+        "- submit_scrape_job → get_job_status → get_scrape_results\n"
+        "- discover_and_scrape → get_discovery_status (search-to-scrape pipeline)\n"
     ),
 )
 
@@ -32,6 +40,7 @@ async def submit_scrape_job(
     tier: str | None = None,
     max_pages: int = 100,
     template_id: str | None = None,
+    region: str | None = None,
 ) -> str:
     """Submit a web scraping job for a B2B domain.
 
@@ -46,6 +55,8 @@ async def submit_scrape_job(
         max_pages: Maximum pages to scrape (1-500, default 100)
         template_id: Platform template: wordpress, hubspot, webflow, generic, directory.
                      Leave empty for auto-detection (recommended).
+        region: Geo-target region for proxy selection: us, eu, uk, de, asia, in, au.
+                Leave empty for default routing.
     """
     from src.config.settings import get_settings
     from src.db.pool import get_pool
@@ -61,6 +72,7 @@ async def submit_scrape_job(
         tier=tier,
         max_pages=max_pages,
         template_id=template_id,
+        region=region,
     )
 
     pool = await get_pool()
@@ -81,6 +93,7 @@ async def submit_scrape_job(
         data_types=input_model.data_types,
         tier=input_model.tier,
         raw_only=input_model.raw_only,
+        region=input_model.region,
     )
     await redis.aclose()
 
@@ -365,9 +378,10 @@ async def extract_youtube_transcript(
         pool = await get_pool()
         org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
         if org_id:
-            proxy_url = await pool.fetchval(
+            raw_proxy = await pool.fetchval(
                 "SELECT proxy_url FROM organizations WHERE id = $1", org_id
-            ) or None
+            )
+            proxy_url = raw_proxy or None
     except Exception:
         pass  # proceed without proxy if DB lookup fails
 
@@ -378,6 +392,7 @@ async def extract_youtube_transcript(
         metadata = {"title": "", "channel": "", "channel_url": "", "thumbnail_url": ""}
 
     # Fetch transcript
+    _IP_BLOCK_MARKERS = ("blocking requests from your ip", "ipblocked", "requestblocked")
     try:
         transcript_data = fetch_transcript(video_id, languages=languages, proxy_url=proxy_url)
     except (TranscriptsDisabled, NoTranscriptFound):
@@ -391,6 +406,15 @@ async def extract_youtube_transcript(
     except VideoUnavailable:
         return json.dumps({"error": "Video not found or unavailable.", "video_id": video_id})
     except Exception as e:
+        err_lower = str(e).lower()
+        if any(marker in err_lower for marker in _IP_BLOCK_MARKERS):
+            return json.dumps({
+                "error": (
+                    "YouTube is blocking this server's IP address. "
+                    "Set a proxy URL in Settings → Proxy Configuration to route these requests."
+                ),
+                "video_id": video_id,
+            })
         return json.dumps({"error": f"Failed to fetch transcript: {e}", "video_id": video_id})
 
     result: dict[str, Any] = {
@@ -467,6 +491,300 @@ async def extract_blog_content(url: str) -> str:
             "success": True,
         }
     )
+
+
+@mcp.tool()
+async def scrape_and_extract(
+    url: str,
+    prompt: str,
+    region: str | None = None,
+) -> str:
+    """Fetch a URL and extract structured data using a natural language prompt.
+
+    The simplest extraction path — no schema definition needed.
+    The LLM reads the page and extracts whatever the prompt describes.
+    Returns structured JSON.
+
+    Args:
+        url: The web page URL to extract from.
+        prompt: Natural language description of what to extract.
+                Examples:
+                - "extract all plan names, prices, and features"
+                - "find the CEO name, email, and LinkedIn URL"
+                - "get all product names, SKUs, and prices"
+        region: Optional geo-target region (us, eu, uk, asia, in, au).
+    """
+    from src.config.settings import get_settings
+    from src.models.scraping import FetchOptions, ScrapingTier
+    from src.scraping.fetcher.factory import create_fetcher
+    from src.services.llm_extractor import LLMExtractor, _strip_html_to_text
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        return json.dumps({
+            "error": "AI extraction disabled — set OPENROUTER_API_KEY",
+            "success": False,
+        })
+
+    options = FetchOptions(region=region)
+    fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+    fetch_result = await fetcher.fetch(url, options)
+
+    if fetch_result.blocked or not fetch_result.html:
+        return json.dumps({
+            "error": f"Page blocked or empty (HTTP {fetch_result.status_code})",
+            "success": False,
+        })
+
+    text = _strip_html_to_text(fetch_result.html)
+    llm = LLMExtractor()
+    data = await llm.extract_freeform(text, prompt)
+
+    return json.dumps({"data": data, "url": url, "mode": "prompt", "success": True}, default=str)
+
+
+@mcp.tool()
+async def extract_structured(
+    url: str,
+    schema: dict | None = None,
+    prompt: str | None = None,
+    region: str | None = None,
+) -> str:
+    """Extract structured data from a web page.
+
+    Supports two modes:
+    1. Prompt-only (recommended): Provide just a prompt, LLM extracts freeform
+    2. Schema-based: Provide a CSS-selector schema for precise, repeatable extraction
+
+    Args:
+        url: The web page URL to extract from.
+        prompt: Natural language description of what to extract (no schema needed).
+        schema: CSS-selector extraction schema. Example:
+            {
+                "name": "pricing",
+                "list_selector": ".pricing-card",
+                "fields": [
+                    {"name": "plan", "selector": "h3", "attribute": "text"},
+                    {"name": "price", "selector": ".price", "type": "number"}
+                ]
+            }
+        region: Optional geo-target region (us, eu, uk, asia, in, au).
+    """
+    from src.models.scraping import FetchOptions, ScrapingTier
+    from src.scraping.fetcher.factory import create_fetcher
+
+    if not schema and not prompt:
+        return json.dumps({"error": "Provide either 'schema' or 'prompt'", "success": False})
+
+    options = FetchOptions(region=region)
+    fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+    fetch_result = await fetcher.fetch(url, options)
+
+    if fetch_result.blocked or not fetch_result.html:
+        return json.dumps({
+            "error": f"Page blocked (HTTP {fetch_result.status_code})",
+            "success": False,
+        })
+
+    # Prompt-only path
+    if prompt and not schema:
+        from src.config.settings import get_settings
+        from src.services.llm_extractor import LLMExtractor, _strip_html_to_text
+
+        settings = get_settings()
+        if not settings.openrouter_api_key:
+            return json.dumps({"error": "AI extraction disabled (OPENROUTER_API_KEY not set)", "success": False})
+
+        text = _strip_html_to_text(fetch_result.html)
+        llm = LLMExtractor()
+        data = await llm.extract_freeform(text, prompt)
+        return json.dumps({"data": data, "url": url, "mode": "prompt", "success": True}, default=str)
+
+    # Schema path (CSS extraction)
+    from src.models.extraction import ExtractionSchema
+    from src.scraping.parser.schema_extractor import SchemaExtractor
+
+    try:
+        extraction_schema = ExtractionSchema(**schema)
+    except Exception as e:
+        return json.dumps({"error": f"Invalid schema: {e}", "success": False})
+
+    extractor = SchemaExtractor(fetch_result.html, url)
+    result = extractor.extract(extraction_schema)
+
+    return json.dumps({
+        "data": result.data,
+        "schema_name": result.schema_name,
+        "fields_found": result.fields_found,
+        "fields_missing": result.fields_missing,
+        "url": result.url,
+        "mode": "css",
+        "success": True,
+    }, default=str)
+
+
+@mcp.tool()
+async def browse(
+    task: str,
+    start_url: str | None = None,
+    max_steps: int = 20,
+) -> str:
+    """Use an AI browser agent to autonomously complete a multi-step web task.
+
+    The agent can navigate pages, click buttons, fill forms, handle pagination,
+    and extract data across multiple pages — like having a human browse on your behalf.
+    Requires OPENROUTER_API_KEY to be set.
+
+    Args:
+        task: What to accomplish, described in natural language. Examples:
+              - "find all pricing plans and features on stripe.com/pricing"
+              - "search for 'B2B analytics tools' on g2.com and list the top 10 results"
+              - "go to acme.com/about and find the founding year and CEO name"
+        start_url: Optional starting URL. If omitted, the agent will navigate itself.
+        max_steps: Maximum browser steps before stopping (default 20, max 50).
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        return json.dumps({
+            "error": "AI browser disabled — set OPENROUTER_API_KEY",
+            "success": False,
+        })
+
+    from src.services.browser_agent import run_browser_task
+
+    try:
+        result = await run_browser_task(
+            task, start_url=start_url, max_steps=min(max_steps, 50)
+        )
+        return json.dumps(result, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e), "success": False})
+
+
+@mcp.tool()
+async def extract_pdf_content(url: str) -> str:
+    """Extract text, tables, and metadata from a PDF document URL.
+
+    Returns the PDF content as clean Markdown with extracted tables.
+    Useful for processing whitepapers, reports, datasheets, and other
+    B2B documents linked from company websites.
+
+    Args:
+        url: The URL of the PDF document to extract content from.
+    """
+    import httpx
+
+    from src.scraping.parser.pdf_parser import parse_pdf, pdf_to_markdown
+
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return json.dumps({
+                    "error": f"HTTP {resp.status_code}",
+                    "url": url,
+                    "success": False,
+                })
+
+            result = parse_pdf(resp.content)
+            markdown = pdf_to_markdown(result)
+
+            return json.dumps({
+                "url": url,
+                "markdown": markdown,
+                "word_count": result.word_count,
+                "page_count": result.page_count,
+                "table_count": len(result.tables),
+                "metadata": result.metadata,
+                "success": True,
+            })
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "url": url,
+            "success": False,
+        })
+
+
+@mcp.tool()
+async def scrape_linkedin_search(
+    search_url: str,
+    max_pages: int = 5,
+) -> str:
+    """Scrape contacts from LinkedIn Sales Navigator search results.
+
+    Requires authenticated session cookies (set up via Chrome extension
+    cookie export or settings). Returns contact data including name,
+    title, company, location, and LinkedIn URL.
+
+    This is an async job — returns a job_id to poll with get_job_status.
+
+    Args:
+        search_url: Full LinkedIn Sales Navigator search URL
+                    (e.g. https://www.linkedin.com/sales/search/people?query=...)
+        max_pages: Maximum result pages to scrape (1-20, default 5).
+                   LinkedIn rate-limits aggressively, so keep this low.
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(base_url=settings.base_url, timeout=30) as client:
+            resp = await client.post(
+                "/api/scrape/linkedin",
+                json={
+                    "search_url": search_url,
+                    "max_pages": min(max_pages, 20),
+                },
+            )
+            data = resp.json()
+            return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e), "success": False})
+
+
+@mcp.tool()
+async def scrape_apollo_search(
+    search_url: str,
+    max_pages: int = 10,
+) -> str:
+    """Scrape contacts from Apollo.io people search results.
+
+    Requires authenticated session cookies (set up via Chrome extension
+    cookie export or settings). Returns contact data including name,
+    title, company, email, phone, and LinkedIn URL.
+
+    This is an async job — returns a job_id to poll with get_job_status.
+
+    Args:
+        search_url: Full Apollo.io search URL
+                    (e.g. https://app.apollo.io/#/people?...)
+        max_pages: Maximum result pages to scrape (1-30, default 10).
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(base_url=settings.base_url, timeout=30) as client:
+            resp = await client.post(
+                "/api/scrape/apollo",
+                json={
+                    "search_url": search_url,
+                    "max_pages": min(max_pages, 30),
+                },
+            )
+            data = resp.json()
+            return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e), "success": False})
 
 
 def main():

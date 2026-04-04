@@ -24,43 +24,58 @@
 
   <!-- Filters -->
   <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-4">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-3 flex-wrap">
       <span class="text-sm text-slate dark:text-gray-400">Filter:</span>
       <a
-        href="/jobs"
+        href="/jobs{% if filter_q %}?q={{ filter_q }}{% endif %}"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
           {% if not filter_status %}bg-accent text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         All
       </a>
       <a
-        href="/jobs?status=running"
+        href="/jobs?status=running{% if filter_q %}&q={{ filter_q }}{% endif %}"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
           {% if filter_status == 'running' %}bg-running text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Running
       </a>
       <a
-        href="/jobs?status=completed"
+        href="/jobs?status=completed{% if filter_q %}&q={{ filter_q }}{% endif %}"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
           {% if filter_status == 'completed' %}bg-success text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Completed
       </a>
       <a
-        href="/jobs?status=failed"
+        href="/jobs?status=failed{% if filter_q %}&q={{ filter_q }}{% endif %}"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
           {% if filter_status == 'failed' %}bg-error text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Failed
       </a>
       <a
-        href="/jobs?status=pending"
+        href="/jobs?status=pending{% if filter_q %}&q={{ filter_q }}{% endif %}"
         class="px-3 py-1.5 rounded-lg text-sm transition-colors
           {% if filter_status == 'pending' %}bg-warning text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
       >
         Pending
       </a>
+
+      <div class="ml-auto">
+        <form action="/jobs" method="GET" class="flex items-center gap-2">
+          {% if filter_status %}
+          <input type="hidden" name="status" value="{{ filter_status }}">
+          {% endif %}
+          <input
+            type="text"
+            name="q"
+            value="{{ filter_q or '' }}"
+            placeholder="Search domains..."
+            class="px-3 py-1.5 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20 w-48"
+          >
+        </form>
+      </div>
     </div>
   </div>
 

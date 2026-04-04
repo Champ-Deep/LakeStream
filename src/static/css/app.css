@@ -639,3 +639,20 @@ input[type="checkbox"] {
 .dark textarea:focus {
   box-shadow: 0 0 0 3px rgba(232, 3, 58, 0.2);
 }
+
+.dark .card-highlight {
+  background: #111827;
+}
+
+.dark .badge-neutral {
+  background: #374151;
+  color: #9ca3af;
+}
+
+.dark .progress-bar {
+  background: #374151;
+}
+
+.dark .bg-dot-grid {
+  background-image: radial-gradient(#374151 1px, transparent 1px);
+}

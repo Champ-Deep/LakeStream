@@ -70,3 +70,27 @@ async def health() -> HealthResponse:
         redis=redis_status,
         lakecurrent=lakecurrent_status,
     )
+
+
+@router.get("/health/proxies")
+async def proxy_health() -> dict:
+    """Get health stats for all tracked proxies in the pool."""
+    from src.services.proxy_health import ProxyHealthTracker
+
+    tracker = ProxyHealthTracker()
+    health_list = await tracker.get_all_health()
+
+    proxies = []
+    for h in health_list:
+        proxies.append({
+            "url": h.url,
+            "region": h.region,
+            "success_count": h.success_count,
+            "fail_count": h.fail_count,
+            "success_rate": round(h.success_rate, 3),
+            "avg_latency_ms": h.avg_latency_ms,
+            "consecutive_failures": h.consecutive_failures,
+            "is_backed_off": h.is_backed_off,
+        })
+
+    return {"proxies": proxies, "total": len(proxies)}
