@@ -32,6 +32,14 @@ class ScrapeJobInput(BaseModel):
         default=None,
         description="Geo-target region for proxy selection: us, eu, uk, de, asia, in, au.",
     )
+    extraction_schema: dict | None = Field(
+        default=None,
+        description="Custom extraction schema. If set, runs schema extractor on every page.",
+    )
+    extraction_mode: str = Field(
+        default="css",
+        description="Extraction mode: css, ai, auto. Only used with extraction_schema.",
+    )
     priority: int = Field(default=5, ge=1, le=10)
 
 

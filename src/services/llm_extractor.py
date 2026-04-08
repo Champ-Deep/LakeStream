@@ -63,14 +63,51 @@ def _strip_html_to_text(html: str, max_chars: int = 30000) -> str:
     return text
 
 
+async def get_openrouter_config(org_id: str | None = None) -> tuple[str, str]:
+    """Get OpenRouter API key and model, checking org-level config first.
+
+    Priority: org DB record → env var fallback.
+    Returns (api_key, model) or raises ValueError if no key configured.
+    """
+    settings = get_settings()
+
+    # Check org-level config first
+    if org_id:
+        try:
+            from src.db.pool import get_pool
+
+            pool = await get_pool()
+            row = await pool.fetchrow(
+                "SELECT openrouter_api_key, llm_model FROM organizations WHERE id = $1",
+                org_id,
+            )
+            if row and row["openrouter_api_key"]:
+                return row["openrouter_api_key"], row["llm_model"] or settings.llm_extraction_model
+        except Exception:
+            log.debug("openrouter_org_lookup_failed", org_id=org_id)
+
+    # Fall back to env var
+    if settings.openrouter_api_key:
+        return settings.openrouter_api_key, settings.llm_extraction_model
+
+    raise ValueError("No OpenRouter API key configured — set one in Settings → AI Extraction or via OPENROUTER_API_KEY env var")
+
+
 class LLMExtractor:
     """Extract structured data from content using LLMs via OpenRouter."""
 
-    def __init__(self) -> None:
+    def __init__(self, org_id: str | None = None) -> None:
         self._client = None
+        self._org_id = org_id
 
-    def _get_client(self):
+    def _get_client(self, api_key: str | None = None):
         """Lazy-init OpenAI client pointed at OpenRouter."""
+        if api_key:
+            # Org-specific key — create a fresh client (don't cache)
+            from openai import AsyncOpenAI
+
+            return AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+
         if self._client is None:
             from openai import AsyncOpenAI
 
@@ -102,8 +139,18 @@ class LLMExtractor:
         Returns:
             ExtractionResult with extracted data.
         """
+        # Resolve API key and model (org-level → env var fallback)
+        try:
+            api_key, model_used = await get_openrouter_config(self._org_id)
+        except ValueError:
+            settings = get_settings()
+            api_key = settings.openrouter_api_key
+            model_used = settings.llm_extraction_model
+            if not api_key:
+                raise
+
         settings = get_settings()
-        client = self._get_client()
+        client = self._get_client(api_key if self._org_id else None)
 
         json_spec = _schema_to_json_spec(schema)
 
@@ -124,7 +171,6 @@ Content to extract from:
 {content[:30000]}"""
 
         data: dict | list = {}
-        model_used = settings.llm_extraction_model
 
         for attempt in range(2):  # Retry once on invalid JSON
             try:
@@ -231,8 +277,18 @@ Content to extract from:
         The LLM decides the output structure based on the prompt.
         Returns a plain dict (parsed JSON from the LLM).
         """
-        client = self._get_client()
+        # Resolve API key and model (org-level → env var fallback)
+        try:
+            api_key, model_used = await get_openrouter_config(self._org_id)
+        except ValueError:
+            settings = get_settings()
+            api_key = settings.openrouter_api_key
+            model_used = settings.llm_extraction_model
+            if not api_key:
+                raise
+
         settings = get_settings()
+        client = self._get_client(api_key if self._org_id else None)
 
         system_prompt = (
             "You are a precise data extraction assistant. "
@@ -242,8 +298,6 @@ Content to extract from:
         )
 
         user_prompt = f"Request: {prompt}\n\nContent:\n{content[:30000]}"
-
-        model_used = settings.llm_extraction_model
         raw = ""
 
         for attempt in range(2):

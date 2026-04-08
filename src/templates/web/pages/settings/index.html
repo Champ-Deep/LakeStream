@@ -92,6 +92,72 @@
     </div>
   </div>
 
+  <!-- AI Extraction (LLM) Card -->
+  <div class="card p-8" x-data="aiSettings()">
+    <div class="flex items-start gap-6">
+      <div class="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
+        <i data-lucide="brain" class="w-7 h-7 text-white"></i>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-navy dark:text-gray-100 mb-1">AI Extraction (LLM)</h2>
+        <p class="text-slate-500 dark:text-gray-400 text-sm">
+          Configure an OpenRouter API key to enable prompt-based extraction, AI browser, and smart schema detection.
+          Get a key at <a href="https://openrouter.ai/keys" target="_blank" class="text-brand-red hover:underline">openrouter.ai/keys</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-6 space-y-4">
+      <!-- Status indicator -->
+      <div class="flex items-center gap-2" x-show="loaded">
+        <template x-if="keySet">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full text-xs font-medium">
+            <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+            Configured <span x-text="keyHint" class="font-mono"></span>
+          </span>
+        </template>
+        <template x-if="!keySet">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full text-xs font-medium">
+            <span class="w-2 h-2 bg-amber-500 rounded-full"></span>
+            Not configured — AI features disabled
+          </span>
+        </template>
+      </div>
+
+      <!-- API Key input -->
+      <div>
+        <label class="block text-xs font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">OpenRouter API Key</label>
+        <input type="password" x-model="apiKey"
+          :placeholder="keySet ? 'Enter new key to replace existing' : 'sk-or-v1-...'"
+          class="input w-full font-mono text-sm">
+      </div>
+
+      <!-- Model selector -->
+      <div>
+        <label class="block text-xs font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">Model</label>
+        <select x-model="model" class="input w-full text-sm">
+          <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku (fast, cheap)</option>
+          <option value="anthropic/claude-sonnet-4">Claude Sonnet 4 (balanced)</option>
+          <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (fast)</option>
+          <option value="openai/gpt-4o-mini">GPT-4o Mini (budget)</option>
+          <option value="openai/gpt-4o">GPT-4o (premium)</option>
+        </select>
+      </div>
+
+      <!-- Save button -->
+      <div class="flex items-center gap-3">
+        <button @click="save()"
+          :disabled="saving"
+          class="brand-gradient text-white px-6 py-2.5 rounded-full font-bold shadow-lg btn-hover-effect transition-all flex items-center gap-2">
+          <i data-lucide="save" class="w-4 h-4"></i>
+          <span x-text="saving ? 'Saving...' : 'Save AI Settings'"></span>
+        </button>
+        <span x-show="saved" x-transition class="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Saved!</span>
+        <span x-show="error" x-transition class="text-sm text-red-500 font-medium" x-text="error"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- API Keys Card -->
   <div class="card p-8" x-data="apiKeyManager()">
     <div class="flex items-start gap-6">
@@ -394,6 +460,61 @@
     const headers = { ...extra };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return headers;
+  }
+
+  function aiSettings() {
+    return {
+      apiKey: '',
+      model: 'anthropic/claude-3.5-haiku',
+      keySet: false,
+      keyHint: '',
+      loaded: false,
+      saving: false,
+      saved: false,
+      error: '',
+
+      async init() {
+        try {
+          const res = await fetch('/api/settings/', { headers: getAuthHeaders() });
+          if (res.ok) {
+            const data = await res.json();
+            this.keySet = data.openrouter_api_key_set;
+            this.keyHint = data.openrouter_api_key_hint;
+            this.model = data.llm_model || 'anthropic/claude-3.5-haiku';
+          }
+        } catch (e) { /* ignore */ }
+        this.loaded = true;
+      },
+
+      async save() {
+        this.saving = true;
+        this.saved = false;
+        this.error = '';
+        const body = { llm_model: this.model };
+        if (this.apiKey.trim()) body.openrouter_api_key = this.apiKey.trim();
+        try {
+          const res = await fetch('/api/settings/', {
+            method: 'PATCH',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(body),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            this.keySet = data.openrouter_api_key_set;
+            this.keyHint = data.openrouter_api_key_hint;
+            this.model = data.llm_model;
+            this.apiKey = '';
+            this.saved = true;
+            setTimeout(() => this.saved = false, 3000);
+          } else {
+            this.error = 'Failed to save';
+          }
+        } catch (e) {
+          this.error = 'Network error';
+        }
+        this.saving = false;
+      },
+    };
   }
 
   function apiKeyManager() {

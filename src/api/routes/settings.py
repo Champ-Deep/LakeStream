@@ -13,6 +13,8 @@ class SettingsUpdate(BaseModel):
     webhook_url: str | None = None
     webhook_auto_send: bool | None = None
     webhook_include_metadata: bool | None = None
+    openrouter_api_key: str | None = None
+    llm_model: str | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -21,6 +23,9 @@ class SettingsResponse(BaseModel):
     webhook_url: str
     webhook_auto_send: bool
     webhook_include_metadata: bool
+    openrouter_api_key_set: bool  # True if key is configured (never expose full key)
+    openrouter_api_key_hint: str  # Last 8 chars for identification
+    llm_model: str
 
 
 async def _get_org_id(request: Request, pool) -> str | None:
@@ -38,7 +43,8 @@ async def get_settings(request: Request):
     org_id = await _get_org_id(request, pool)
 
     row = await pool.fetchrow(
-        "SELECT proxy_url, webhook_url, webhook_auto_send, webhook_include_metadata "
+        "SELECT proxy_url, webhook_url, webhook_auto_send, webhook_include_metadata, "
+        "openrouter_api_key, llm_model "
         "FROM organizations WHERE id = $1",
         org_id,
     )
@@ -46,15 +52,20 @@ async def get_settings(request: Request):
         return SettingsResponse(
             proxy_url="", proxy_enabled=False,
             webhook_url="", webhook_auto_send=False, webhook_include_metadata=False,
+            openrouter_api_key_set=False, openrouter_api_key_hint="", llm_model="anthropic/claude-3.5-haiku",
         )
 
     proxy_url = row["proxy_url"] or ""
+    api_key = row["openrouter_api_key"] or ""
     return SettingsResponse(
         proxy_url=proxy_url,
         proxy_enabled=bool(proxy_url),
         webhook_url=row["webhook_url"] or "",
         webhook_auto_send=row["webhook_auto_send"] or False,
         webhook_include_metadata=row["webhook_include_metadata"] or False,
+        openrouter_api_key_set=bool(api_key),
+        openrouter_api_key_hint=f"****{api_key[-8:]}" if len(api_key) > 8 else "",
+        llm_model=row["llm_model"] or "anthropic/claude-3.5-haiku",
     )
 
 
@@ -74,6 +85,8 @@ async def update_settings(request: Request, body: SettingsUpdate):
         ("webhook_url", body.webhook_url),
         ("webhook_auto_send", body.webhook_auto_send),
         ("webhook_include_metadata", body.webhook_include_metadata),
+        ("openrouter_api_key", body.openrouter_api_key),
+        ("llm_model", body.llm_model),
     ]:
         if value is not None:
             sets.append(f"{field} = ${idx}")

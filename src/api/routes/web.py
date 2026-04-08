@@ -90,7 +90,20 @@ async def login_submit(
     request.session["is_admin"] = user.is_admin
     request.session["full_name"] = user.full_name or user.email
 
-    return RedirectResponse(url="/", status_code=302)
+    from src.config.settings import get_settings
+    from src.services.auth import create_access_token
+
+    cfg = get_settings()
+    token = create_access_token(user.id, user.org_id, user.role, is_admin=user.is_admin)
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(
+        "access_token",
+        token,
+        httponly=False,  # must be JS-readable so getAuthHeaders() can build Bearer header
+        samesite="lax",
+        max_age=cfg.access_token_expire_hours * 3600,
+    )
+    return response
 
 
 @router.get("/signup", response_class=HTMLResponse)
@@ -167,14 +180,29 @@ async def signup_submit(
     request.session["is_admin"] = user.is_admin
     request.session["full_name"] = user.full_name or user.email
 
-    return RedirectResponse(url="/", status_code=302)
+    from src.config.settings import get_settings
+    from src.services.auth import create_access_token
+
+    cfg = get_settings()
+    token = create_access_token(user.id, user.org_id, user.role, is_admin=user.is_admin)
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(
+        "access_token",
+        token,
+        httponly=False,
+        samesite="lax",
+        max_age=cfg.access_token_expire_hours * 3600,
+    )
+    return response
 
 
 @router.get("/logout")
 async def logout(request: Request):
-    """Log out and clear session."""
+    """Log out and clear session + JWT cookie."""
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=302)
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie("access_token", path="/")
+    return response
 
 
 # =============================================================================

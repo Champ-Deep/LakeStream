@@ -1,6 +1,6 @@
 """Tests for LinkedIn Sales Navigator server-side scraper."""
 
-from src.services.linkedin_scraper import _split_name, SELECTORS
+from src.services.linkedin_scraper import SELECTORS, _split_name
 
 
 class TestSplitName:
