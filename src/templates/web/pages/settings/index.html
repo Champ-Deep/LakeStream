@@ -135,13 +135,22 @@
       <!-- Model selector -->
       <div>
         <label class="block text-xs font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">Model</label>
-        <select x-model="model" class="input w-full text-sm">
-          <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku (fast, cheap)</option>
-          <option value="anthropic/claude-sonnet-4">Claude Sonnet 4 (balanced)</option>
-          <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (fast)</option>
-          <option value="openai/gpt-4o-mini">GPT-4o Mini (budget)</option>
-          <option value="openai/gpt-4o">GPT-4o (premium)</option>
-        </select>
+        <input type="text" x-model="model" list="model-suggestions"
+          class="input w-full text-sm font-mono"
+          placeholder="e.g. anthropic/claude-sonnet-4-5">
+        <datalist id="model-suggestions">
+          <option value="anthropic/claude-opus-4-5">Claude Opus 4.5 (most capable)</option>
+          <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (balanced)</option>
+          <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (fast, cheap)</option>
+          <option value="google/gemini-2.5-pro-preview">Gemini 2.5 Pro Preview</option>
+          <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+          <option value="openai/gpt-4.1">GPT-4.1</option>
+          <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
+          <option value="openai/o4-mini">o4-mini (reasoning)</option>
+          <option value="deepseek/deepseek-r1">DeepSeek R1 (free tier)</option>
+          <option value="meta-llama/llama-4-maverick">Llama 4 Maverick (free tier)</option>
+        </datalist>
+        <p class="text-xs text-slate-400 mt-1">Type any <a href="https://openrouter.ai/models" target="_blank" class="underline hover:text-brand-red">OpenRouter model ID</a> — suggestions shown above are not exhaustive.</p>
       </div>
 
       <!-- Save button -->
@@ -574,10 +583,11 @@
       },
 
       copyNewKey() {
-        const input = document.getElementById('new-api-key');
-        navigator.clipboard.writeText(input.value);
-        this.copied = true;
-        setTimeout(() => this.copied = false, 3000);
+        const text = document.getElementById('new-api-key').value;
+        const onSuccess = () => { this.copied = true; setTimeout(() => this.copied = false, 3000); };
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).then(onSuccess).catch(() => { _fallbackCopy(text); onSuccess(); });
+        } else { _fallbackCopy(text); onSuccess(); }
       }
     }
   }
@@ -622,17 +632,23 @@
     }
   }
 
+  function _fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  }
+
   function copyToClipboard(inputId, button) {
-    const input = document.getElementById(inputId);
-    navigator.clipboard.writeText(input.value).then(() => {
+    const text = document.getElementById(inputId).value;
+    const onSuccess = () => {
       const icon = button.querySelector('i');
       icon.setAttribute('data-lucide', 'check');
       lucide.createIcons();
-      setTimeout(() => {
-        icon.setAttribute('data-lucide', 'copy');
-        lucide.createIcons();
-      }, 2000);
-    });
+      setTimeout(() => { icon.setAttribute('data-lucide', 'copy'); lucide.createIcons(); }, 2000);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => { _fallbackCopy(text); onSuccess(); });
+    } else { _fallbackCopy(text); onSuccess(); }
   }
 
   function webhookSettings() {
