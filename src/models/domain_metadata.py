@@ -10,4 +10,6 @@ class DomainMetadata(BaseModel):
     last_scraped_at: datetime | None = None
     success_rate: float | None = None
     avg_cost_usd: float | None = None
+    total_scrapes: int = 0
+    successful_scrapes: int = 0
     notes: str | None = None

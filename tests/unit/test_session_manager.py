@@ -1,12 +1,12 @@
 """Tests for AuthenticatedSessionManager."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from src.services.session_manager import (
-    AuthenticatedSessionManager,
     _USER_AGENTS,
     _VIEWPORTS,
+    AuthenticatedSessionManager,
     random_delay,
 )
 

@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     mail_engine_from_address: str = "LakeStream <notifications@lakeb2b.com>"
     mail_engine_enabled: bool = False
 
+    # OpenRouter LLM extraction (AI-powered structured extraction)
+    openrouter_api_key: str = ""  # Empty = AI extraction disabled
+    llm_extraction_model: str = "anthropic/claude-3.5-haiku"
+    llm_extraction_max_tokens: int = 4096
+
     # Playwright session-based scraping
     playwright_session_ttl_seconds: int = 3600  # Session expiration (1 hour)
     playwright_headless: bool = True  # False for debugging

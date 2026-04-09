@@ -232,6 +232,7 @@ class EscalationService:
             domain,
             last_successful_strategy=result.tier_used.value if success else None,
             block_count_increment=1 if result.blocked else 0,
+            success=success,
         )
         log.info(
             "escalation_result",

@@ -239,15 +239,16 @@ async def extract_structured(request: Request):
 
     # Prompt-only mode: freeform LLM extraction (no schema needed)
     if mode == "prompt" or (prompt and not schema_data):
-        from src.config.settings import get_settings
-        from src.services.llm_extractor import LLMExtractor, _strip_html_to_text
+        from src.services.llm_extractor import LLMExtractor, _strip_html_to_text, get_openrouter_config
 
-        settings = get_settings()
-        if not settings.openrouter_api_key:
-            return {"success": False, "error": "AI extraction disabled (OPENROUTER_API_KEY not set)"}
+        org_id = getattr(request.state, "org_id", None)
+        try:
+            await get_openrouter_config(org_id)
+        except ValueError:
+            return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
 
         text = _strip_html_to_text(fetch_result.html)
-        llm = LLMExtractor()
+        llm = LLMExtractor(org_id=org_id)
         data = await llm.extract_freeform(text, prompt or instructions)
         return {"success": True, "data": data, "mode": "prompt", "url": url}
 
@@ -278,15 +279,15 @@ async def extract_structured(request: Request):
 
     # AI extraction (mode=ai, or auto fallback)
     if result is None and mode in ("ai", "auto"):
-        from src.config.settings import get_settings
+        from src.services.llm_extractor import LLMExtractor, get_openrouter_config
 
-        settings = get_settings()
-        if not settings.openrouter_api_key:
-            return {"success": False, "error": "AI extraction disabled (OPENROUTER_API_KEY not set)"}
+        org_id = getattr(request.state, "org_id", None)
+        try:
+            await get_openrouter_config(org_id)
+        except ValueError:
+            return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
 
-        from src.services.llm_extractor import LLMExtractor
-
-        llm = LLMExtractor()
+        llm = LLMExtractor(org_id=org_id)
         result = await llm.extract_from_html(fetch_result.html, schema, instructions)
         result.url = url
         mode_used = "ai"
@@ -315,7 +316,7 @@ async def browse_with_agent(request: Request):
     The agent can navigate, click buttons, fill forms, paginate, and extract data
     across multiple pages. Requires OPENROUTER_API_KEY to be set.
     """
-    from src.config.settings import get_settings
+    from src.services.llm_extractor import get_openrouter_config
 
     body = await request.json()
     task = body.get("task", "").strip()
@@ -325,14 +326,16 @@ async def browse_with_agent(request: Request):
     if not task:
         return {"success": False, "error": "task is required"}
 
-    settings = get_settings()
-    if not settings.openrouter_api_key:
-        return {"success": False, "error": "AI browser disabled (OPENROUTER_API_KEY not set)"}
+    org_id = getattr(request.state, "org_id", None)
+    try:
+        await get_openrouter_config(org_id)
+    except ValueError:
+        return {"success": False, "error": "AI browser disabled — configure an API key in Settings → AI Extraction"}
 
     from src.services.browser_agent import run_browser_task
 
     try:
-        return await run_browser_task(task, start_url=start_url, max_steps=max_steps)
+        return await run_browser_task(task, start_url=start_url, max_steps=max_steps, org_id=org_id)
     except Exception as e:
         logger.error("browser_agent_failed", task=task[:100], error=str(e))
         return {"success": False, "error": f"Browser agent failed: {e}"}

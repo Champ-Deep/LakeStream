@@ -16,26 +16,38 @@ async def upsert_domain_metadata(
     *,
     last_successful_strategy: str | None = None,
     block_count_increment: int = 0,
-    success_rate: float | None = None,
+    success: bool | None = None,
 ) -> None:
+    success_inc = 1 if success else 0
+    scrape_inc = 1 if success is not None else 0  # Only count when success is explicitly passed
+
     await pool.execute(
         """
         INSERT INTO domain_metadata (
             domain, last_successful_strategy, block_count,
-            last_scraped_at, success_rate
+            last_scraped_at, total_scrapes, successful_scrapes, success_rate
         )
-        VALUES ($1, $2, $3, NOW(), $4)
+        VALUES ($1, $2, $3, NOW(), $4, $5,
+                CASE WHEN $4 > 0 THEN $5::float / $4 ELSE NULL END)
         ON CONFLICT (domain) DO UPDATE SET
             last_successful_strategy = COALESCE($2, domain_metadata.last_successful_strategy),
             block_count = domain_metadata.block_count + $3,
             last_scraped_at = NOW(),
-            success_rate = COALESCE($4, domain_metadata.success_rate),
+            total_scrapes = domain_metadata.total_scrapes + $4,
+            successful_scrapes = domain_metadata.successful_scrapes + $5,
+            success_rate = CASE
+                WHEN (domain_metadata.total_scrapes + $4) > 0
+                THEN (domain_metadata.successful_scrapes + $5)::float
+                     / (domain_metadata.total_scrapes + $4)
+                ELSE domain_metadata.success_rate
+            END,
             updated_at = NOW()
         """,
         domain,
         last_successful_strategy,
         block_count_increment,
-        success_rate,
+        scrape_inc,
+        success_inc,
     )
 
 

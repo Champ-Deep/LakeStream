@@ -795,7 +795,14 @@ def main():
             transport = sys.argv[idx + 1]
 
     if transport == "http":
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=8001)
+        import uvicorn
+
+        port = 8001
+        if "--port" in sys.argv:
+            idx = sys.argv.index("--port")
+            if idx + 1 < len(sys.argv):
+                port = int(sys.argv[idx + 1])
+        uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=port)
     else:
         mcp.run(transport="stdio")
 

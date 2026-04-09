@@ -349,10 +349,32 @@ document.addEventListener('alpine:init', () => {
 
     copyTranscript() {
       if (!this.result?.transcript_text) return;
-      navigator.clipboard.writeText(this.result.transcript_text).then(() => {
+      const text = this.result.transcript_text;
+      const onSuccess = () => {
         this.copied = true;
         setTimeout(() => this.copied = false, 2000);
-      });
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+          // Fallback for non-secure contexts or permission denied
+          this._fallbackCopy(text);
+          onSuccess();
+        });
+      } else {
+        this._fallbackCopy(text);
+        onSuccess();
+      }
+    },
+
+    _fallbackCopy(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
     },
 
     downloadTxt() {
@@ -430,10 +452,31 @@ document.addEventListener('alpine:init', () => {
     },
 
     copyTranscript(t) {
-      navigator.clipboard.writeText(t.transcript_text).then(() => {
+      const text = t.transcript_text;
+      const onSuccess = () => {
         this.copied = t.id;
         setTimeout(() => this.copied = null, 2000);
-      });
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+          this._fallbackCopy(text);
+          onSuccess();
+        });
+      } else {
+        this._fallbackCopy(text);
+        onSuccess();
+      }
+    },
+
+    _fallbackCopy(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
     },
 
     downloadTxt(t) {

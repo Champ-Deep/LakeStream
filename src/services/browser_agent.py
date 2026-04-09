@@ -20,6 +20,7 @@ async def run_browser_task(
     task: str,
     start_url: str | None = None,
     max_steps: int = 20,
+    org_id: str | None = None,
 ) -> dict:
     """Run an autonomous browser agent for a web task.
 
@@ -41,9 +42,18 @@ async def run_browser_task(
             error: str | None,
         }
     """
-    from src.config.settings import get_settings
+    from src.services.llm_extractor import get_openrouter_config
 
-    settings = get_settings()
+    try:
+        api_key, model_name = await get_openrouter_config(org_id)
+    except ValueError as e:
+        return {
+            "success": False,
+            "result": "",
+            "steps_taken": 0,
+            "urls_visited": [],
+            "error": str(e),
+        }
 
     try:
         from browser_use import Agent
@@ -62,8 +72,8 @@ async def run_browser_task(
 
     llm = ChatOpenAI(
         base_url="https://openrouter.ai/api/v1",
-        api_key=settings.openrouter_api_key,
-        model_name=settings.llm_extraction_model,
+        api_key=api_key,
+        model_name=model_name,
         temperature=0.0,
     )
 

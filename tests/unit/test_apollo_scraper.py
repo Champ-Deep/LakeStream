@@ -1,6 +1,6 @@
 """Tests for Apollo.io server-side scraper."""
 
-from src.services.apollo_scraper import _split_name, SELECTORS
+from src.services.apollo_scraper import SELECTORS, _split_name
 
 
 class TestSplitName:
