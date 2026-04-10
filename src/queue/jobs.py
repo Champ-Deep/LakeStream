@@ -71,6 +71,14 @@ async def process_scrape_job(
         )
         classified_urls = await mapper.execute(max_pages=max_pages)
 
+        # Heartbeat after domain mapping
+        await job_queries.update_heartbeat(pool, uid)
+
+        # Check for cancellation before starting content extraction
+        if await job_queries.is_job_cancelled(pool, uid):
+            log.info("job_cancelled_before_extraction", job_id=job_id, domain=domain)
+            return {"job_id": job_id, "domain": domain, "data_extracted": 0, "cancelled": True}
+
         total_data = 0
         errors: list[str] = []
 
@@ -222,6 +230,7 @@ async def process_linkedin_scrape_job(
     try:
         from src.services.linkedin_scraper import LinkedInScraper
 
+        await job_queries.update_heartbeat(pool, uid)
         scraper = LinkedInScraper()
         contacts = await scraper.scrape_search_results(
             search_url, max_pages=max_pages, cookies=session_cookies,
@@ -305,6 +314,7 @@ async def process_apollo_scrape_job(
     try:
         from src.services.apollo_scraper import ApolloScraper
 
+        await job_queries.update_heartbeat(pool, uid)
         scraper = ApolloScraper()
         contacts = await scraper.scrape_people_search(
             search_url, max_pages=max_pages, cookies=session_cookies,

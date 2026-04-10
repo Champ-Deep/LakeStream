@@ -54,8 +54,8 @@
     <form
       hx-get="/results"
       hx-target="#results-container"
-      hx-swap="innerHTML"
-      hx-select="#results-container > *"
+      hx-swap="outerHTML"
+      hx-select="#results-container"
       hx-push-url="true"
       hx-trigger="change from:find select"
       class="flex flex-wrap items-center gap-4"
@@ -70,8 +70,8 @@
           class="w-full px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
           hx-get="/results"
           hx-target="#results-container"
-          hx-swap="innerHTML"
-          hx-select="#results-container > *"
+          hx-swap="outerHTML"
+          hx-select="#results-container"
           hx-push-url="true"
           hx-trigger="keyup changed delay:400ms"
           hx-include="[name='domain'], [name='data_type']"
@@ -193,7 +193,7 @@
     <div class="text-sm text-stone-400 text-center mt-4">
       Showing {{ results | length }} of {{ total }} results
       {% if results | length < total %}
-        &middot; <a href="?page={{ page + 1 }}{% if filter_domain %}&domain={{ filter_domain }}{% endif %}{% if filter_data_type %}&data_type={{ filter_data_type }}{% endif %}" class="text-accent hover:underline">Load more</a>
+        &middot; <a href="?page={{ page + 1 }}{% if filter_domain %}&domain={{ filter_domain }}{% endif %}{% if filter_data_type %}&data_type={{ filter_data_type }}{% endif %}{% if filter_q %}&q={{ filter_q }}{% endif %}" class="text-accent hover:underline">Load more</a>
       {% endif %}
     </div>
 

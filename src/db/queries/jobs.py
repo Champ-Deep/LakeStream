@@ -117,6 +117,25 @@ async def recover_stale_jobs(pool: asyncpg.Pool, stale_minutes: int = 10) -> int
     return int(result.split()[-1])
 
 
+async def cancel_job(pool: asyncpg.Pool, job_id: UUID) -> bool:
+    """Cancel a pending or running job. Returns True if the job was cancelled."""
+    result = await pool.execute(
+        "UPDATE scrape_jobs SET status = 'cancelled', "
+        "error_message = 'Cancelled by user', completed_at = NOW() "
+        "WHERE id = $1 AND status IN ('pending', 'running')",
+        job_id,
+    )
+    return result != "UPDATE 0"
+
+
+async def is_job_cancelled(pool: asyncpg.Pool, job_id: UUID) -> bool:
+    """Check if a job has been cancelled (used for cooperative cancellation)."""
+    status = await pool.fetchval(
+        "SELECT status FROM scrape_jobs WHERE id = $1", job_id
+    )
+    return status == "cancelled"
+
+
 async def list_jobs(
     pool: asyncpg.Pool,
     *,

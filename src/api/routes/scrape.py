@@ -57,6 +57,22 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
     )
 
 
+@router.post("/cancel/{job_id}")
+async def cancel_scrape_job(job_id: UUID, request: Request):
+    """Cancel a pending or running scrape job."""
+    pool = await get_pool()
+    cancelled = await job_queries.cancel_job(pool, job_id)
+    if not cancelled:
+        job = await job_queries.get_job(pool, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job in '{job.status}' state",
+        )
+    return {"success": True, "job_id": str(job_id), "status": "cancelled"}
+
+
 @router.get("/status/{job_id}", response_model=ScrapeStatusResponse)
 async def get_status(job_id: UUID) -> ScrapeStatusResponse:
     pool = await get_pool()

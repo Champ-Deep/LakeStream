@@ -466,6 +466,70 @@ async def job_status_partial(request: Request, job_id: UUID):
     )
 
 
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(request: Request, job_id: UUID):
+    """Cancel a pending or running job (web UI action)."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import cancel_job as do_cancel
+
+    pool = await get_pool()
+    await do_cancel(pool, job_id)
+    return RedirectResponse(url=f"/jobs/{job_id}", status_code=302)
+
+
+@router.post("/jobs/{job_id}/retry")
+async def retry_job(request: Request, job_id: UUID):
+    """Retry a failed/cancelled job by creating a new job with the same params."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import create_job, get_job
+    from src.models.job import ScrapeJobInput
+
+    pool = await get_pool()
+    original = await get_job(pool, job_id)
+
+    if not original:
+        return RedirectResponse(url="/jobs", status_code=302)
+
+    # Create new job with same parameters
+    job_input = ScrapeJobInput(domain=original.domain, template_id=original.template_id)
+    org_id = original.org_id
+    user_id_str = request.session.get("user_id")
+    user_id = UUID(user_id_str) if user_id_str else original.user_id
+
+    new_job = await create_job(pool, job_input, org_id=org_id, user_id=user_id)
+
+    # Enqueue to arq worker
+    try:
+        from arq.connections import RedisSettings
+        from arq.connections import create_pool as create_arq_pool
+
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        redis = await create_arq_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis.enqueue_job(
+            "process_scrape_job",
+            job_id=str(new_job.id),
+            domain=original.domain,
+            template_id=original.template_id or "auto",
+            max_pages=100,
+            data_types=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"],
+        )
+        await redis.aclose()
+    except Exception:
+        pass  # Job created but enqueue failed — will stay in PENDING
+
+    return RedirectResponse(url=f"/jobs/{new_job.id}", status_code=302)
+
+
 # =============================================================================
 # RESULTS PAGES
 # =============================================================================

@@ -31,6 +31,13 @@
     </div>
     <p class="text-xs text-error mt-2 text-center">Failed</p>
   </div>
+  {% elif job.status == 'cancelled' %}
+  <div class="mb-6">
+    <div class="h-2 bg-stone-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div class="h-full bg-stone-400 dark:bg-gray-500" style="width: 100%;"></div>
+    </div>
+    <p class="text-xs text-stone-500 dark:text-gray-400 mt-2 text-center">Cancelled by user</p>
+  </div>
   {% endif %}
 
   <!-- Stats Grid -->
