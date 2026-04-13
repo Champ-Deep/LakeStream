@@ -63,6 +63,17 @@ class ContentWorker(BaseWorker):
             self.log.info("no_urls_to_process")
             return []
 
+        # Enforce max pages limit to prevent runaway jobs
+        from src.config.settings import get_settings
+        max_pages = get_settings().max_scrape_pages_per_job
+        if len(classified_urls) > max_pages:
+            self.log.warning(
+                "url_list_capped",
+                original=len(classified_urls),
+                capped_to=max_pages,
+            )
+            classified_urls = classified_urls[:max_pages]
+
         self.log.info(
             "content_worker_start",
             url_count=len(classified_urls),
@@ -72,6 +83,7 @@ class ContentWorker(BaseWorker):
         all_results: list[ScrapedData] = []
         fetched_urls: set[str] = set()
         article_urls_from_blogs: list[str] = []
+        urls_processed = 0
 
         # --- Phase 1: Process all classified URLs ---
         for entry in classified_urls:
@@ -81,6 +93,16 @@ class ContentWorker(BaseWorker):
             if url in fetched_urls:
                 continue
             fetched_urls.add(url)
+
+            # Cooperative cancellation check
+            if urls_processed % 5 == 0 and self._pool:
+                try:
+                    from src.db.queries.jobs import is_job_cancelled
+                    if await is_job_cancelled(self._pool, UUID(self.job_id)):
+                        self.log.info("job_cancelled_by_user", urls_processed=urls_processed)
+                        return all_results
+                except Exception:
+                    pass
 
             try:
                 records = await self._process_url(url, data_type, data_types)
@@ -94,6 +116,15 @@ class ContentWorker(BaseWorker):
                 all_results.extend(records)
             except Exception as e:
                 self.log.error("process_url_error", url=url, error=str(e))
+
+            # Heartbeat every 5 URLs to signal the job is still active
+            urls_processed += 1
+            if urls_processed % 5 == 0 and self._pool:
+                try:
+                    from src.db.queries.jobs import update_heartbeat
+                    await update_heartbeat(self._pool, UUID(self.job_id))
+                except Exception:
+                    pass  # Non-critical — don't fail job over heartbeat
 
         # --- Phase 2: Fetch article URLs discovered from blog landing pages ---
         if "article" in data_types and article_urls_from_blogs:
@@ -110,6 +141,15 @@ class ContentWorker(BaseWorker):
                     all_results.extend(records)
                 except Exception as e:
                     self.log.error("article_process_error", url=url, error=str(e))
+
+                # Heartbeat every 5 URLs in phase 2 as well
+                urls_processed += 1
+                if urls_processed % 5 == 0 and self._pool:
+                    try:
+                        from src.db.queries.jobs import update_heartbeat
+                        await update_heartbeat(self._pool, UUID(self.job_id))
+                    except Exception:
+                        pass
 
         self.log.info("content_worker_done", total_records=len(all_results))
         return all_results

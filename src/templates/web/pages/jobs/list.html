@@ -61,6 +61,13 @@
       >
         Pending
       </a>
+      <a
+        href="/jobs?status=cancelled{% if filter_q %}&q={{ filter_q }}{% endif %}"
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors
+          {% if filter_status == 'cancelled' %}bg-stone-500 text-white{% else %}text-slate dark:text-gray-400 hover:bg-stone-100 dark:hover:bg-gray-800{% endif %}"
+      >
+        Cancelled
+      </a>
 
       <div class="ml-auto">
         <form action="/jobs" method="GET" class="flex items-center gap-2">

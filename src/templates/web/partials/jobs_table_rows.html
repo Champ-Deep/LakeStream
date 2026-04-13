@@ -10,6 +10,7 @@
       {% if job.status == 'running' %}bg-running/10 text-running
       {% elif job.status == 'completed' %}bg-success/10 text-success
       {% elif job.status == 'failed' %}bg-error/10 text-error
+      {% elif job.status == 'cancelled' %}bg-stone-200 dark:bg-gray-700 text-stone-600 dark:text-gray-400
       {% else %}bg-warning/10 text-warning{% endif %}
     ">
       {% if job.status == 'running' %}
@@ -32,6 +33,18 @@
       <a href="/download/job/{{ job.id }}" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors text-slate-400 hover:text-navy dark:hover:text-gray-100" title="Download CSV">
         <i data-lucide="download" class="w-4 h-4"></i>
       </a>
+      {% elif job.status in ('running', 'pending') %}
+      <form method="POST" action="/jobs/{{ job.id }}/cancel" class="inline">
+        <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-slate-400 hover:text-red-500" title="Cancel job">
+          <i data-lucide="square" class="w-4 h-4"></i>
+        </button>
+      </form>
+      {% elif job.status in ('failed', 'cancelled') %}
+      <form method="POST" action="/jobs/{{ job.id }}/retry" class="inline">
+        <button type="submit" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors text-slate-400 hover:text-accent" title="Retry job">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        </button>
+      </form>
       {% endif %}
       <a href="/jobs/{{ job.id }}" class="text-accent hover:underline text-sm">
         View

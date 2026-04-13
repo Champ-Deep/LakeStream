@@ -10,6 +10,7 @@ class JobStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class ScrapeJobInput(BaseModel):
@@ -57,6 +58,7 @@ class ScrapeJob(BaseModel):
     cost_usd: float = 0.0
     duration_ms: int | None = None
     pages_scraped: int = 0
+    retry_count: int = 0
     created_at: datetime
     completed_at: datetime | None = None
 

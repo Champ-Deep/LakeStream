@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime
 from uuid import UUID
@@ -7,6 +8,10 @@ import structlog
 from src.db.queries import jobs as job_queries
 from src.models.job import JobStatus
 from src.models.scraped_data import DataType
+
+# Emit a heartbeat every N seconds of active processing so the stale-job
+# cron (10-minute threshold) never kills a legitimately busy job.
+_HEARTBEAT_INTERVAL_S = 90
 
 log = structlog.get_logger()
 
@@ -52,6 +57,25 @@ async def process_scrape_job(
         )
         proxy_url = proxy_row or ""
 
+    # Background heartbeat task: bumps last_activity_at every _HEARTBEAT_INTERVAL_S
+    # so the stale-job cron never falsely kills a legitimately long-running job.
+    heartbeat_stop = asyncio.Event()
+
+    async def _heartbeat_loop() -> None:
+        while not heartbeat_stop.is_set():
+            try:
+                await job_queries.update_heartbeat(pool, uid)
+            except Exception:
+                pass  # Best-effort; don't let heartbeat failure kill the job
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(heartbeat_stop.wait()), timeout=_HEARTBEAT_INTERVAL_S
+                )
+            except asyncio.TimeoutError:
+                pass  # Normal — keep looping
+
+    heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
     try:
         # 2. Domain mapping — discover and classify URLs
         from src.workers.domain_mapper import DomainMapperWorker
@@ -70,6 +94,14 @@ async def process_scrape_job(
             org_id=org_id
         )
         classified_urls = await mapper.execute(max_pages=max_pages)
+
+        # Heartbeat after domain mapping
+        await job_queries.update_heartbeat(pool, uid)
+
+        # Check for cancellation before starting content extraction
+        if await job_queries.is_job_cancelled(pool, uid):
+            log.info("job_cancelled_before_extraction", job_id=job_id, domain=domain)
+            return {"job_id": job_id, "domain": domain, "data_extracted": 0, "cancelled": True}
 
         total_data = 0
         errors: list[str] = []
@@ -198,6 +230,15 @@ async def process_scrape_job(
         log.error("job_failed", job_id=job_id, domain=domain, error=str(e))
         raise
 
+    finally:
+        # Always stop the heartbeat task when the job finishes (success or failure)
+        heartbeat_stop.set()
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
 
 async def process_linkedin_scrape_job(
     ctx: dict,
@@ -222,6 +263,7 @@ async def process_linkedin_scrape_job(
     try:
         from src.services.linkedin_scraper import LinkedInScraper
 
+        await job_queries.update_heartbeat(pool, uid)
         scraper = LinkedInScraper()
         contacts = await scraper.scrape_search_results(
             search_url, max_pages=max_pages, cookies=session_cookies,
@@ -305,6 +347,7 @@ async def process_apollo_scrape_job(
     try:
         from src.services.apollo_scraper import ApolloScraper
 
+        await job_queries.update_heartbeat(pool, uid)
         scraper = ApolloScraper()
         contacts = await scraper.scrape_people_search(
             search_url, max_pages=max_pages, cookies=session_cookies,

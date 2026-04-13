@@ -16,24 +16,28 @@ log = structlog.get_logger()
 
 
 async def startup(ctx: dict) -> None:
+    from src.config.settings import get_settings
     from src.db.pool import get_pool
     from src.db.queries.jobs import recover_stale_jobs
     from src.utils.logger import setup_logging
 
     setup_logging()
+    settings = get_settings()
     ctx["pool"] = await get_pool()
+    ctx["redis_url"] = settings.redis_url
 
     # Recover jobs stuck from previous worker crashes / container restarts
-    count = await recover_stale_jobs(ctx["pool"])
+    count = await recover_stale_jobs(ctx["pool"], redis_url=settings.redis_url)
     if count:
-        log.info("recovered_stale_jobs", count=count)
+        log.info("recovered_stale_jobs_on_startup", count=count)
 
 
 async def recover_stale_jobs_cron(ctx: dict) -> None:
-    """Cron: mark jobs stuck at 'running' as failed."""
+    """Cron: recover stale 'running' jobs — restart if retries remain, fail permanently otherwise."""
     from src.db.queries.jobs import recover_stale_jobs
 
-    count = await recover_stale_jobs(ctx["pool"])
+    redis_url = ctx.get("redis_url")
+    count = await recover_stale_jobs(ctx["pool"], redis_url=redis_url)
     if count:
         log.info("recovered_stale_jobs_cron", count=count)
 
