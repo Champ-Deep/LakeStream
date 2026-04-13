@@ -440,9 +440,16 @@ async def job_status_page(request: Request, job_id: UUID):
 
     data_count = await count_scraped_data_by_job(pool, job_id)
 
+    elapsed_ms = None
+    if job and job.status == "running" and job.created_at:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        created = job.created_at if job.created_at.tzinfo else job.created_at.replace(tzinfo=timezone.utc)
+        elapsed_ms = int((now - created).total_seconds() * 1000)
+
     return get_templates().TemplateResponse(
         "pages/jobs/status.html",
-        {"request": request, "active_page": "jobs", "job": job, "data_count": data_count},
+        {"request": request, "active_page": "jobs", "job": job, "data_count": data_count, "elapsed_ms": elapsed_ms},
     )
 
 
@@ -460,9 +467,17 @@ async def job_status_partial(request: Request, job_id: UUID):
     job = await get_job(pool, job_id)
     data_count = await count_scraped_data_by_job(pool, job_id) if job else 0
 
+    # Compute live elapsed time for running jobs so the template can display it
+    elapsed_ms = None
+    if job and job.status == "running" and job.created_at:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        created = job.created_at if job.created_at.tzinfo else job.created_at.replace(tzinfo=timezone.utc)
+        elapsed_ms = int((now - created).total_seconds() * 1000)
+
     return get_templates().TemplateResponse(
         "partials/job_status.html",
-        {"request": request, "job": job, "data_count": data_count},
+        {"request": request, "job": job, "data_count": data_count, "elapsed_ms": elapsed_ms},
     )
 
 
