@@ -192,6 +192,24 @@ class ContentWorker(BaseWorker):
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
 
+        # raw_only mode: save page content only, skip all specialized extraction
+        if self.raw_only:
+            if records:
+                await self.export_results(records)
+            return [
+                ScrapedData(
+                    id=UUID(int=0),
+                    job_id=UUID(self.job_id),
+                    domain=self.domain,
+                    data_type=rec["data_type"],
+                    url=rec.get("url", url),
+                    title=rec.get("title"),
+                    metadata=rec.get("metadata", {}),
+                    scraped_at=datetime.now(UTC),
+                )
+                for rec in records
+            ]
+
         # --- Specialized extraction based on URL classification ---
 
         if data_type == DataType.BLOG_URL and "blog_url" in data_types:

@@ -30,6 +30,7 @@ class BaseWorker(ABC):
         tier_override: str | None = None,
         proxy_url: str | None = None,
         region: str | None = None,
+        raw_only: bool = False,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -40,6 +41,7 @@ class BaseWorker(ABC):
         self._tier_override = ScrapingTier(tier_override) if tier_override else None
         self.proxy_url = proxy_url or ""
         self.region = region
+        self.raw_only = raw_only
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
