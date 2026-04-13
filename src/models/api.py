@@ -21,6 +21,7 @@ class ScrapeStatusResponse(BaseModel):
     completed_at: str | None = None
     error_message: str | None = None
     data_count: int = 0
+    retry_count: int = 0
 
 
 class HealthResponse(BaseModel):

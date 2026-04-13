@@ -1,8 +1,13 @@
+import asyncio
+import json
 from uuid import UUID
 
+import asyncpg
 import structlog
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
+from src.config.settings import get_settings
 from src.db.pool import get_pool
 from src.db.queries import jobs as job_queries
 from src.db.queries import scraped_data as data_queries
@@ -95,7 +100,96 @@ async def get_status(job_id: UUID) -> ScrapeStatusResponse:
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
         error_message=job.error_message,
         data_count=data_count,
+        retry_count=getattr(job, "retry_count", 0),
     )
+
+
+@router.get("/stream/{job_id}")
+async def stream_job_status(job_id: UUID) -> StreamingResponse:
+    """Server-Sent Events stream for real-time job status updates.
+
+    Listens to the Postgres 'job_status_changed' channel (fired by a DB trigger
+    on scrape_jobs UPDATE) and pushes status change events to the caller.
+
+    Connect via:
+        const es = new EventSource(`/scrape/stream/${jobId}`);
+        es.onmessage = (e) => console.log(JSON.parse(e.data));
+
+    Events emitted:
+        - 'status': job status changed (pending/running/completed/failed)
+        - 'heartbeat': keep-alive ping every 20 s
+        - 'done': terminal state reached — caller should close the EventSource
+    """
+    pool = await get_pool()
+    settings = get_settings()
+
+    # Confirm the job exists before opening the stream
+    job = await job_queries.get_job(pool, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    async def event_generator():
+        # Send the current state immediately so the client isn't waiting blind
+        current = await job_queries.get_job(pool, job_id)
+        if current:
+            yield _sse_event("status", {
+                "job_id": str(current.id),
+                "status": current.status,
+                "retry_count": getattr(current, "retry_count", 0),
+                "error_message": current.error_message,
+                "pages_scraped": current.pages_scraped,
+            })
+            if current.status in ("completed", "failed"):
+                yield _sse_event("done", {"job_id": str(job_id)})
+                return
+
+        # Open a dedicated connection for LISTEN (pool connections can't LISTEN)
+        listen_conn: asyncpg.Connection = await asyncpg.connect(settings.database_url)
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def _on_notify(conn, pid, channel, payload):
+            try:
+                data = json.loads(payload)
+                if str(data.get("job_id")) == str(job_id):
+                    queue.put_nowait(data)
+            except Exception:
+                pass
+
+        await listen_conn.add_listener("job_status_changed", _on_notify)
+
+        try:
+            while True:
+                try:
+                    event_data = await asyncio.wait_for(queue.get(), timeout=20.0)
+                    yield _sse_event("status", event_data)
+
+                    # Close the stream when we hit a terminal state
+                    if event_data.get("status") in ("completed", "failed"):
+                        yield _sse_event("done", {"job_id": str(job_id)})
+                        break
+
+                except asyncio.TimeoutError:
+                    # Keep-alive heartbeat — prevents proxies from closing the connection
+                    yield _sse_event("heartbeat", {"ts": asyncio.get_event_loop().time()})
+        finally:
+            try:
+                await listen_conn.remove_listener("job_status_changed", _on_notify)
+                await listen_conn.close()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+def _sse_event(event_type: str, data: dict) -> str:
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
 
 @router.post("/linkedin", status_code=202, response_model=ExecuteScrapeResponse)
