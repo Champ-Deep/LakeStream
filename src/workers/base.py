@@ -9,6 +9,7 @@ import structlog
 
 from src.models.scraped_data import ScrapedData
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
 from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
