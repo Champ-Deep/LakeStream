@@ -70,8 +70,38 @@ class CrawlerService:
             combined = list(sitemap_urls) + crawled
             return combined[:limit]
 
-        # 2. Fallback to native recursive crawl
-        return await self._crawl_recursive(base_url, limit)
+        # 2. Fallback to native recursive crawl (uses cheap HTTP fetcher)
+        urls = await self._crawl_recursive(base_url, limit)
+
+        # 3. If cheap fetcher found nothing, try a single Playwright fetch of the
+        #    homepage to extract links. Many sites block simple HTTP but allow
+        #    headless browsers. This one extra fetch can unblock the entire job.
+        if not urls:
+            self.log.info("crawl_escalating_to_playwright", base_url=base_url)
+            try:
+                pw_fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+                pw_result = await pw_fetcher.fetch(base_url, FetchOptions(timeout=30000))
+                if pw_result.html and not pw_result.blocked:
+                    parser = HTMLParser(pw_result.html)
+                    parsed_base = urlparse(base_url)
+                    base_domain = parsed_base.netloc.lower().replace("www.", "")
+
+                    for a in parser.css("a[href]"):
+                        href = a.attributes.get("href")
+                        if not href:
+                            continue
+                        full_url = normalize_url(href, base_url)
+                        link_domain = urlparse(full_url).netloc.lower().replace("www.", "")
+                        if link_domain == base_domain and is_valid_scrape_url(full_url):
+                            urls.append(full_url)
+                            if len(urls) >= limit:
+                                break
+
+                    self.log.info("playwright_fallback_urls", count=len(urls))
+            except Exception as e:
+                self.log.warning("playwright_fallback_failed", error=str(e))
+
+        return urls
 
     async def _try_sitemap(self, base_url: str) -> set[str]:
         """Attempt to find and parse sitemaps, including sitemap indexes."""

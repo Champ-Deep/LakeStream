@@ -54,6 +54,15 @@ class DomainMapperWorker:
         await self._heartbeat()
         self.log.info("urls_discovered", count=len(raw_urls))
 
+        # Fallback: always include the homepage.
+        # The crawler uses a cheap HTTP fetcher that gets blocked by many sites,
+        # but ContentWorker uses Playwright with escalation and can often still
+        # extract content from the homepage directly.
+        homepage = ensure_scheme(self.domain)
+        if homepage not in raw_urls:
+            raw_urls.insert(0, homepage)
+            self.log.info("homepage_fallback_added", url=homepage)
+
         # 2. Validate and deduplicate (keep duplicates from traversal if max_pages is None)
         valid_urls = validate_and_deduplicate(raw_urls)
         self.log.info("urls_validated", count=len(valid_urls))
