@@ -1,13 +1,14 @@
 import asyncio
+import time
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse
+from uuid import UUID
 
 import httpx
 import structlog
 
 from src.models.scraped_data import ScrapedData
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
-from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
 from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
@@ -16,6 +17,9 @@ _RETRY_ON = (
     ConnectionError, TimeoutError, OSError,
     httpx.TimeoutException, asyncio.TimeoutError,
 )
+
+# Minimum seconds between heartbeat DB writes to avoid excessive queries
+_HEARTBEAT_INTERVAL = 30
 
 
 class BaseWorker(ABC):
@@ -46,6 +50,7 @@ class BaseWorker(ABC):
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
         self._rate_limiter = RateLimiter()
+        self._last_heartbeat: float = 0.0
 
         if pool is not None:
             from src.services.escalation import EscalationService
@@ -53,6 +58,26 @@ class BaseWorker(ABC):
             self._escalation = EscalationService(pool)
         else:
             self._escalation = None  # type: ignore[assignment]
+
+    async def heartbeat(self) -> None:
+        """Update heartbeat timestamp to signal the job is still active.
+
+        Throttled to at most once per _HEARTBEAT_INTERVAL seconds to avoid
+        excessive DB writes.
+        """
+        now = time.time()
+        if now - self._last_heartbeat < _HEARTBEAT_INTERVAL:
+            return
+        self._last_heartbeat = now
+
+        if self._pool is None:
+            return
+        try:
+            from src.db.queries.jobs import update_heartbeat
+
+            await update_heartbeat(self._pool, UUID(self.job_id))
+        except Exception as e:
+            self.log.warning("heartbeat_failed", error=str(e))
 
     @abstractmethod
     async def execute(self, urls: list[str]) -> list[ScrapedData]: ...
@@ -63,6 +88,9 @@ class BaseWorker(ABC):
         If tier_override is set, uses that tier directly (no escalation).
         Injects org-level proxy_url into options when available.
         """
+        # Signal that the job is still alive before each fetch
+        await self.heartbeat()
+
         options = options or FetchOptions()
         if self.proxy_url:
             options.proxy_url = self.proxy_url
@@ -163,8 +191,6 @@ class BaseWorker(ABC):
             current_tier = next_tier
 
     async def export_results(self, data: list[dict]) -> int:
-        from uuid import UUID
-
         from src.db.pool import get_pool
         from src.db.queries.scraped_data import batch_insert_scraped_data
 

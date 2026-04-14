@@ -237,8 +237,8 @@ class AuthenticatedSessionManager:
         # Wait for network idle
         try:
             await page.wait_for_load_state("networkidle", timeout=10000)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("session_networkidle_timeout", url=url, error=str(e))
 
         # Human-like: small scroll to trigger lazy loading
         if wait_after:
@@ -271,7 +271,7 @@ class AuthenticatedSessionManager:
                 el = await page.query_selector(sel)
                 if el and await el.is_visible():
                     return False
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("auth_check_selector_error", domain=domain, selector=sel, error=str(e))
 
         return True

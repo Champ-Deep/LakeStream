@@ -46,22 +46,30 @@ class LakeLightPandaFetcher:
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.connect_over_cdp(settings.lightpanda_ws_url)
-                context = await browser.new_context()
-                page = await context.new_page()
+                context = None
+                page = None
 
-                timeout = options.timeout or settings.playwright_timeout_ms
-                response = await page.goto(url, timeout=timeout)
-
-                # Shorter networkidle wait — LightPanda is fast
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=5000)
-                except Exception:
-                    pass  # Non-fatal
+                    context = await browser.new_context()
+                    page = await context.new_page()
 
-                html = await page.content()
-                status_code = response.status if response else 0
+                    timeout = options.timeout if options.timeout is not None else settings.playwright_timeout_ms
+                    response = await page.goto(url, timeout=timeout)
 
-                await browser.close()
+                    # Shorter networkidle wait — LightPanda is fast
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception as e:
+                        log.debug("lightpanda_networkidle_timeout", url=url, error=str(e))
+
+                    html = await page.content()
+                    status_code = response.status if response else 0
+                finally:
+                    if page:
+                        await page.close()
+                    if context:
+                        await context.close()
+                    await browser.close()
 
             http_error = status_code in (403, 429, 503)
             tiny_html = len(html) < settings.min_html_bytes
