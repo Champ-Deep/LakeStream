@@ -73,52 +73,59 @@ class LakePlaywrightFetcher:
             # Launch Playwright browser
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=settings.playwright_headless)
+                context = None
+                page = None
 
-                # Create context (with session if exists)
-                if storage_state:
-                    context = await browser.new_context(storage_state=storage_state)
-                    log.debug("playwright_session_loaded", domain=domain, url=url)
-                else:
-                    context = await browser.new_context()
-                    log.debug("playwright_fresh_context", domain=domain, url=url)
-
-                # Navigate to URL
-                page = await context.new_page()
-                timeout = options.timeout or settings.playwright_timeout_ms
-                response = await page.goto(url, timeout=timeout)
-
-                # Wait for network idle (ensures JS content is loaded for SPAs)
                 try:
-                    await page.wait_for_load_state('networkidle', timeout=10000)
-                except Exception as e:
-                    log.debug(
-                        "playwright_networkidle_timeout",
-                        url=url, domain=domain, error=str(e),
+                    # Create context (with session if exists)
+                    if storage_state:
+                        context = await browser.new_context(storage_state=storage_state)
+                        log.debug("playwright_session_loaded", domain=domain, url=url)
+                    else:
+                        context = await browser.new_context()
+                        log.debug("playwright_fresh_context", domain=domain, url=url)
+
+                    # Navigate to URL
+                    page = await context.new_page()
+                    timeout = options.timeout if options.timeout is not None else settings.playwright_timeout_ms
+                    response = await page.goto(url, timeout=timeout)
+
+                    # Wait for network idle (ensures JS content is loaded for SPAs)
+                    try:
+                        await page.wait_for_load_state('networkidle', timeout=10000)
+                    except Exception as e:
+                        log.debug(
+                            "playwright_networkidle_timeout",
+                            url=url, domain=domain, error=str(e),
+                        )
+
+                    # Extract content
+                    html = await page.content()
+                    status_code = response.status if response else 0
+
+                    # Save updated session (cookies may have changed)
+                    updated_storage_state = await context.storage_state()
+                    await self._save_session(
+                        redis_client,
+                        domain,
+                        updated_storage_state,
+                        {
+                            "last_used_at": time.time(),
+                            "request_count": (session_data.get("request_count", 0) + 1)
+                            if session_data
+                            else 1,
+                            "authenticated": (
+                                session_data.get("authenticated", False)
+                                if session_data else False
+                            ),
+                        },
                     )
-
-                # Extract content
-                html = await page.content()
-                status_code = response.status if response else 0
-
-                # Save updated session (cookies may have changed)
-                updated_storage_state = await context.storage_state()
-                await self._save_session(
-                    redis_client,
-                    domain,
-                    updated_storage_state,
-                    {
-                        "last_used_at": time.time(),
-                        "request_count": (session_data.get("request_count", 0) + 1)
-                        if session_data
-                        else 1,
-                        "authenticated": (
-                            session_data.get("authenticated", False)
-                            if session_data else False
-                        ),
-                    },
-                )
-
-                await browser.close()
+                finally:
+                    if page:
+                        await page.close()
+                    if context:
+                        await context.close()
+                    await browser.close()
 
             # Block detection
             http_error = status_code in (403, 429, 503)

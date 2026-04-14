@@ -13,6 +13,11 @@ from src.models.scraped_data import DataType
 # cron (10-minute threshold) never kills a legitimately busy job.
 _HEARTBEAT_INTERVAL_S = 90
 
+# Hard timeout for the entire scrape job (90 minutes).
+# The arq worker has a 2-hour timeout; this fires first so we can
+# mark the job as FAILED with a clear message instead of an opaque arq kill.
+JOB_HARD_TIMEOUT_SECONDS = 5400
+
 log = structlog.get_logger()
 
 
@@ -77,15 +82,17 @@ async def process_scrape_job(
     heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
     try:
-        # 2. Domain mapping — discover and classify URLs
-        from src.workers.domain_mapper import DomainMapperWorker
+        # Hard timeout: prevent jobs from hanging forever
+        async with asyncio.timeout(JOB_HARD_TIMEOUT_SECONDS):
+            # 2. Domain mapping — discover and classify URLs
+            from src.workers.domain_mapper import DomainMapperWorker
 
-        # Common kwargs for BaseWorker subclasses
-        worker_kwargs = dict(
-            domain=domain, job_id=job_id, pool=pool,
-            org_id=org_id, user_id=user_id, tier_override=tier,
-            proxy_url=proxy_url, region=region,
-        )
+            # Common kwargs for BaseWorker subclasses
+            worker_kwargs = dict(
+                domain=domain, job_id=job_id, pool=pool,
+                org_id=org_id, user_id=user_id, tier_override=tier,
+                proxy_url=proxy_url, region=region,
+            )
 
         # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
         mapper = DomainMapperWorker(
@@ -96,127 +103,144 @@ async def process_scrape_job(
         )
         classified_urls = await mapper.execute(max_pages=max_pages)
 
-        # Heartbeat after domain mapping
-        await job_queries.update_heartbeat(pool, uid)
+            # Heartbeat after domain mapping
+            await job_queries.update_heartbeat(pool, uid)
 
-        # Check for cancellation before starting content extraction
-        if await job_queries.is_job_cancelled(pool, uid):
-            log.info("job_cancelled_before_extraction", job_id=job_id, domain=domain)
-            return {"job_id": job_id, "domain": domain, "data_extracted": 0, "cancelled": True}
+            # Check for cancellation before starting content extraction
+            if await job_queries.is_job_cancelled(pool, uid):
+                log.info("job_cancelled_before_extraction", job_id=job_id, domain=domain)
+                return {"job_id": job_id, "domain": domain, "data_extracted": 0, "cancelled": True}
 
-        total_data = 0
-        errors: list[str] = []
+            total_data = 0
+            errors: list[str] = []
 
-        # 3. Unified ContentWorker: fetch each URL once, extract all data types
-        from src.workers.content_worker import ContentWorker
+            # 3. Unified ContentWorker: fetch each URL once, extract all data types
+            from src.workers.content_worker import ContentWorker
 
-        try:
-            # Ensure homepage is in URL list for tech_stack detection
-            if "tech_stack" in data_types:
-                homepage = f"https://{domain}"
-                has_homepage = any(
-                    c["url"].rstrip("/") == homepage.rstrip("/")
-                    for c in classified_urls
-                )
-                if not has_homepage:
-                    classified_urls.insert(
-                        0, {"url": homepage, "data_type": "page", "confidence": 1.0},
+            try:
+                # Ensure homepage is in URL list for tech_stack detection
+                if "tech_stack" in data_types:
+                    homepage = f"https://{domain}"
+                    has_homepage = any(
+                        c["url"].rstrip("/") == homepage.rstrip("/")
+                        for c in classified_urls
                     )
+                    if not has_homepage:
+                        classified_urls.insert(
+                            0, {"url": homepage, "data_type": "page", "confidence": 1.0},
+                        )
 
-            content_worker = ContentWorker(**worker_kwargs, raw_only=raw_only)
-            results = await content_worker.execute(classified_urls, data_types)
-            total_data = len(results)
-        except Exception as e:
-            log.error("content_worker_error", error=str(e))
-            errors.append(f"content_worker: {str(e)}")
+                content_worker = ContentWorker(**worker_kwargs, raw_only=raw_only)
+                results = await content_worker.execute(classified_urls, data_types)
+                total_data = len(results)
+            except Exception as e:
+                log.error("content_worker_error", error=str(e))
+                errors.append(f"content_worker: {str(e)}")
 
-        # 4. Mark job complete or failed based on data extracted
-        duration_ms = int((time.time() - start_time) * 1000)
-        from src.db.queries.domains import get_domain_metadata
+            # 4. Mark job complete or failed based on data extracted
+            duration_ms = int((time.time() - start_time) * 1000)
+            from src.db.queries.domains import get_domain_metadata
 
-        domain_meta = await get_domain_metadata(pool, domain)
-        strategy = domain_meta.last_successful_strategy if domain_meta else None
+            domain_meta = await get_domain_metadata(pool, domain)
+            strategy = domain_meta.last_successful_strategy if domain_meta else None
 
-        # Check if any data was extracted before marking as completed
-        if total_data == 0:
-            # No data extracted - mark as FAILED
-            if len(errors) > 0:
-                # Errors occurred during scraping
-                error_msg = f"No data extracted. Errors: {'; '.join(errors)}"
-                await job_queries.update_job_status(
-                    pool,
-                    uid,
-                    JobStatus.FAILED,
-                    error_message=error_msg,
-                    duration_ms=duration_ms,
-                    pages_scraped=0,
-                    completed_at=datetime.now(),
-                )
-                log.warning("job_failed_no_data", job_id=job_id, domain=domain, errors=errors)
+            # Check if any data was extracted before marking as completed
+            if total_data == 0:
+                # No data extracted - mark as FAILED
+                if len(errors) > 0:
+                    error_msg = f"No data extracted. Errors: {'; '.join(errors)}"
+                    await job_queries.update_job_status(
+                        pool,
+                        uid,
+                        JobStatus.FAILED,
+                        error_message=error_msg,
+                        duration_ms=duration_ms,
+                        pages_scraped=0,
+                        completed_at=datetime.now(),
+                    )
+                    log.warning("job_failed_no_data", job_id=job_id, domain=domain, errors=errors)
+                else:
+                    error_msg = "No data extracted from domain (empty site or blocked)"
+                    await job_queries.update_job_status(
+                        pool,
+                        uid,
+                        JobStatus.FAILED,
+                        error_message=error_msg,
+                        duration_ms=duration_ms,
+                        pages_scraped=0,
+                        completed_at=datetime.now(),
+                    )
+                    log.warning("job_failed_empty_site", job_id=job_id, domain=domain)
             else:
-                # No errors but no data - domain might be empty or blocked
-                error_msg = "No data extracted from domain (empty site or blocked)"
+                # Data extracted successfully - mark as COMPLETED
                 await job_queries.update_job_status(
                     pool,
                     uid,
-                    JobStatus.FAILED,
-                    error_message=error_msg,
+                    JobStatus.COMPLETED,
+                    strategy_used=strategy,
                     duration_ms=duration_ms,
-                    pages_scraped=0,
+                    pages_scraped=total_data,
                     completed_at=datetime.now(),
                 )
-                log.warning("job_failed_empty_site", job_id=job_id, domain=domain)
-        else:
-            # Data extracted successfully - mark as COMPLETED
-            await job_queries.update_job_status(
-                pool,
-                uid,
-                JobStatus.COMPLETED,
-                strategy_used=strategy,
+
+                # 5. Check if domain is tracked and has webhook configured
+                from src.db.queries.tracked_domains import get_tracked_domain
+                from src.services.webhook_export import export_job_to_webhook
+
+                tracked = await get_tracked_domain(pool, domain)
+                if tracked and tracked.webhook_url:
+                    try:
+                        success = await export_job_to_webhook(uid, tracked.webhook_url)
+                        log.info(
+                            "webhook_export_completed",
+                            job_id=job_id,
+                            domain=domain,
+                            webhook_url=tracked.webhook_url,
+                            success=success,
+                        )
+                    except Exception as e:
+                        log.error(
+                            "webhook_export_error",
+                            job_id=job_id,
+                            domain=domain,
+                            webhook_url=tracked.webhook_url,
+                            error=str(e),
+                        )
+
+            log.info(
+                "job_completed",
+                job_id=job_id,
+                domain=domain,
+                data_extracted=total_data,
                 duration_ms=duration_ms,
-                pages_scraped=total_data,
-                completed_at=datetime.now(),
             )
 
-            # 5. Check if domain is tracked and has webhook configured (only for successful jobs)
-            from src.db.queries.tracked_domains import get_tracked_domain
-            from src.services.webhook_export import export_job_to_webhook
+            return {
+                "job_id": job_id,
+                "domain": domain,
+                "data_extracted": total_data,
+                "duration_ms": duration_ms,
+                "errors": errors,
+            }
 
-            tracked = await get_tracked_domain(pool, domain)
-            if tracked and tracked.webhook_url:
-                try:
-                    success = await export_job_to_webhook(uid, tracked.webhook_url)
-                    log.info(
-                        "webhook_export_completed",
-                        job_id=job_id,
-                        domain=domain,
-                        webhook_url=tracked.webhook_url,
-                        success=success,
-                    )
-                except Exception as e:
-                    # Don't fail job if webhook export fails
-                    log.error(
-                        "webhook_export_error",
-                        job_id=job_id,
-                        domain=domain,
-                        webhook_url=tracked.webhook_url,
-                        error=str(e),
-                    )
-
-        log.info(
-            "job_completed",
-            job_id=job_id,
-            domain=domain,
-            data_extracted=total_data,
+    except TimeoutError:
+        duration_ms = int((time.time() - start_time) * 1000)
+        error_msg = f"Job timed out after {JOB_HARD_TIMEOUT_SECONDS // 60} minutes"
+        await job_queries.update_job_status(
+            pool,
+            uid,
+            JobStatus.FAILED,
+            error_message=error_msg,
             duration_ms=duration_ms,
+            completed_at=datetime.now(),
         )
-
+        log.error("job_hard_timeout", job_id=job_id, domain=domain, duration_ms=duration_ms)
         return {
             "job_id": job_id,
             "domain": domain,
-            "data_extracted": total_data,
+            "data_extracted": 0,
             "duration_ms": duration_ms,
-            "errors": errors,
+            "errors": [error_msg],
         }
 
     except Exception as e:
@@ -227,6 +251,7 @@ async def process_scrape_job(
             JobStatus.FAILED,
             error_message=str(e),
             duration_ms=duration_ms,
+            completed_at=datetime.now(),
         )
         log.error("job_failed", job_id=job_id, domain=domain, error=str(e))
         raise

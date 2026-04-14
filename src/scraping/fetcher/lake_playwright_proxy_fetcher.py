@@ -114,71 +114,78 @@ class LakePlaywrightProxyFetcher:
                     browser = await p.chromium.launch(
                         headless=settings.playwright_headless,
                     )
-
-                    context_options: dict[str, Any] = {}
-                    if storage_state:
-                        context_options["storage_state"] = storage_state
-                    if proxy_config:
-                        context_options["proxy"] = proxy_config
-
-                    # Apply region headers to context
-                    if region_headers:
-                        context_options.setdefault(
-                            "extra_http_headers", {},
-                        ).update(region_headers)
-
-                    context = await browser.new_context(**context_options)
-
-                    used_proxy_url = (
-                        proxy_config.get("server") if proxy_config else None
-                    )
-                    log.debug(
-                        "playwright_proxy_attempt",
-                        domain=domain,
-                        url=url,
-                        proxy=used_proxy_url,
-                        region=region,
-                        attempt=i + 1,
-                        total_providers=len(proxy_configs),
-                    )
-
-                    page = await context.new_page()
-                    timeout = options.timeout or settings.playwright_timeout_ms
-                    response = await page.goto(url, timeout=timeout)
+                    context = None
+                    page = None
 
                     try:
-                        await page.wait_for_load_state(
-                            "networkidle", timeout=10000,
+                        context_options: dict[str, Any] = {}
+                        if storage_state:
+                            context_options["storage_state"] = storage_state
+                        if proxy_config:
+                            context_options["proxy"] = proxy_config
+
+                        # Apply region headers to context
+                        if region_headers:
+                            context_options.setdefault(
+                                "extra_http_headers", {},
+                            ).update(region_headers)
+
+                        context = await browser.new_context(**context_options)
+
+                        used_proxy_url = (
+                            proxy_config.get("server") if proxy_config else None
                         )
-                    except Exception:
-                        pass  # Non-fatal
+                        log.debug(
+                            "playwright_proxy_attempt",
+                            domain=domain,
+                            url=url,
+                            proxy=used_proxy_url,
+                            region=region,
+                            attempt=i + 1,
+                            total_providers=len(proxy_configs),
+                        )
 
-                    html = await page.content()
-                    status_code = response.status if response else 0
+                        page = await context.new_page()
+                        timeout = options.timeout if options.timeout is not None else settings.playwright_timeout_ms
+                        response = await page.goto(url, timeout=timeout)
 
-                    # Save updated session
-                    updated_storage_state = await context.storage_state()
-                    await self._save_session(
-                        redis_client,
-                        domain,
-                        updated_storage_state,
-                        {
-                            "last_used_at": time.time(),
-                            "request_count": (
-                                session_data.get("request_count", 0) + 1
+                        try:
+                            await page.wait_for_load_state(
+                                "networkidle", timeout=10000,
                             )
-                            if session_data
-                            else 1,
-                            "authenticated": (
-                                session_data.get("authenticated", False)
-                                if session_data
-                                else False
-                            ),
-                            "proxy_used": used_proxy_url,
-                        },
-                    )
+                        except Exception as e:
+                            log.debug("playwright_proxy_networkidle_timeout", url=url, error=str(e))
 
-                    await browser.close()
+                        html = await page.content()
+                        status_code = response.status if response else 0
+
+                        # Save updated session
+                        updated_storage_state = await context.storage_state()
+                        await self._save_session(
+                            redis_client,
+                            domain,
+                            updated_storage_state,
+                            {
+                                "last_used_at": time.time(),
+                                "request_count": (
+                                    session_data.get("request_count", 0) + 1
+                                )
+                                if session_data
+                                else 1,
+                                "authenticated": (
+                                    session_data.get("authenticated", False)
+                                    if session_data
+                                    else False
+                                ),
+                                "proxy_used": used_proxy_url,
+                            },
+                        )
+                    finally:
+                        if page:
+                            await page.close()
+                        if context:
+                            await context.close()
+                        await browser.close()
 
                 # Block detection
                 http_error = status_code in (403, 429, 503)

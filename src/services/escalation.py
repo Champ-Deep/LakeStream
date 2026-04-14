@@ -72,11 +72,11 @@ class EscalationService:
         """
         settings = get_settings()
         key = f"playwright_session:{domain}"
+        client = None
 
         try:
             client = await redis.from_url(settings.redis_url)
             data = await client.get(key)
-            await client.aclose()
 
             if data:
                 session = json.loads(data)
@@ -94,6 +94,9 @@ class EscalationService:
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
+        finally:
+            if client:
+                await client.aclose()
 
         return None
 
