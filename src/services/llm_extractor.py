@@ -391,7 +391,7 @@ class LLMExtractor:
         model: str,
     ) -> dict:
         """Make an LLM call with retry, JSON cleaning, and model fallback."""
-        client = self._get_client(api_key if self._org_id else None)
+        client = self._get_client(api_key)
         settings = get_settings()
 
         models_to_try = [model]
