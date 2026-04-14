@@ -69,7 +69,7 @@ async def batch_insert_scraped_data(
                 rec["data_type"],
                 rec.get("url"),
                 rec.get("title"),
-                json.dumps(rec.get("metadata", {})),
+                json.dumps(rec.get("metadata", {}), default=str),
                 rec.get("org_id"),
                 rec.get("user_id"),
             )

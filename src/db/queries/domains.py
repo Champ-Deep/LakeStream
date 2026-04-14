@@ -27,18 +27,18 @@ async def upsert_domain_metadata(
             domain, last_successful_strategy, block_count,
             last_scraped_at, total_scrapes, successful_scrapes, success_rate
         )
-        VALUES ($1, $2, $3, NOW(), $4, $5,
+        VALUES ($1, $2, $3, NOW(), $4::int, $5::int,
                 CASE WHEN $4 > 0 THEN $5::float / $4 ELSE NULL END)
         ON CONFLICT (domain) DO UPDATE SET
             last_successful_strategy = COALESCE($2, domain_metadata.last_successful_strategy),
             block_count = domain_metadata.block_count + $3,
             last_scraped_at = NOW(),
-            total_scrapes = domain_metadata.total_scrapes + $4,
-            successful_scrapes = domain_metadata.successful_scrapes + $5,
+            total_scrapes = domain_metadata.total_scrapes + $4::int,
+            successful_scrapes = domain_metadata.successful_scrapes + $5::int,
             success_rate = CASE
-                WHEN (domain_metadata.total_scrapes + $4) > 0
-                THEN (domain_metadata.successful_scrapes + $5)::float
-                     / (domain_metadata.total_scrapes + $4)
+                WHEN (domain_metadata.total_scrapes + $4::int) > 0
+                THEN (domain_metadata.successful_scrapes + $5::int)::float
+                     / (domain_metadata.total_scrapes + $4::int)
                 ELSE domain_metadata.success_rate
             END,
             updated_at = NOW()
