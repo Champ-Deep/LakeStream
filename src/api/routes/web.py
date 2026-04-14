@@ -409,6 +409,156 @@ async def new_job_form(request: Request):
     return RedirectResponse(url="/", status_code=302)
 
 
+@router.get("/jobs/bulk", response_class=HTMLResponse)
+async def bulk_upload_form(request: Request):
+    """Bulk CSV upload page (admin only)."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    return get_templates().TemplateResponse(
+        "pages/jobs/bulk.html",
+        {
+            "request": request,
+            "active_page": "jobs",
+            "preview": None,
+            "error": None,
+            "enqueue_results": None,
+        },
+    )
+
+
+@router.post("/jobs/bulk", response_class=HTMLResponse)
+async def bulk_upload_preview(request: Request):
+    """Parse uploaded CSV and show preview of domains to scrape."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.services.bulk_upload import check_already_queued, parse_bulk_csv
+
+    form = await request.form()
+    csv_file = form.get("csv_file")
+    max_pages = int(form.get("max_pages", 100))
+    stagger_seconds = int(form.get("stagger_seconds", 30))
+
+    # Clamp values
+    max_pages = max(10, min(500, max_pages))
+    stagger_seconds = max(10, min(120, stagger_seconds))
+
+    if not csv_file or not hasattr(csv_file, "read"):
+        return get_templates().TemplateResponse(
+            "pages/jobs/bulk.html",
+            {
+                "request": request,
+                "active_page": "jobs",
+                "preview": None,
+                "error": "Please select a CSV file.",
+                "enqueue_results": None,
+            },
+        )
+
+    file_content = await csv_file.read()
+    result = parse_bulk_csv(file_content, filename=csv_file.filename or "")
+
+    if result.error and not result.valid:
+        return get_templates().TemplateResponse(
+            "pages/jobs/bulk.html",
+            {
+                "request": request,
+                "active_page": "jobs",
+                "preview": None,
+                "error": result.error,
+                "enqueue_results": None,
+            },
+        )
+
+    # Check for domains already queued
+    pool = await get_pool()
+    already_queued = await check_already_queued(
+        pool, [u.domain for u in result.valid]
+    )
+    if already_queued:
+        result.already_queued = list(already_queued)
+        result.valid = [u for u in result.valid if u.domain not in already_queued]
+
+    return get_templates().TemplateResponse(
+        "pages/jobs/bulk.html",
+        {
+            "request": request,
+            "active_page": "jobs",
+            "preview": result,
+            "error": result.error or None,
+            "enqueue_results": None,
+            "max_pages": max_pages,
+            "stagger_seconds": stagger_seconds,
+        },
+    )
+
+
+@router.post("/jobs/bulk/start")
+async def bulk_upload_start(request: Request):
+    """Enqueue all validated domains from the preview step."""
+    redirect = _require_admin(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.services.bulk_upload import STAGGER_DELAY_SECONDS, enqueue_bulk_jobs
+
+    form = await request.form()
+    domains_str = form.get("domains", "")
+    max_pages = int(form.get("max_pages", 100))
+    stagger_seconds = int(form.get("stagger_seconds", STAGGER_DELAY_SECONDS))
+
+    domains = [d.strip() for d in domains_str.split(",") if d.strip()]
+
+    if not domains:
+        return get_templates().TemplateResponse(
+            "pages/jobs/bulk.html",
+            {
+                "request": request,
+                "active_page": "jobs",
+                "preview": None,
+                "error": "No domains to enqueue.",
+                "enqueue_results": None,
+            },
+        )
+
+    pool = await get_pool()
+    org_id = UUID(request.session["org_id"])
+    user_id = UUID(request.session["user_id"])
+
+    # Override stagger delay if user chose a different value
+    import src.services.bulk_upload as bulk_mod
+    original_stagger = bulk_mod.STAGGER_DELAY_SECONDS
+    bulk_mod.STAGGER_DELAY_SECONDS = stagger_seconds
+
+    try:
+        results = await enqueue_bulk_jobs(
+            pool,
+            domains,
+            org_id=org_id,
+            user_id=user_id,
+            max_pages=max_pages,
+        )
+    finally:
+        bulk_mod.STAGGER_DELAY_SECONDS = original_stagger
+
+    return get_templates().TemplateResponse(
+        "pages/jobs/bulk.html",
+        {
+            "request": request,
+            "active_page": "jobs",
+            "preview": None,
+            "error": None,
+            "enqueue_results": results,
+            "stagger_seconds": stagger_seconds,
+        },
+    )
+
+
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
 async def job_status_page(request: Request, job_id: UUID):
     redirect = _require_login(request)

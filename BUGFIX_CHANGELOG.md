@@ -236,6 +236,47 @@ PostgreSQL's prepared statement couldn't resolve `$5` as either `integer` or `do
 
 ---
 
+## Feature #3: Bulk CSV Upload (Admin Only)
+
+**Files:** `src/services/bulk_upload.py` (NEW), `src/templates/web/pages/jobs/bulk.html` (NEW), `src/api/routes/web.py`, `src/templates/web/pages/jobs/list.html`
+
+**Feature:** Admin can upload a CSV file containing URLs and scrape them all in bulk without crashing the system.
+
+**Architecture (SOLID):**
+- **S**: `parse_bulk_csv()` only parses/validates. `enqueue_bulk_jobs()` only creates DB records + enqueues. Web route only handles HTTP.
+- **O**: Uses existing `ScrapeJobInput` + `create_job()` + arq enqueue — zero changes to scraping pipeline.
+- **L**: Each bulk job is a standard `ScrapeJob` — workers can't tell it came from CSV vs. dashboard.
+- **I**: Two-step UI: parse/preview (read-only) then confirm/enqueue (write).
+- **D**: Bulk service depends on `create_job` + arq pool abstractions, not Redis/Playwright internals.
+
+**User Flow:**
+1. Admin navigates to `/jobs/bulk` (button on Jobs page, admin-only)
+2. Uploads CSV file with URLs (drag-and-drop or file picker)
+3. System parses CSV: validates domains, deduplicates, checks already-queued
+4. Shows preview: N valid, M invalid, K duplicates, J already queued
+5. Admin clicks "Start Bulk Scrape"
+6. Jobs enqueued with staggered delays (30s default between each)
+7. Shows results with links to each job
+
+**Safety Guards:**
+- Max 100 URLs per upload
+- Max 5MB file size
+- Stagger delay: configurable 15s/30s/60s between jobs (arq `_defer_by`)
+- arq `max_jobs=10` enforces concurrency — excess jobs wait in Redis queue
+- Dedup: skips domains with pending/running jobs from last hour
+- Admin-only: `_require_admin()` gate on all 3 routes
+
+**CSV Format:**
+```
+url
+https://example.com
+www.another-site.com
+domain.org
+```
+Single column, header optional, protocols optional. Auto-detects `url`/`domain`/`website` column headers.
+
+---
+
 ## Files Changed
 
 | File | Changes |
@@ -252,5 +293,8 @@ PostgreSQL's prepared statement couldn't resolve `$5` as either `integer` or `do
 | `src/db/queries/domains.py` | Explicit ::int casts to fix parameter type inference |
 | `src/db/queries/scraped_data.py` | default=str safety net for json.dumps |
 | `src/db/queries/jobs.py` | ::int::text casts in recover_stale_jobs SQL |
-| `src/api/routes/web.py` | Dynamic type counts, deep JSONB search, relevance ranking, filter-aware CSV export |
+| `src/api/routes/web.py` | Dynamic type counts, deep JSONB search, relevance ranking, filter-aware CSV export, bulk upload routes |
 | `src/templates/web/pages/results/browse.html` | Dynamic dropdown with counts, new badge colors, results toolbar with export |
+| `src/services/bulk_upload.py` | **NEW** — CSV parsing, validation, dedup, staggered enqueue |
+| `src/templates/web/pages/jobs/bulk.html` | **NEW** — Bulk upload form, preview table, enqueue results |
+| `src/templates/web/pages/jobs/list.html` | Added "Bulk Upload" button for admin users |

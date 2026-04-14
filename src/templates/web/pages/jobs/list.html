@@ -11,15 +11,28 @@
       <h1 class="text-2xl font-semibold text-charcoal dark:text-gray-100">Jobs</h1>
       <p class="text-slate dark:text-gray-400 mt-1">View and manage your scraping jobs</p>
     </div>
-    <a
-      href="/jobs/new"
-      class="py-2.5 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors inline-flex items-center gap-2"
-    >
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-      </svg>
-      New Job
-    </a>
+    <div class="flex items-center gap-2">
+      {% if request.session.get('is_admin') %}
+      <a
+        href="/jobs/bulk"
+        class="py-2.5 px-4 bg-white dark:bg-gray-800 border border-stone-200 dark:border-gray-600 text-charcoal dark:text-gray-100 font-medium rounded-lg hover:bg-stone-50 dark:hover:bg-gray-700 transition-colors inline-flex items-center gap-2"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        Bulk Upload
+      </a>
+      {% endif %}
+      <a
+        href="/jobs/new"
+        class="py-2.5 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors inline-flex items-center gap-2"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Job
+      </a>
+    </div>
   </div>
 
   <!-- Filters -->

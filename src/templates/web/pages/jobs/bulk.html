@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Upload - LakeStream{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+  <!-- Back Link -->
+  <a href="/jobs" class="text-sm text-accent hover:underline inline-block">&larr; Back to Jobs</a>
+
+  <!-- Page Header -->
+  <div>
+    <h1 class="text-2xl font-semibold text-charcoal dark:text-gray-100">Bulk CSV Upload</h1>
+    <p class="text-slate dark:text-gray-400 mt-1">Upload a CSV file with URLs to scrape them all in sequence</p>
+  </div>
+
+  {% if error %}
+  <div class="bg-error/5 border border-error/20 rounded-xl p-4">
+    <p class="text-sm text-error">{{ error }}</p>
+  </div>
+  {% endif %}
+
+  {% if not preview %}
+  <!-- STEP 1: Upload Form -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6 space-y-6">
+
+    <form method="POST" action="/jobs/bulk" enctype="multipart/form-data" class="space-y-6">
+
+      <!-- File Upload -->
+      <div
+        x-data="{ dragging: false, fileName: '' }"
+        @dragover.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @drop.prevent="dragging = false; $refs.fileInput.files = $event.dataTransfer.files; fileName = $event.dataTransfer.files[0]?.name || ''"
+        :class="dragging ? 'border-accent bg-accent/5' : 'border-stone-300 dark:border-gray-600'"
+        class="border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer"
+        @click="$refs.fileInput.click()"
+      >
+        <input
+          type="file"
+          name="csv_file"
+          accept=".csv,.txt"
+          x-ref="fileInput"
+          @change="fileName = $event.target.files[0]?.name || ''"
+          class="hidden"
+          required
+        >
+
+        <div x-show="!fileName">
+          <svg class="w-10 h-10 text-stone-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p class="text-charcoal dark:text-gray-200 font-medium">Drop your CSV file here</p>
+          <p class="text-sm text-slate dark:text-gray-400 mt-1">or click to browse. Max 100 URLs, 5MB limit.</p>
+        </div>
+
+        <div x-show="fileName" x-cloak>
+          <svg class="w-10 h-10 text-green-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <p class="text-charcoal dark:text-gray-200 font-medium" x-text="fileName"></p>
+          <p class="text-sm text-slate dark:text-gray-400 mt-1">Click to change file</p>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-charcoal dark:text-gray-200 mb-1">Max Pages per Domain</label>
+          <input type="number" name="max_pages" value="100" min="10" max="500"
+            class="w-full px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200">
+          <p class="text-xs text-slate dark:text-gray-500 mt-1">10-500 pages per domain</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-charcoal dark:text-gray-200 mb-1">Stagger Delay</label>
+          <select name="stagger_seconds"
+            class="w-full px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200">
+            <option value="30" selected>30s between jobs (default)</option>
+            <option value="60">60s between jobs (safer)</option>
+            <option value="15">15s between jobs (faster)</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit"
+        class="w-full py-3 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors"
+      >
+        Parse &amp; Preview
+      </button>
+    </form>
+
+    <!-- CSV Format Help -->
+    <div class="border-t border-stone-200 dark:border-gray-700 pt-4">
+      <p class="text-sm font-medium text-charcoal dark:text-gray-200 mb-2">Expected CSV format</p>
+      <pre class="bg-stone-50 dark:bg-gray-800 rounded-lg p-3 text-xs text-slate dark:text-gray-400 overflow-x-auto">url
+https://example.com
+www.another-site.com
+domain.org</pre>
+      <p class="text-xs text-slate dark:text-gray-500 mt-2">Single column with one URL/domain per row. Header row is optional. Protocols (https://) are optional.</p>
+    </div>
+  </div>
+
+  {% else %}
+  <!-- STEP 2: Preview & Confirm -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6 space-y-4">
+
+    <!-- Summary -->
+    <div class="flex items-center gap-4 flex-wrap">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm font-medium">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        {{ preview.valid | length }} valid
+      </div>
+      {% if preview.invalid %}
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm font-medium">
+        {{ preview.invalid | length }} invalid
+      </div>
+      {% endif %}
+      {% if preview.duplicates_in_file > 0 %}
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-sm font-medium">
+        {{ preview.duplicates_in_file }} duplicates removed
+      </div>
+      {% endif %}
+      {% if preview.already_queued %}
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-sm font-medium">
+        {{ preview.already_queued | length }} already queued (skipped)
+      </div>
+      {% endif %}
+    </div>
+
+    {% if preview.valid %}
+    <!-- Valid URLs Table -->
+    <div class="border border-stone-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-stone-50 dark:bg-gray-800">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase">#</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase">Domain</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase">Start After</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100 dark:divide-gray-700">
+          {% for url_entry in preview.valid %}
+          <tr>
+            <td class="px-4 py-2 text-sm text-slate dark:text-gray-400">{{ loop.index }}</td>
+            <td class="px-4 py-2 text-sm text-charcoal dark:text-gray-200 font-mono">{{ url_entry.domain }}</td>
+            <td class="px-4 py-2 text-sm text-slate dark:text-gray-400">
+              {% set delay = (loop.index0) * stagger_seconds %}
+              {% if delay == 0 %}Immediately{% elif delay < 60 %}{{ delay }}s{% else %}{{ (delay // 60) }}m {{ delay % 60 }}s{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Confirm Form -->
+    <form method="POST" action="/jobs/bulk/start">
+      <input type="hidden" name="domains" value="{{ preview.valid | map(attribute='domain') | join(',') }}">
+      <input type="hidden" name="max_pages" value="{{ max_pages }}">
+      <input type="hidden" name="stagger_seconds" value="{{ stagger_seconds }}">
+
+      <div class="flex items-center gap-3 mt-4">
+        <button type="submit"
+          class="flex-1 py-3 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors"
+        >
+          Start Bulk Scrape ({{ preview.valid | length }} domains)
+        </button>
+        <a href="/jobs/bulk"
+          class="py-3 px-4 bg-white dark:bg-gray-800 border border-stone-200 dark:border-gray-600 text-charcoal dark:text-gray-100 font-medium rounded-lg hover:bg-stone-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          Cancel
+        </a>
+      </div>
+    </form>
+    {% endif %}
+
+    {% if preview.invalid %}
+    <!-- Invalid URLs -->
+    <details class="mt-4">
+      <summary class="text-sm text-slate dark:text-gray-400 cursor-pointer hover:text-charcoal dark:hover:text-gray-200">
+        Show {{ preview.invalid | length }} invalid entries
+      </summary>
+      <div class="mt-2 bg-red-50/50 dark:bg-red-900/10 rounded-lg p-3">
+        {% for entry in preview.invalid %}
+        <p class="text-xs text-red-600 dark:text-red-400 font-mono">{{ entry.raw }} — {{ entry.skip_reason }}</p>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
+  </div>
+  {% endif %}
+
+  {% if enqueue_results %}
+  <!-- STEP 3: Enqueue Results -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6 space-y-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-green-50 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+        <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      <div>
+        <h2 class="text-lg font-semibold text-charcoal dark:text-gray-100">Bulk Scrape Started</h2>
+        <p class="text-sm text-slate dark:text-gray-400">
+          {{ enqueue_results | selectattr('status', 'equalto', 'queued') | list | length }} jobs queued.
+          Jobs will start every {{ stagger_seconds }}s to avoid overloading the system.
+        </p>
+      </div>
+    </div>
+
+    <div class="border border-stone-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-stone-50 dark:bg-gray-800">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase">Domain</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate dark:text-gray-400 uppercase">Status</th>
+            <th class="px-4 py-2 text-right text-xs font-medium text-slate dark:text-gray-400 uppercase"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100 dark:divide-gray-700">
+          {% for r in enqueue_results %}
+          <tr>
+            <td class="px-4 py-2 text-sm text-charcoal dark:text-gray-200 font-mono">{{ r.domain }}</td>
+            <td class="px-4 py-2">
+              {% if r.status == 'queued' %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400">Queued</span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400">Error</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 text-right">
+              {% if r.job_id %}
+              <a href="/jobs/{{ r.job_id }}" class="text-sm text-accent hover:underline">View</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <a href="/jobs" class="inline-flex items-center gap-2 py-2.5 px-4 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors">
+      View All Jobs
+    </a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
