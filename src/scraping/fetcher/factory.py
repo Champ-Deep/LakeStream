@@ -1,8 +1,10 @@
 from src.models.scraping import ScrapingTier
+from src.scraping.fetcher.lake_lightpanda_fetcher import LakeLightPandaFetcher
 from src.scraping.fetcher.lake_playwright_fetcher import LakePlaywrightFetcher
 from src.scraping.fetcher.lake_playwright_proxy_fetcher import LakePlaywrightProxyFetcher
 
 _FETCHERS = {
+    ScrapingTier.LIGHTPANDA: LakeLightPandaFetcher,
     ScrapingTier.PLAYWRIGHT: LakePlaywrightFetcher,
     ScrapingTier.PLAYWRIGHT_PROXY: LakePlaywrightProxyFetcher,
 }

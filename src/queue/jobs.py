@@ -91,7 +91,8 @@ async def process_scrape_job(
         mapper = DomainMapperWorker(
             domain=domain,
             job_id=job_id,
-            org_id=org_id
+            org_id=org_id,
+            pool=pool,
         )
         classified_urls = await mapper.execute(max_pages=max_pages)
 
