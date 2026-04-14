@@ -135,6 +135,53 @@ timeout = options.timeout if options.timeout is not None else settings.playwrigh
 
 ---
 
+## Bug #8: Missing TemplateConfig Import in BaseWorker (CRITICAL)
+
+**File:** `src/workers/base.py`
+
+**Problem:** During the base.py rewrite, the `from src.models.template import TemplateConfig` import was dropped. Every scrape job failed immediately with `name 'TemplateConfig' is not defined`.
+
+**Fix:** Restored the missing import.
+
+**Impact:** All scrape jobs could start executing again.
+
+---
+
+## Bug #9: PostgreSQL Type Inference Error in upsert_domain_metadata (CRITICAL)
+
+**File:** `src/db/queries/domains.py`
+
+**Problem:** The `upsert_domain_metadata` SQL used `$5` in conflicting type contexts:
+- Integer: `successful_scrapes + $5`
+- Float: `$5::float / $4`
+
+PostgreSQL's prepared statement couldn't resolve `$5` as either `integer` or `double precision`. Every URL processed by ContentWorker hit this error, resulting in zero data extraction for every job.
+
+**Fix:** Added explicit `::int` casts on `$4` and `$5` in all integer contexts so PostgreSQL can unambiguously resolve types.
+
+**Impact:** Content extraction works — data is now saved to the database.
+
+---
+
+## Bug #10: Results Page — Data Type Dropdown Improvements (UX)
+
+**Files:** `src/api/routes/web.py`, `src/templates/web/pages/results/browse.html`
+
+**Problem:**
+1. The data type dropdown was hardcoded with only 7 types — `document` and `extracted` types were missing
+2. Raw `page` records (HTML dumps) cluttered the default unfiltered view (326 of 2077 results)
+3. No indication of how many results each type has, making the dropdown less useful
+
+**Fix:**
+- Query distinct `data_type` values with per-type counts from the DB dynamically
+- Render dropdown with counts: e.g. "Articles (1068)" instead of just "Articles"
+- Exclude `data_type = 'page'` from the default (no-filter) view — users can still see them by explicitly selecting "Pages"
+- Added badge colors for `document` (amber), `extracted` (cyan), and `pricing` (emerald) types
+
+**Impact:** Dropdown is dynamic (auto-discovers new types), shows counts for quick orientation, and default view is cleaner.
+
+---
+
 ## Files Changed
 
 | File | Changes |
@@ -143,8 +190,12 @@ timeout = options.timeout if options.timeout is not None else settings.playwrigh
 | `src/scraping/fetcher/lake_playwright_fetcher.py` | try/finally cleanup, timeout fix |
 | `src/scraping/fetcher/lake_playwright_proxy_fetcher.py` | try/finally cleanup, timeout fix, log networkidle |
 | `src/scraping/fetcher/lake_lightpanda_fetcher.py` | try/finally cleanup, timeout fix, log networkidle |
-| `src/workers/base.py` | Added heartbeat() method, call in fetch_page() |
+| `src/workers/base.py` | Added heartbeat() method, call in fetch_page(), restored TemplateConfig import |
 | `src/workers/domain_mapper.py` | Added heartbeat calls, pass pool to constructor |
 | `src/queue/jobs.py` | asyncio.timeout wrapper, TimeoutError handler, heartbeat call, completed_at fix |
 | `src/services/escalation.py` | Redis connection leak fix with finally block |
 | `src/services/session_manager.py` | Replaced silent pass with debug logging |
+| `src/db/queries/domains.py` | Explicit ::int casts to fix parameter type inference |
+| `src/db/queries/scraped_data.py` | default=str safety net for json.dumps |
+| `src/api/routes/web.py` | Dynamic type counts, exclude raw pages from default view |
+| `src/templates/web/pages/results/browse.html` | Dynamic dropdown with counts, new badge colors |

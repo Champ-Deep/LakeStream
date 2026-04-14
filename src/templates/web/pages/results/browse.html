@@ -102,13 +102,9 @@
           class="px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">All types</option>
-          <option value="blog_url" {% if filter_data_type == 'blog_url' %}selected{% endif %}>Blog URLs</option>
-          <option value="article" {% if filter_data_type == 'article' %}selected{% endif %}>Articles</option>
-          <option value="contact" {% if filter_data_type == 'contact' %}selected{% endif %}>Contacts</option>
-          <option value="tech_stack" {% if filter_data_type == 'tech_stack' %}selected{% endif %}>Tech Stack</option>
-          <option value="resource" {% if filter_data_type == 'resource' %}selected{% endif %}>Resources</option>
-          <option value="pricing" {% if filter_data_type == 'pricing' %}selected{% endif %}>Pricing</option>
-          <option value="page" {% if filter_data_type == 'page' %}selected{% endif %}>Pages</option>
+          {% for dt in data_types_list %}
+          <option value="{{ dt.value }}" {% if filter_data_type == dt.value %}selected{% endif %}>{{ dt.label }} ({{ dt.count }})</option>
+          {% endfor %}
         </select>
       </div>
 
@@ -144,6 +140,9 @@
                 {% elif result.data_type == 'contact' %}bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400
                 {% elif result.data_type == 'tech_stack' %}bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400
                 {% elif result.data_type == 'resource' %}bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400
+                {% elif result.data_type == 'document' %}bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400
+                {% elif result.data_type == 'extracted' %}bg-cyan-50 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400
+                {% elif result.data_type == 'pricing' %}bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400
                 {% else %}bg-stone-100 dark:bg-gray-800 text-stone-600 dark:text-gray-400{% endif %}
               ">
                 {{ result.data_type | replace('_', ' ') | title }}

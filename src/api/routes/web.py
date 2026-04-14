@@ -580,6 +580,39 @@ async def results_browse(
         domains_rows = await pool.fetch("SELECT DISTINCT domain FROM scraped_data ORDER BY domain")
     domains = [row["domain"] for row in domains_rows]
 
+    # Get per-type counts for the dropdown (scoped to user)
+    if user_filter:
+        type_count_rows = await pool.fetch(
+            "SELECT data_type, COUNT(*) AS cnt FROM scraped_data "
+            "WHERE user_id = $1 GROUP BY data_type ORDER BY cnt DESC",
+            user_filter,
+        )
+    else:
+        type_count_rows = await pool.fetch(
+            "SELECT data_type, COUNT(*) AS cnt FROM scraped_data "
+            "GROUP BY data_type ORDER BY cnt DESC"
+        )
+    # List of {value, label, count} for the template dropdown
+    _TYPE_LABELS = {
+        "blog_url": "Blog URLs",
+        "article": "Articles",
+        "contact": "Contacts",
+        "tech_stack": "Tech Stack",
+        "resource": "Resources",
+        "pricing": "Pricing",
+        "page": "Pages",
+        "document": "Documents",
+        "extracted": "Extracted",
+    }
+    data_types_list = []
+    for row in type_count_rows:
+        dt = row["data_type"]
+        data_types_list.append({
+            "value": dt,
+            "label": _TYPE_LABELS.get(dt, dt.replace("_", " ").title()),
+            "count": row["cnt"],
+        })
+
     # Build dynamic query for results
     conditions = []
     vals: list = []
@@ -597,6 +630,10 @@ async def results_browse(
         conditions.append(f"data_type = ${idx}")
         vals.append(data_type)
         idx += 1
+    elif not q:
+        # Default view: hide raw page records (they clutter useful results).
+        # Users can still see them by explicitly selecting "Pages" from the dropdown.
+        conditions.append("data_type != 'page'")
     if q and q.strip():
         conditions.append(f"(title ILIKE ${idx} OR url ILIKE ${idx} OR domain ILIKE ${idx})")
         vals.append(f"%{q.strip()}%")
@@ -627,6 +664,7 @@ async def results_browse(
             "active_page": "results",
             "results": results,
             "domains": domains,
+            "data_types_list": data_types_list,
             "filter_domain": domain,
             "filter_data_type": data_type,
             "filter_q": q,
