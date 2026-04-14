@@ -50,60 +50,64 @@
   <div x-show="activeTab === 'data'">
 
   <!-- Filters -->
-  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-4">
-    <form
-      hx-get="/results"
-      hx-target="#results-container"
-      hx-swap="outerHTML"
-      hx-select="#results-container"
-      hx-push-url="true"
-      hx-trigger="change from:find select"
-      class="flex flex-wrap items-center gap-4"
-    >
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-4"
+       x-data="{
+         q: '{{ filter_q or '' }}',
+         domain: '{{ filter_domain or '' }}',
+         data_type: '{{ filter_data_type or '' }}',
+         searchTimeout: null,
+         navigate() {
+           const params = new URLSearchParams();
+           if (this.q) params.set('q', this.q);
+           if (this.domain) params.set('domain', this.domain);
+           if (this.data_type) params.set('data_type', this.data_type);
+           const qs = params.toString();
+           window.location.href = '/results' + (qs ? '?' + qs : '');
+         },
+         debouncedSearch() {
+           clearTimeout(this.searchTimeout);
+           this.searchTimeout = setTimeout(() => this.navigate(), 500);
+         }
+       }"
+  >
+    <div class="flex flex-wrap items-center gap-4">
       <!-- Text Search -->
       <div class="flex items-center gap-2 flex-1 max-w-xs">
         <input
           type="text"
-          name="q"
-          value="{{ filter_q or '' }}"
+          x-model="q"
+          @keyup="debouncedSearch()"
           placeholder="Search all content..."
           class="w-full px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
-          hx-get="/results"
-          hx-target="#results-container"
-          hx-swap="outerHTML"
-          hx-select="#results-container"
-          hx-push-url="true"
-          hx-trigger="keyup changed delay:400ms"
-          hx-include="[name='domain'], [name='data_type']"
         >
       </div>
 
       <!-- Domain Filter -->
       <div class="flex items-center gap-2">
-        <label for="domain" class="text-sm text-slate dark:text-gray-400">Domain:</label>
+        <label class="text-sm text-slate dark:text-gray-400">Domain:</label>
         <select
-          name="domain"
-          id="domain"
+          x-model="domain"
+          @change="navigate()"
           class="px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">All domains</option>
           {% for d in domains %}
-          <option value="{{ d }}" {% if filter_domain == d %}selected{% endif %}>{{ d }}</option>
+          <option value="{{ d }}">{{ d }}</option>
           {% endfor %}
         </select>
       </div>
 
       <!-- Data Type Filter -->
       <div class="flex items-center gap-2">
-        <label for="data_type" class="text-sm text-slate dark:text-gray-400">Type:</label>
+        <label class="text-sm text-slate dark:text-gray-400">Type:</label>
         <select
-          name="data_type"
-          id="data_type"
+          x-model="data_type"
+          @change="navigate()"
           class="px-3 py-2 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">All types</option>
           {% for dt in data_types_list %}
-          <option value="{{ dt.value }}" {% if filter_data_type == dt.value %}selected{% endif %}>{{ dt.label }} ({{ dt.count }})</option>
+          <option value="{{ dt.value }}">{{ dt.label }} ({{ dt.count }})</option>
           {% endfor %}
         </select>
       </div>
@@ -112,7 +116,7 @@
       {% if filter_domain or filter_data_type or filter_q %}
       <a href="/results" class="text-sm text-accent hover:underline">Clear filters</a>
       {% endif %}
-    </form>
+    </div>
   </div>
 
   <!-- Results Container -->
