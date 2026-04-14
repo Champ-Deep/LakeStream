@@ -631,6 +631,80 @@ async def job_status_partial(request: Request, job_id: UUID):
     )
 
 
+@router.get("/partials/job/{job_id}/graph", response_class=HTMLResponse)
+async def job_graph_partial(request: Request, job_id: UUID):
+    """Sitemap graph partial for the Graph tab on the job status page.
+
+    Builds a GraphData payload (nodes + edges) from the URLs scraped for
+    this job. Phase 1: hierarchy inferred from URL paths, no new backend
+    endpoints, no new DB tables. Phase 2/3 can inject additional fields
+    into the same payload without changing this route's contract.
+    """
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import get_job
+    from src.db.queries.scraped_data import get_scraped_data_by_job
+    from src.services.sitemap_graph import build_sitemap_graph
+
+    pool = await get_pool()
+    job = await get_job(pool, job_id)
+    if not job:
+        return get_templates().TemplateResponse(
+            "pages/jobs/not_found.html",
+            {"request": request, "active_page": "jobs", "job_id": job_id},
+            status_code=404,
+        )
+
+    # Non-admin can only see their own jobs.
+    user_filter = _get_user_filter(request)
+    if user_filter and job.user_id != user_filter:
+        return get_templates().TemplateResponse(
+            "pages/jobs/not_found.html",
+            {"request": request, "active_page": "jobs", "job_id": job_id},
+            status_code=404,
+        )
+
+    records = await get_scraped_data_by_job(pool, job_id)
+    # Dedupe URLs at the source; build_sitemap_graph also dedupes but
+    # doing it here keeps total_urls honest.
+    urls = sorted({r.url for r in records if r.url})
+
+    # Performance floor: if the graph would exceed 500 nodes, drop
+    # everything beyond depth 3 and warn the user.
+    PERFORMANCE_NODE_LIMIT = 500
+    MAX_DEPTH_WHEN_COLLAPSED = 3
+
+    graph_data = build_sitemap_graph(urls)
+    collapsed = False
+    if len(graph_data["nodes"]) > PERFORMANCE_NODE_LIMIT:
+        collapsed = True
+        keep_ids = {
+            n["id"] for n in graph_data["nodes"]
+            if n["depth"] <= MAX_DEPTH_WHEN_COLLAPSED
+        }
+        graph_data = {
+            "nodes": [n for n in graph_data["nodes"] if n["id"] in keep_ids],
+            "edges": [
+                e for e in graph_data["edges"]
+                if e["from"] in keep_ids and e["to"] in keep_ids
+            ],
+        }
+
+    return get_templates().TemplateResponse(
+        "partials/job_graph.html",
+        {
+            "request": request,
+            "job": job,
+            "graph_data": graph_data,
+            "total_urls": len(urls),
+            "collapsed": collapsed,
+        },
+    )
+
+
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(request: Request, job_id: UUID):
     """Cancel a pending or running job (web UI action)."""
