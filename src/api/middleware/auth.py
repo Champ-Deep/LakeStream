@@ -29,8 +29,12 @@ PUBLIC_PATHS = {"/login", "/ping"}
 PUBLIC_PREFIXES = ("/api/", "/static/")
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Extract and validate user from JWT token.
+async def get_current_user(request: Request):
+    """Extract and validate user from JWT token, API key, or session cookie.
+
+    Checks authentication sources in order:
+    1. request.state (set by TenantContextMiddleware from API key / JWT / session)
+    2. Authorization: Bearer <JWT> header (fallback for direct use)
 
     This dependency can be used in route handlers to require authentication:
 
@@ -38,30 +42,47 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     async def protected_route(user = Depends(get_current_user)):
         return {"user_id": user["user_id"], "org_id": user["org_id"]}
 
-    Args:
-        credentials: HTTP Authorization header with Bearer token
-
     Returns:
-        Dictionary with user claims: {user_id, org_id, role, exp}
+        Dictionary with user claims: {user_id, org_id, role, is_admin}
 
     Raises:
-        HTTPException 401: If token is expired or invalid
+        HTTPException 401: If no valid authentication found
     """
-    try:
-        payload = decode_access_token(credentials.credentials)
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # 1. Check if middleware already authenticated (API key, cookie session, or JWT)
+    user_id = getattr(request.state, "user_id", None)
+    org_id = getattr(request.state, "org_id", None)
+    if user_id and org_id:
+        return {
+            "user_id": str(user_id),
+            "org_id": str(org_id),
+            "role": getattr(request.state, "role", "member"),
+            "is_admin": getattr(request.state, "is_admin", False),
+        }
+
+    # 2. Fallback: direct JWT bearer token check (for endpoints bypassing middleware)
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            payload = decode_access_token(auth_header.replace("Bearer ", ""))
+            return payload
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        except jwt.InvalidTokenError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
