@@ -205,6 +205,24 @@ PostgreSQL's prepared statement couldn't resolve `$5` as either `integer` or `do
 
 ---
 
+## Bug #12: Dropdown Filters Not Working in Browser (CRITICAL)
+
+**File:** `src/templates/web/pages/results/browse.html`
+
+**Problem:** The HTMX `hx-select="#results-container"` + `hx-swap="outerHTML"` pattern for filtering was unreliable in the browser. The server returned correct data (verified via curl), but the 77KB full-page response required HTMX to parse HTML, extract `#results-container`, and swap it — this was silently failing. When a user selected "Contacts" from the dropdown, the results table didn't update.
+
+**Root cause:** HTMX's `hx-select` pattern works by parsing the full response as a DOM fragment, then querying it for the selector. With a 77KB response containing complex Alpine.js attributes and Jinja-rendered content, this parsing step was unreliable across browsers.
+
+**Fix:** Replaced the entire HTMX form with Alpine.js direct navigation:
+- Dropdowns use `x-model` + `@change="navigate()"` which builds a URL from all filter values and does `window.location.href = '/results?data_type=contact&...'`
+- Search input uses `x-model` + `@keyup="debouncedSearch()"` with 500ms debounce
+- All filter state is preserved in the URL — fully shareable, bookmarkable
+- No HTMX DOM parsing needed — simple full page navigation
+
+**Impact:** Dropdown filtering now works reliably. Selecting "Contacts" immediately navigates to `/results?data_type=contact` and shows only contacts.
+
+---
+
 ## Feature #2: Filter-Aware CSV Export
 
 **Files:** `src/api/routes/web.py`, `src/templates/web/pages/results/browse.html`
