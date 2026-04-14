@@ -166,8 +166,8 @@ async def recover_stale_jobs(
                 """
                 UPDATE scrape_jobs
                 SET status = 'pending',
-                    retry_count = $2,
-                    error_message = 'Stale job auto-restarted (attempt ' || $2 || ' of ' || $3 || ')',
+                    retry_count = $2::int,
+                    error_message = 'Stale job auto-restarted (attempt ' || $2::int::text || ' of ' || $3::int::text || ')',
                     last_activity_at = NULL,
                     completed_at = NULL
                 WHERE id = $1
@@ -207,7 +207,7 @@ async def recover_stale_jobs(
                 """
                 UPDATE scrape_jobs
                 SET status = 'failed',
-                    error_message = 'Job permanently terminated after ' || $2
+                    error_message = 'Job permanently terminated after ' || $2::int::text
                         || ' stale restart attempts. Please submit a new job.',
                     completed_at = NOW()
                 WHERE id = $1
