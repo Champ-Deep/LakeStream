@@ -94,14 +94,14 @@ async def process_scrape_job(
                 proxy_url=proxy_url, region=region,
             )
 
-            # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
-            mapper = DomainMapperWorker(
-                domain=domain,
-                job_id=job_id,
-                org_id=org_id,
-                pool=pool,
-            )
-            classified_urls = await mapper.execute(max_pages=max_pages)
+        # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
+        mapper = DomainMapperWorker(
+            domain=domain,
+            job_id=job_id,
+            org_id=org_id,
+            pool=pool,
+        )
+        classified_urls = await mapper.execute(max_pages=max_pages)
 
             # Heartbeat after domain mapping
             await job_queries.update_heartbeat(pool, uid)
