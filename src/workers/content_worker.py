@@ -210,37 +210,52 @@ class ContentWorker(BaseWorker):
                 for rec in records
             ]
 
-        # --- Specialized extraction based on URL classification ---
+        # --- LLM modes: off | fallback | only ---
+        llm_mode = getattr(self, "llm_mode", "off")
 
-        if data_type == DataType.BLOG_URL and "blog_url" in data_types:
-            blog_rec, _ = self._extract_blog_landing(url, html, parser, rich_meta)
-            if blog_rec:
-                records.append(blog_rec)
+        # CSS extraction runs unless llm_mode == "only"
+        run_css = llm_mode != "only"
+        # LLM extraction runs when fallback or only
+        run_llm = llm_mode in ("fallback", "only")
 
-        # Article extraction for any page with substantial content
-        if "article" in data_types and parser.count_words() >= MIN_ARTICLE_WORDS:
-            article_rec = self._extract_article_record(url, parser, rich_meta)
-            if article_rec:
-                records.append(article_rec)
+        if run_css:
+            # --- Specialized CSS extraction based on URL classification ---
 
-        if data_type == DataType.CONTACT and "contact" in data_types:
-            records.extend(self._extract_contacts(url, html, rich_meta))
+            if data_type == DataType.BLOG_URL and "blog_url" in data_types:
+                blog_rec, _ = self._extract_blog_landing(url, html, parser, rich_meta)
+                if blog_rec:
+                    records.append(blog_rec)
 
-        if data_type == DataType.RESOURCE and "resource" in data_types:
-            records.extend(self._extract_resources(url, html, rich_meta))
+            # Article extraction for any page with substantial content
+            if "article" in data_types and parser.count_words() >= MIN_ARTICLE_WORDS:
+                article_rec = self._extract_article_record(url, parser, rich_meta)
+                if article_rec:
+                    records.append(article_rec)
 
-        if data_type == DataType.PRICING and "pricing" in data_types:
-            records.extend(self._extract_pricing(url, html, rich_meta))
+            if data_type == DataType.CONTACT and "contact" in data_types:
+                records.extend(self._extract_contacts(url, html, rich_meta))
 
-        # Tech stack: homepage only
-        if "tech_stack" in data_types:
-            path = urlparse(url).path.rstrip("/")
-            if path in ("", "/index.html"):
-                tech_rec = self._extract_tech_stack(
-                    url, html, fetch_result.headers, rich_meta,
-                )
-                if tech_rec:
-                    records.append(tech_rec)
+            if data_type == DataType.RESOURCE and "resource" in data_types:
+                records.extend(self._extract_resources(url, html, rich_meta))
+
+            if data_type == DataType.PRICING and "pricing" in data_types:
+                records.extend(self._extract_pricing(url, html, rich_meta))
+
+            # Tech stack: homepage only
+            if "tech_stack" in data_types:
+                path = urlparse(url).path.rstrip("/")
+                if path in ("", "/index.html"):
+                    tech_rec = self._extract_tech_stack(
+                        url, html, fetch_result.headers, rich_meta,
+                    )
+                    if tech_rec:
+                        records.append(tech_rec)
+
+        # --- LLM extraction: runs on every page for every requested type ---
+        if run_llm:
+            llm_records = await self._llm_extract_every_type(url, html, data_types)
+            if llm_records:
+                records.extend(llm_records)
 
         # Batch insert all records for this URL
         if records:
@@ -493,3 +508,156 @@ class ContentWorker(BaseWorker):
                 scraped_at=datetime.now(UTC),
             )
         ]
+
+    # ------------------------------------------------------------------
+    # LLM extraction (runs on every page when llm_mode is fallback or only)
+    # ------------------------------------------------------------------
+
+    async def _llm_extract_every_type(
+        self,
+        url: str,
+        html: str,
+        data_types: list[str],
+    ) -> list[dict]:
+        """Run LLM extraction on this page for every requested data type.
+
+        Called when llm_mode is 'fallback' or 'only'. Unlike CSS extraction
+        which is gated by URL classification, this runs for every requested
+        data type on every page — maximizing extraction coverage.
+        """
+        from src.services.llm_extractor import LLMExtractor
+
+        llm = LLMExtractor(org_id=self.org_id)
+        results: list[dict] = []
+
+        # Run LLM extraction per requested data type
+        # Skip 'page' (already saved as raw), tech_stack is homepage-only
+        for dt in data_types:
+            # tech_stack: only run on homepage to avoid waste
+            if dt == "tech_stack":
+                path = urlparse(url).path.rstrip("/")
+                if path not in ("", "/index.html"):
+                    continue
+
+            try:
+                llm_data = await llm.extract_by_type(html, dt)
+                if not llm_data or "_extraction_errors" in llm_data:
+                    self.log.debug("llm_no_results", url=url, data_type=dt)
+                    continue
+
+                converted = self._convert_llm_results(url, dt, llm_data)
+                if converted:
+                    results.extend(converted)
+                    self.log.info(
+                        "llm_extracted",
+                        url=url,
+                        data_type=dt,
+                        records=len(converted),
+                    )
+            except Exception as e:
+                # Non-fatal — log and continue with other types
+                self.log.warning(
+                    "llm_extract_failed",
+                    url=url,
+                    data_type=dt,
+                    error=str(e),
+                )
+
+        return results
+
+    def _convert_llm_results(self, url: str, data_type: str, llm_data: dict) -> list[dict]:
+        """Convert LLM output to record dicts matching CSS extractor format."""
+        records: list[dict] = []
+
+        if data_type == "contact":
+            people = llm_data.get("people", [])
+            if isinstance(people, list):
+                for person in people:
+                    if not isinstance(person, dict):
+                        continue
+                    # Skip empty entries
+                    if not any(person.get(k) for k in ("first_name", "last_name", "email", "job_title")):
+                        continue
+                    name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
+                    records.append({
+                        "job_id": UUID(self.job_id),
+                        "domain": self.domain,
+                        "data_type": DataType.CONTACT,
+                        "url": url,
+                        "title": name or None,
+                        "metadata": {**person, "extraction_method": "llm"},
+                    })
+
+        elif data_type == "pricing":
+            plans = llm_data.get("plans", [])
+            if isinstance(plans, list):
+                for plan in plans:
+                    if not isinstance(plan, dict) or not plan.get("plan_name"):
+                        continue
+                    records.append({
+                        "job_id": UUID(self.job_id),
+                        "domain": self.domain,
+                        "data_type": DataType.PRICING,
+                        "url": url,
+                        "title": plan.get("plan_name"),
+                        "metadata": {**plan, "extraction_method": "llm"},
+                    })
+
+        elif data_type == "article":
+            # Only add if LLM found substantive content
+            if llm_data.get("content") or llm_data.get("excerpt"):
+                records.append({
+                    "job_id": UUID(self.job_id),
+                    "domain": self.domain,
+                    "data_type": DataType.ARTICLE,
+                    "url": url,
+                    "title": llm_data.get("title") or llm_data.get("author"),
+                    "metadata": {**llm_data, "extraction_method": "llm"},
+                })
+
+        elif data_type == "tech_stack":
+            # Only add if LLM found at least one tech identifier
+            has_tech = any(llm_data.get(k) for k in ("platform", "js_libraries", "frameworks", "analytics", "marketing_tools"))
+            if has_tech:
+                records.append({
+                    "job_id": UUID(self.job_id),
+                    "domain": self.domain,
+                    "data_type": DataType.TECH_STACK,
+                    "url": url,
+                    "title": f"Tech Stack: {self.domain}",
+                    "metadata": {**llm_data, "extraction_method": "llm"},
+                })
+
+        elif data_type == "resource":
+            resources = llm_data.get("resources", [])
+            if isinstance(resources, list):
+                for res in resources:
+                    if not isinstance(res, dict) or not res.get("title"):
+                        continue
+                    records.append({
+                        "job_id": UUID(self.job_id),
+                        "domain": self.domain,
+                        "data_type": DataType.RESOURCE,
+                        "url": res.get("download_url") or url,
+                        "title": res.get("title"),
+                        "metadata": {**res, "extraction_method": "llm"},
+                    })
+
+        elif data_type == "blog_url":
+            articles = llm_data.get("articles", [])
+            if isinstance(articles, list) and articles:
+                records.append({
+                    "job_id": UUID(self.job_id),
+                    "domain": self.domain,
+                    "data_type": DataType.BLOG_URL,
+                    "url": url,
+                    "title": f"Blog Index: {url}",
+                    "metadata": {
+                        "blog_landing_url": url,
+                        "article_urls": [a.get("url") for a in articles if isinstance(a, dict) and a.get("url")],
+                        "total_articles": len(articles),
+                        "extraction_method": "llm",
+                    },
+                })
+
+        return records

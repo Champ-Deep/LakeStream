@@ -194,6 +194,30 @@
                 <span class="text-xs text-slate-500">Save raw page content only (skip extraction)</span>
               </label>
             </div>
+            <div class="flex items-center gap-4">
+              <label class="text-xs text-slate-500 w-24">AI Extraction</label>
+              <select
+                x-model="llmMode"
+                :disabled="!llmAvailable || rawOnly"
+                class="select text-sm flex-1"
+                :class="(!llmAvailable || rawOnly) ? 'opacity-50 cursor-not-allowed' : ''"
+              >
+                <option value="off">Off — CSS parsers only (default, free)</option>
+                <option value="fallback" x-bind:disabled="!llmAvailable">CSS + AI (hybrid, higher quality)</option>
+                <option value="only" x-bind:disabled="!llmAvailable">AI only (highest quality, highest cost)</option>
+              </select>
+            </div>
+            <p x-show="!llmAvailable" class="text-xs text-slate-400 ml-[6.5rem]">
+              Configure OpenRouter API key in
+              <a href="/settings" class="text-accent hover:underline">Settings</a>
+              to enable AI modes.
+            </p>
+            <p x-show="llmAvailable && llmMode === 'fallback'" class="text-xs text-slate-500 ml-[6.5rem]">
+              Runs CSS extractors first, then LLM on every page for richer extraction. ~$0.003/page.
+            </p>
+            <p x-show="llmAvailable && llmMode === 'only'" class="text-xs text-slate-500 ml-[6.5rem]">
+              Skips CSS parsers entirely. LLM extracts every page. ~$0.005/page.
+            </p>
           </div>
         </div>
       </div>

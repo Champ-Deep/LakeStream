@@ -42,6 +42,15 @@ class ScrapeJobInput(BaseModel):
         description="Extraction mode: css, ai, auto. Only used with extraction_schema.",
     )
     priority: int = Field(default=5, ge=1, le=10)
+    llm_mode: str = Field(
+        default="off",
+        description=(
+            "AI extraction mode: "
+            "'off' = CSS only (default, free), "
+            "'fallback' = CSS + LLM on every page (hybrid, higher quality), "
+            "'only' = LLM only on every page (highest quality, highest cost)."
+        ),
+    )
 
 
 class ScrapeJob(BaseModel):

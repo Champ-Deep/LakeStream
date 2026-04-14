@@ -216,6 +216,8 @@ document.addEventListener('alpine:init', () => {
     templateId: '',
     scrapingTier: 'auto',
     rawOnly: false,
+    llmMode: 'off',      // 'off' | 'fallback' | 'only'
+    llmAvailable: false,
     priority: 5,
     showPanel: false,
     showAdvanced: false,
@@ -237,6 +239,15 @@ document.addEventListener('alpine:init', () => {
         this.domain = prefill;
         this.showPanel = true;
       }
+      // Check if OpenRouter API key is configured (for LLM mode availability)
+      fetch('/api/settings/', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && data.openrouter_api_key_set) {
+            this.llmAvailable = true;
+          }
+        })
+        .catch(() => {});
     },
 
     validateDomain() {
@@ -282,6 +293,9 @@ document.addEventListener('alpine:init', () => {
       };
       if (this.templateId) payload.template_id = this.templateId;
       if (this.rawOnly) payload.raw_only = true;
+      if (this.llmMode && this.llmMode !== 'off' && !this.rawOnly) {
+        payload.llm_mode = this.llmMode;
+      }
 
       // Only include tier if not 'auto' (null triggers adaptive escalation)
       const backendTier = tierMap[this.scrapingTier];

@@ -50,6 +50,7 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             data_types=input.data_types,
             tier=input.tier,
             region=input.region,
+            llm_mode=input.llm_mode,
         )
         await redis.aclose()
     except Exception as e:
