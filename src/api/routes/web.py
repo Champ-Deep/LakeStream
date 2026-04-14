@@ -635,27 +635,66 @@ async def results_browse(
         # Users can still see them by explicitly selecting "Pages" from the dropdown.
         conditions.append("data_type != 'page'")
     if q and q.strip():
-        conditions.append(f"(title ILIKE ${idx} OR url ILIKE ${idx} OR domain ILIKE ${idx})")
+        # Deep search: search title, URL, domain AND inside metadata JSONB content.
+        # metadata::text casts the entire JSON to a text string for ILIKE matching,
+        # so keywords in article body, contact names, descriptions etc. are found.
+        search_cond = (
+            f"(title ILIKE ${idx} OR url ILIKE ${idx} "
+            f"OR domain ILIKE ${idx} OR metadata::text ILIKE ${idx})"
+        )
+        conditions.append(search_cond)
         vals.append(f"%{q.strip()}%")
         idx += 1
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    vals.extend([limit, offset])
 
-    query = (
-        f"SELECT * FROM scraped_data {where} "
-        f"ORDER BY scraped_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
-    )
-    rows = await pool.fetch(query, *vals)
+    # When keyword is active, rank results by relevance:
+    # title match first, then URL match, then content match
+    if q and q.strip():
+        q_idx = idx  # next param slot
+        vals_for_query = vals.copy()
+        vals_for_query.append(f"%{q.strip()}%")  # for ORDER BY ranking
+        vals_for_query.extend([limit, offset])
+        order_clause = (
+            f"ORDER BY "
+            f"CASE WHEN title ILIKE ${q_idx} THEN 0 "
+            f"WHEN url ILIKE ${q_idx} THEN 1 "
+            f"WHEN domain ILIKE ${q_idx} THEN 2 "
+            f"ELSE 3 END, "
+            f"scraped_at DESC"
+        )
+        query = (
+            f"SELECT * FROM scraped_data {where} "
+            f"{order_clause} LIMIT ${q_idx + 1} OFFSET ${q_idx + 2}"
+        )
+        rows = await pool.fetch(query, *vals_for_query)
+    else:
+        vals.extend([limit, offset])
+        query = (
+            f"SELECT * FROM scraped_data {where} "
+            f"ORDER BY scraped_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
+        )
+        rows = await pool.fetch(query, *vals)
+
     results = [_parse_row(row) for row in rows]
 
-    # Get total count with same filters
-    count_vals = vals[:-2]  # exclude limit/offset
+    # Get total count with same filters (exclude limit/offset params)
+    count_vals = vals[:len(vals) - 2] if not (q and q.strip()) else vals.copy()
     count_query = f"SELECT COUNT(*) FROM scraped_data {where}"
     if count_vals:
         total = await pool.fetchval(count_query, *count_vals)
     else:
         total = await pool.fetchval(count_query)
+
+    # Build download URL with current filters
+    download_params = []
+    if domain:
+        download_params.append(f"domain={domain}")
+    if data_type:
+        download_params.append(f"data_type={data_type}")
+    if q:
+        download_params.append(f"q={q}")
+    download_qs = f"?{'&'.join(download_params)}" if download_params else ""
 
     return get_templates().TemplateResponse(
         "pages/results/browse.html",
@@ -671,6 +710,7 @@ async def results_browse(
             "page": page,
             "total": total,
             "limit": limit,
+            "download_qs": download_qs,
         },
     )
 
@@ -972,8 +1012,13 @@ async def download_job_csv(request: Request, job_id: UUID):
 
 
 @router.get("/download/all")
-async def download_all_csv(request: Request):
-    """Download all user's scraped data as CSV."""
+async def download_all_csv(
+    request: Request,
+    domain: str | None = None,
+    data_type: str | None = None,
+    q: str | None = None,
+):
+    """Download scraped data as CSV. Respects the same filters as /results."""
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -989,13 +1034,37 @@ async def download_all_csv(request: Request):
     pool = await get_pool()
     user_filter = _get_user_filter(request)
 
+    # Build the same filter conditions as the /results route
+    conditions = []
+    vals: list = []
+    idx = 1
+
     if user_filter:
-        rows = await pool.fetch(
-            "SELECT * FROM scraped_data WHERE user_id = $1 ORDER BY scraped_at DESC LIMIT 10000",
-            user_filter,
+        conditions.append(f"user_id = ${idx}")
+        vals.append(user_filter)
+        idx += 1
+    if domain:
+        conditions.append(f"domain = ${idx}")
+        vals.append(domain)
+        idx += 1
+    if data_type:
+        conditions.append(f"data_type = ${idx}")
+        vals.append(data_type)
+        idx += 1
+    if q and q.strip():
+        conditions.append(
+            f"(title ILIKE ${idx} OR url ILIKE ${idx} "
+            f"OR domain ILIKE ${idx} OR metadata::text ILIKE ${idx})"
         )
+        vals.append(f"%{q.strip()}%")
+        idx += 1
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    download_query = f"SELECT * FROM scraped_data {where} ORDER BY scraped_at DESC LIMIT 10000"
+    if vals:
+        rows = await pool.fetch(download_query, *vals)
     else:
-        rows = await pool.fetch("SELECT * FROM scraped_data ORDER BY scraped_at DESC LIMIT 10000")
+        rows = await pool.fetch(download_query)
 
     data = [_parse_row(row) for row in rows]
 

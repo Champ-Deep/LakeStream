@@ -182,6 +182,42 @@ PostgreSQL's prepared statement couldn't resolve `$5` as either `integer` or `do
 
 ---
 
+## Bug #11: Parameter Type Ambiguity in recover_stale_jobs (CRITICAL)
+
+**File:** `src/db/queries/jobs.py`
+
+**Problem:** Same type inference bug as Bug #9 — `$2` used as both integer (`retry_count` column) and text (string concatenation in `error_message`). Worker crashed on startup every time.
+
+**Fix:** Added `::int::text` casts for string concatenation contexts.
+
+---
+
+## Feature #1: Deep Keyword Search Across All Content
+
+**Files:** `src/api/routes/web.py`, `src/templates/web/pages/results/browse.html`
+
+**Problem:** Search only matched `title`, `url`, and `domain` fields. If a user searched "laptop", articles mentioning "laptop" in the body text wouldn't appear.
+
+**Fix:**
+- Added `metadata::text ILIKE $N` to the search query — casts the entire JSONB metadata to text for full-content matching
+- Added relevance ranking: title matches appear first, then URL matches, then domain matches, then content-only matches
+- Search placeholder updated to "Search all content..."
+
+---
+
+## Feature #2: Filter-Aware CSV Export
+
+**Files:** `src/api/routes/web.py`, `src/templates/web/pages/results/browse.html`
+
+**Problem:** The "Download CSV" button always exported ALL data regardless of active filters. If user filtered by "Contacts", the CSV still contained all 2000+ records.
+
+**Fix:**
+- `/download/all` endpoint now accepts `domain`, `data_type`, and `q` query params
+- Download link dynamically includes current filter params (e.g. `/download/all?data_type=contact&q=laptop`)
+- Added a results toolbar inside `#results-container` showing count + active filters + CSV export button — this updates via HTMX when filters change
+
+---
+
 ## Files Changed
 
 | File | Changes |
@@ -197,5 +233,6 @@ PostgreSQL's prepared statement couldn't resolve `$5` as either `integer` or `do
 | `src/services/session_manager.py` | Replaced silent pass with debug logging |
 | `src/db/queries/domains.py` | Explicit ::int casts to fix parameter type inference |
 | `src/db/queries/scraped_data.py` | default=str safety net for json.dumps |
-| `src/api/routes/web.py` | Dynamic type counts, exclude raw pages from default view |
-| `src/templates/web/pages/results/browse.html` | Dynamic dropdown with counts, new badge colors |
+| `src/db/queries/jobs.py` | ::int::text casts in recover_stale_jobs SQL |
+| `src/api/routes/web.py` | Dynamic type counts, deep JSONB search, relevance ranking, filter-aware CSV export |
+| `src/templates/web/pages/results/browse.html` | Dynamic dropdown with counts, new badge colors, results toolbar with export |
