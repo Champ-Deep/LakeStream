@@ -2,8 +2,11 @@
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+logger = structlog.get_logger()
 
 router = APIRouter(tags=["web"])
 
@@ -626,14 +629,32 @@ async def job_status_partial(request: Request, job_id: UUID):
         elapsed_ms = int((now - created).total_seconds() * 1000)
 
     return get_templates().TemplateResponse(
-        "partials/job_status.html",
-        {"request": request, "job": job, "data_count": data_count, "elapsed_ms": elapsed_ms},
+        # Wrapper template: renders the live status panel (primary innerHTML
+        # swap target) AND an out-of-band swap for #job-actions so the
+        # View Results / Download CSV buttons refresh the instant the poller
+        # sees the job finish — no manual reload needed.
+        "partials/job_status_response.html",
+        {
+            "request": request,
+            "job": job,
+            "data_count": data_count,
+            "elapsed_ms": elapsed_ms,
+            # Signals to partials/job_actions.html to emit hx-swap-oob so
+            # HTMX replaces the existing #job-actions element in the DOM.
+            "oob": True,
+        },
     )
 
 
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(request: Request, job_id: UUID):
-    """Cancel a pending or running job (web UI action)."""
+    """Cancel a pending or running job (web UI action).
+
+    Always returns a 302 redirect back to the job page, even if the DB update
+    fails (e.g., a trigger side-effect errored). The UPDATE is idempotent and
+    the cooperative-cancel check in ContentWorker will exit the worker on the
+    next URL iteration.
+    """
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -642,7 +663,10 @@ async def cancel_job(request: Request, job_id: UUID):
     from src.db.queries.jobs import cancel_job as do_cancel
 
     pool = await get_pool()
-    await do_cancel(pool, job_id)
+    try:
+        await do_cancel(pool, job_id)
+    except Exception as e:
+        logger.error("cancel_job_failed", job_id=str(job_id), error=str(e))
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=302)
 
 

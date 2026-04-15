@@ -1,0 +1,12 @@
+{#
+  HTMX polling response: returns the live status panel (swapped into the
+  #job-status-panel container via innerHTML) PLUS an out-of-band swap for the
+  action-button row so View Results/Download CSV appear instantly when the
+  job finishes — no manual reload needed.
+
+  The initial page render (pages/jobs/status.html) includes the two partials
+  directly without going through this wrapper, so each element has exactly
+  one id in the DOM at any time.
+#}
+{% include "partials/job_status.html" %}
+{% include "partials/job_actions.html" %}
