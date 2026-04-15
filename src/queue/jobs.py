@@ -137,6 +137,22 @@ async def process_scrape_job(
                 log.error("content_worker_error", error=str(e))
                 errors.append(f"content_worker: {str(e)}")
 
+            # If the user cancelled mid-extraction, the DB row is already
+            # marked CANCELLED by the cancel endpoint — don't overwrite it.
+            if await job_queries.is_job_cancelled(pool, uid):
+                log.info(
+                    "job_cancelled_mid_extraction",
+                    job_id=job_id,
+                    domain=domain,
+                    pages_scraped=total_data,
+                )
+                return {
+                    "job_id": job_id,
+                    "domain": domain,
+                    "data_extracted": total_data,
+                    "cancelled": True,
+                }
+
             # 4. Mark job complete or failed based on data extracted
             duration_ms = int((time.time() - start_time) * 1000)
             from src.db.queries.domains import get_domain_metadata
