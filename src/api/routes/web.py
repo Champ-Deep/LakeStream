@@ -2,8 +2,11 @@
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+logger = structlog.get_logger()
 
 router = APIRouter(tags=["web"])
 
@@ -707,7 +710,13 @@ async def job_graph_partial(request: Request, job_id: UUID):
 
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(request: Request, job_id: UUID):
-    """Cancel a pending or running job (web UI action)."""
+    """Cancel a pending or running job (web UI action).
+
+    Always returns a 302 redirect back to the job page, even if the DB update
+    fails (e.g., a trigger side-effect errored). The UPDATE is idempotent and
+    the cooperative-cancel check in ContentWorker will exit the worker on the
+    next URL iteration.
+    """
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -716,7 +725,10 @@ async def cancel_job(request: Request, job_id: UUID):
     from src.db.queries.jobs import cancel_job as do_cancel
 
     pool = await get_pool()
-    await do_cancel(pool, job_id)
+    try:
+        await do_cancel(pool, job_id)
+    except Exception as e:
+        logger.error("cancel_job_failed", job_id=str(job_id), error=str(e))
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=302)
 
 
@@ -794,6 +806,19 @@ async def results_browse(
     offset = (page - 1) * limit
     user_filter = _get_user_filter(request)
 
+    # Normalize an incoming `domain` param. Job records may store either a bare
+    # hostname ("example.com") or, for some user-pasted inputs, a full URL with
+    # path + query. scraped_data.domain, however, is always the hostname. Strip
+    # protocol, path and "www." prefix so the filter works for either form.
+    if domain:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(domain if "://" in domain else f"http://{domain}")
+        host = (parsed.hostname or domain).lower()
+        if host.startswith("www."):
+            host = host[4:]
+        domain = host
+
     # Get unique domains for filter dropdown (scoped to user)
     if user_filter:
         domains_rows = await pool.fetch(
@@ -847,8 +872,10 @@ async def results_browse(
         vals.append(user_filter)
         idx += 1
     if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
+        # ILIKE %host% so both "linkedin.com" and "www.linkedin.com" rows match,
+        # mirroring the pattern used by list_jobs (src/db/queries/jobs.py).
+        conditions.append(f"domain ILIKE ${idx}")
+        vals.append(f"%{domain}%")
         idx += 1
     if data_type:
         conditions.append(f"data_type = ${idx}")
@@ -1258,6 +1285,17 @@ async def download_all_csv(
     pool = await get_pool()
     user_filter = _get_user_filter(request)
 
+    # Normalize domain to hostname (same logic as /results) so CSV export from
+    # a filtered results page matches what the page shows.
+    if domain:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(domain if "://" in domain else f"http://{domain}")
+        host = (parsed.hostname or domain).lower()
+        if host.startswith("www."):
+            host = host[4:]
+        domain = host
+
     # Build the same filter conditions as the /results route
     conditions = []
     vals: list = []
@@ -1268,8 +1306,10 @@ async def download_all_csv(
         vals.append(user_filter)
         idx += 1
     if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
+        # ILIKE %host% so both "linkedin.com" and "www.linkedin.com" rows match,
+        # mirroring the pattern used by list_jobs (src/db/queries/jobs.py).
+        conditions.append(f"domain ILIKE ${idx}")
+        vals.append(f"%{domain}%")
         idx += 1
     if data_type:
         conditions.append(f"data_type = ${idx}")

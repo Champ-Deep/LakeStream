@@ -94,15 +94,16 @@ class ContentWorker(BaseWorker):
                 continue
             fetched_urls.add(url)
 
-            # Cooperative cancellation check
-            if urls_processed % 5 == 0 and self._pool:
+            # Cooperative cancellation check — run on EVERY URL so a user-cancel
+            # exits within one URL iteration instead of waiting up to 5.
+            if self._pool:
                 try:
                     from src.db.queries.jobs import is_job_cancelled
                     if await is_job_cancelled(self._pool, UUID(self.job_id)):
                         self.log.info("job_cancelled_by_user", urls_processed=urls_processed)
                         return all_results
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.log.warning("cancel_check_failed", error=str(e))
 
             try:
                 records = await self._process_url(url, data_type, data_types)
@@ -123,8 +124,10 @@ class ContentWorker(BaseWorker):
                 try:
                     from src.db.queries.jobs import update_heartbeat
                     await update_heartbeat(self._pool, UUID(self.job_id))
-                except Exception:
-                    pass  # Non-critical — don't fail job over heartbeat
+                except Exception as e:
+                    # Non-critical — don't fail job over heartbeat — but log
+                    # so stale-job recovery has an observable trail.
+                    self.log.warning("heartbeat_failed", error=str(e))
 
         # --- Phase 2: Fetch article URLs discovered from blog landing pages ---
         if "article" in data_types and article_urls_from_blogs:
@@ -136,6 +139,20 @@ class ContentWorker(BaseWorker):
                 if url in fetched_urls:
                     continue
                 fetched_urls.add(url)
+
+                # Cooperative cancellation check — Phase 2 must honor cancels too.
+                if self._pool:
+                    try:
+                        from src.db.queries.jobs import is_job_cancelled
+                        if await is_job_cancelled(self._pool, UUID(self.job_id)):
+                            self.log.info(
+                                "job_cancelled_by_user_phase2",
+                                urls_processed=urls_processed,
+                            )
+                            return all_results
+                    except Exception as e:
+                        self.log.warning("cancel_check_failed", error=str(e))
+
                 try:
                     records = await self._process_url(url, DataType.ARTICLE, data_types)
                     all_results.extend(records)
@@ -148,8 +165,8 @@ class ContentWorker(BaseWorker):
                     try:
                         from src.db.queries.jobs import update_heartbeat
                         await update_heartbeat(self._pool, UUID(self.job_id))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log.warning("heartbeat_failed", error=str(e))
 
         self.log.info("content_worker_done", total_records=len(all_results))
         return all_results
