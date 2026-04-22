@@ -95,6 +95,16 @@ async def get_scraped_data_by_job(pool: asyncpg.Pool, job_id: UUID) -> list[Scra
     return [_parse_row(row) for row in rows]
 
 
+async def get_scraped_urls_by_job(pool: asyncpg.Pool, job_id: UUID) -> list[str]:
+    """Return deduplicated URLs scraped for a job, for use by the graph view."""
+    rows = await pool.fetch(
+        "SELECT DISTINCT url FROM scraped_data "
+        "WHERE job_id = $1 AND url IS NOT NULL ORDER BY url",
+        job_id,
+    )
+    return [row["url"] for row in rows]
+
+
 async def count_scraped_data_by_job(pool: asyncpg.Pool, job_id: UUID) -> int:
     count = await pool.fetchval("SELECT COUNT(*) FROM scraped_data WHERE job_id = $1", job_id)
     return count or 0

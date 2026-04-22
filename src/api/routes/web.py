@@ -649,7 +649,7 @@ async def job_graph_partial(request: Request, job_id: UUID):
 
     from src.db.pool import get_pool
     from src.db.queries.jobs import get_job
-    from src.db.queries.scraped_data import get_scraped_data_by_job
+    from src.db.queries.scraped_data import get_scraped_urls_by_job
     from src.services.sitemap_graph import build_sitemap_graph
 
     pool = await get_pool()
@@ -670,10 +670,7 @@ async def job_graph_partial(request: Request, job_id: UUID):
             status_code=404,
         )
 
-    records = await get_scraped_data_by_job(pool, job_id)
-    # Dedupe URLs at the source; build_sitemap_graph also dedupes but
-    # doing it here keeps total_urls honest.
-    urls = sorted({r.url for r in records if r.url})
+    urls = await get_scraped_urls_by_job(pool, job_id)
 
     # Performance floor: if the graph would exceed 500 nodes, drop
     # everything beyond depth 3 and warn the user.

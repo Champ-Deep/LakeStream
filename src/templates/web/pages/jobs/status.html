@@ -13,6 +13,16 @@
       if (!this.graphLoaded) {
         htmx.ajax('GET', '/partials/job/{{ job.id }}/graph', { target: '#job-graph-panel', swap: 'innerHTML' });
         this.graphLoaded = true;
+        document.getElementById('job-graph-panel').addEventListener(
+          'htmx:responseError',
+          function () {
+            document.getElementById('job-graph-panel').innerHTML =
+              '<div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-8 text-center">' +
+              '<p class="text-sm text-error">Failed to load the graph. Please try refreshing the tab.</p>' +
+              '</div>';
+          },
+          { once: true }
+        );
       }
     }
   }"

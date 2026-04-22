@@ -94,6 +94,11 @@
 
     const container = document.getElementById(containerId);
     if (!container || typeof vis === "undefined") {
+      if (container) {
+        container.innerHTML =
+          '<p style="padding:2rem;text-align:center;color:#E8033A;font-size:0.875rem">' +
+          'Graph library failed to load. Please refresh the page.</p>';
+      }
       return;
     }
 
@@ -145,6 +150,7 @@
       };
     }
 
+    // Build DataSets before rAF — pure data, no DOM access needed.
     const nodes = new vis.DataSet(graphData.nodes.map(renderNode));
     const edges = new vis.DataSet(
       graphData.edges.map(function (e, i) {
@@ -152,70 +158,79 @@
       })
     );
 
-    const isDark = document.documentElement.classList.contains("dark");
-    const network = new vis.Network(
-      container,
-      { nodes: nodes, edges: edges },
-      {
-        layout: { improvedLayout: true },
-        physics: {
-          solver: "forceAtlas2Based",
-          forceAtlas2Based: { gravitationalConstant: -60, springLength: 110 },
-          stabilization: { iterations: 180 },
-        },
-        interaction: { hover: true, tooltipDelay: 150, navigationButtons: false },
-        edges: { smooth: { type: "continuous" }, arrows: { to: { enabled: false } } },
-        nodes: { borderWidth: 2 },
-      }
-    );
+    // Defer vis.Network creation until the browser has committed layout so
+    // the container has its real dimensions (fixes blank canvas on first load).
+    requestAnimationFrame(function () {
+      const isDark = document.documentElement.classList.contains("dark");
+      const network = new vis.Network(
+        container,
+        { nodes: nodes, edges: edges },
+        {
+          layout: { improvedLayout: true },
+          physics: {
+            solver: "forceAtlas2Based",
+            forceAtlas2Based: { gravitationalConstant: -60, springLength: 110 },
+            stabilization: { iterations: 180 },
+          },
+          interaction: { hover: true, tooltipDelay: 150, navigationButtons: false },
+          edges: { smooth: { type: "continuous" }, arrows: { to: { enabled: false } } },
+          nodes: { borderWidth: 2 },
+        }
+      );
 
-    // Paint background to match the dashboard. vis-network defaults to white,
-    // which breaks in dark mode.
-    container.style.backgroundColor = isDark ? "#020617" : "#F8FAFC";
+      // Paint background to match the dashboard. vis-network defaults to white,
+      // which breaks in dark mode.
+      container.style.backgroundColor = isDark ? "#020617" : "#F8FAFC";
 
-    const selectedEl = document.getElementById(selectedId);
-    const openEl = document.getElementById(openId);
-
-    network.on("selectNode", function (params) {
-      const nodeId = params.nodes[0];
-      const meta = (nodes.get(nodeId) || {})._meta || {};
-      if (selectedEl) selectedEl.textContent = meta.url || nodeId;
-      if (openEl && meta.url) {
-        openEl.href = meta.url;
-        openEl.classList.remove("hidden");
-      }
-    });
-    network.on("deselectNode", function () {
-      if (selectedEl) selectedEl.textContent = "Click a node to inspect its URL.";
-      if (openEl) openEl.classList.add("hidden");
-    });
-
-    // Filter input: dim non-matching nodes rather than removing them,
-    // so the hierarchy stays intact while searching.
-    const searchEl = document.getElementById(searchId);
-    if (searchEl) {
-      let timer = null;
-      searchEl.addEventListener("input", function () {
-        clearTimeout(timer);
-        timer = setTimeout(function () {
-          const q = searchEl.value.trim().toLowerCase();
-          nodes.forEach(function (n) {
-            const meta = n._meta || {};
-            const hit = !q || (meta.url || "").toLowerCase().includes(q) ||
-                              (n.label || "").toLowerCase().includes(q);
-            nodes.update({ id: n.id, opacity: hit ? 1.0 : 0.15 });
-          });
-        }, 120);
+      // Fit all nodes into view once physics settles.
+      network.once("stabilizationIterationsDone", function () {
+        network.fit({ animation: { duration: 800, easingFunction: "easeInOutQuad" } });
       });
-    }
 
-    const fitEl = document.getElementById(fitId);
-    if (fitEl) {
-      fitEl.addEventListener("click", function () { network.fit({ animation: true }); });
-    }
+      const selectedEl = document.getElementById(selectedId);
+      const openEl = document.getElementById(openId);
 
-    // Resize with the viewport so the graph keeps filling its container.
-    window.addEventListener("resize", function () { network.redraw(); });
+      network.on("selectNode", function (params) {
+        const nodeId = params.nodes[0];
+        const meta = (nodes.get(nodeId) || {})._meta || {};
+        if (selectedEl) selectedEl.textContent = meta.url || nodeId;
+        if (openEl && meta.url) {
+          openEl.href = meta.url;
+          openEl.classList.remove("hidden");
+        }
+      });
+      network.on("deselectNode", function () {
+        if (selectedEl) selectedEl.textContent = "Click a node to inspect its URL.";
+        if (openEl) openEl.classList.add("hidden");
+      });
+
+      // Filter input: dim non-matching nodes rather than removing them,
+      // so the hierarchy stays intact while searching.
+      const searchEl = document.getElementById(searchId);
+      if (searchEl) {
+        let timer = null;
+        searchEl.addEventListener("input", function () {
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            const q = searchEl.value.trim().toLowerCase();
+            nodes.forEach(function (n) {
+              const meta = n._meta || {};
+              const hit = !q || (meta.url || "").toLowerCase().includes(q) ||
+                                (n.label || "").toLowerCase().includes(q);
+              nodes.update({ id: n.id, opacity: hit ? 1.0 : 0.15 });
+            });
+          }, 120);
+        });
+      }
+
+      const fitEl = document.getElementById(fitId);
+      if (fitEl) {
+        fitEl.addEventListener("click", function () { network.fit({ animation: true }); });
+      }
+
+      // Resize with the viewport so the graph keeps filling its container.
+      window.addEventListener("resize", function () { network.redraw(); });
+    });
   })();
 </script>
 {% endif %}
