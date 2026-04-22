@@ -3,10 +3,48 @@
 {% block title %}Job: {{ job.domain }} - LakeStream{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto space-y-6">
+<div
+  class="max-w-3xl mx-auto space-y-6"
+  x-data="{
+    activeTab: 'status',
+    graphLoaded: false,
+    showGraph() {
+      this.activeTab = 'graph';
+      if (!this.graphLoaded) {
+        htmx.ajax('GET', '/partials/job/{{ job.id }}/graph', { target: '#job-graph-panel', swap: 'innerHTML' });
+        this.graphLoaded = true;
+      }
+    }
+  }"
+>
 
   <!-- Back Link -->
   <a href="/jobs" class="text-sm text-accent hover:underline inline-block">&larr; Back to Jobs</a>
+
+  <!-- View Tabs -->
+  <div class="flex items-center gap-1 border-b border-stone-200 dark:border-gray-700">
+    <button
+      @click="activeTab = 'status'"
+      :class="activeTab === 'status' ? 'border-accent text-accent' : 'border-transparent text-slate dark:text-gray-400 hover:text-charcoal dark:hover:text-gray-200'"
+      class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+    >
+      Status
+    </button>
+    <button
+      @click="showGraph()"
+      :class="activeTab === 'graph' ? 'border-accent text-accent' : 'border-transparent text-slate dark:text-gray-400 hover:text-charcoal dark:hover:text-gray-200'"
+      class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors inline-flex items-center gap-2"
+    >
+      <i data-lucide="git-branch" class="w-4 h-4"></i>
+      Graph
+      {% if data_count %}
+      <span class="text-xs text-slate-400">({{ data_count }})</span>
+      {% endif %}
+    </button>
+  </div>
+
+  <!-- Status Tab -->
+  <div x-show="activeTab === 'status'" class="space-y-6">
 
   <!-- Job Header -->
   <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6">
@@ -168,6 +206,17 @@
       </div>
       {% endif %}
     </dl>
+  </div>
+
+  </div><!-- /Status Tab -->
+
+  <!-- Graph Tab -->
+  <div x-show="activeTab === 'graph'" x-cloak>
+    <div id="job-graph-panel" class="min-h-[500px]">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-8 text-center">
+        <p class="text-sm text-slate dark:text-gray-400">Loading sitemap graph...</p>
+      </div>
+    </div>
   </div>
 
 </div>

@@ -2,8 +2,11 @@
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+logger = structlog.get_logger()
 
 router = APIRouter(tags=["web"])
 
@@ -631,9 +634,89 @@ async def job_status_partial(request: Request, job_id: UUID):
     )
 
 
+@router.get("/partials/job/{job_id}/graph", response_class=HTMLResponse)
+async def job_graph_partial(request: Request, job_id: UUID):
+    """Sitemap graph partial for the Graph tab on the job status page.
+
+    Builds a GraphData payload (nodes + edges) from the URLs scraped for
+    this job. Phase 1: hierarchy inferred from URL paths, no new backend
+    endpoints, no new DB tables. Phase 2/3 can inject additional fields
+    into the same payload without changing this route's contract.
+    """
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.db.pool import get_pool
+    from src.db.queries.jobs import get_job
+    from src.db.queries.scraped_data import get_scraped_data_by_job
+    from src.services.sitemap_graph import build_sitemap_graph
+
+    pool = await get_pool()
+    job = await get_job(pool, job_id)
+    if not job:
+        return get_templates().TemplateResponse(
+            "pages/jobs/not_found.html",
+            {"request": request, "active_page": "jobs", "job_id": job_id},
+            status_code=404,
+        )
+
+    # Non-admin can only see their own jobs.
+    user_filter = _get_user_filter(request)
+    if user_filter and job.user_id != user_filter:
+        return get_templates().TemplateResponse(
+            "pages/jobs/not_found.html",
+            {"request": request, "active_page": "jobs", "job_id": job_id},
+            status_code=404,
+        )
+
+    records = await get_scraped_data_by_job(pool, job_id)
+    # Dedupe URLs at the source; build_sitemap_graph also dedupes but
+    # doing it here keeps total_urls honest.
+    urls = sorted({r.url for r in records if r.url})
+
+    # Performance floor: if the graph would exceed 500 nodes, drop
+    # everything beyond depth 3 and warn the user.
+    PERFORMANCE_NODE_LIMIT = 500
+    MAX_DEPTH_WHEN_COLLAPSED = 3
+
+    graph_data = build_sitemap_graph(urls)
+    collapsed = False
+    if len(graph_data["nodes"]) > PERFORMANCE_NODE_LIMIT:
+        collapsed = True
+        keep_ids = {
+            n["id"] for n in graph_data["nodes"]
+            if n["depth"] <= MAX_DEPTH_WHEN_COLLAPSED
+        }
+        graph_data = {
+            "nodes": [n for n in graph_data["nodes"] if n["id"] in keep_ids],
+            "edges": [
+                e for e in graph_data["edges"]
+                if e["from"] in keep_ids and e["to"] in keep_ids
+            ],
+        }
+
+    return get_templates().TemplateResponse(
+        "partials/job_graph.html",
+        {
+            "request": request,
+            "job": job,
+            "graph_data": graph_data,
+            "total_urls": len(urls),
+            "collapsed": collapsed,
+        },
+    )
+
+
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(request: Request, job_id: UUID):
-    """Cancel a pending or running job (web UI action)."""
+    """Cancel a pending or running job (web UI action).
+
+    Always returns a 302 redirect back to the job page, even if the DB update
+    fails (e.g., a trigger side-effect errored). The UPDATE is idempotent and
+    the cooperative-cancel check in ContentWorker will exit the worker on the
+    next URL iteration.
+    """
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -644,8 +727,8 @@ async def cancel_job(request: Request, job_id: UUID):
     pool = await get_pool()
     try:
         await do_cancel(pool, job_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("cancel_job_failed", job_id=str(job_id), error=str(e))
 
     url = f"/jobs/{job_id}"
     if request.headers.get("HX-Request"):
@@ -728,6 +811,19 @@ async def results_browse(
     offset = (page - 1) * limit
     user_filter = _get_user_filter(request)
 
+    # Normalize an incoming `domain` param. Job records may store either a bare
+    # hostname ("example.com") or, for some user-pasted inputs, a full URL with
+    # path + query. scraped_data.domain, however, is always the hostname. Strip
+    # protocol, path and "www." prefix so the filter works for either form.
+    if domain:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(domain if "://" in domain else f"http://{domain}")
+        host = (parsed.hostname or domain).lower()
+        if host.startswith("www."):
+            host = host[4:]
+        domain = host
+
     # Get unique domains for filter dropdown (scoped to user)
     if user_filter:
         domains_rows = await pool.fetch(
@@ -781,8 +877,10 @@ async def results_browse(
         vals.append(user_filter)
         idx += 1
     if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
+        # ILIKE %host% so both "linkedin.com" and "www.linkedin.com" rows match,
+        # mirroring the pattern used by list_jobs (src/db/queries/jobs.py).
+        conditions.append(f"domain ILIKE ${idx}")
+        vals.append(f"%{domain}%")
         idx += 1
     if data_type:
         conditions.append(f"data_type = ${idx}")
@@ -1192,6 +1290,17 @@ async def download_all_csv(
     pool = await get_pool()
     user_filter = _get_user_filter(request)
 
+    # Normalize domain to hostname (same logic as /results) so CSV export from
+    # a filtered results page matches what the page shows.
+    if domain:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(domain if "://" in domain else f"http://{domain}")
+        host = (parsed.hostname or domain).lower()
+        if host.startswith("www."):
+            host = host[4:]
+        domain = host
+
     # Build the same filter conditions as the /results route
     conditions = []
     vals: list = []
@@ -1202,8 +1311,10 @@ async def download_all_csv(
         vals.append(user_filter)
         idx += 1
     if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
+        # ILIKE %host% so both "linkedin.com" and "www.linkedin.com" rows match,
+        # mirroring the pattern used by list_jobs (src/db/queries/jobs.py).
+        conditions.append(f"domain ILIKE ${idx}")
+        vals.append(f"%{domain}%")
         idx += 1
     if data_type:
         conditions.append(f"data_type = ${idx}")

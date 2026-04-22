@@ -1,0 +1,221 @@
+{#
+  Sitemap graph partial (Phase 1).
+
+  Expected context:
+    job         : ScrapeJob   (for the download link + header)
+    graph_data  : dict        {"nodes": [...], "edges": [...]}
+    total_urls  : int         number of distinct discovered URLs
+    collapsed   : bool        whether nodes beyond depth 3 were hidden
+
+  Phase 2/3 notes: the graph_data dict is the only contract. New fields
+  on nodes (inbound_link_count, topics, content_type) flow through
+  untouched; renderNode() below picks up known keys and ignores the rest.
+#}
+
+<div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-4 space-y-3">
+
+  <div class="flex items-center justify-between flex-wrap gap-2">
+    <div>
+      <h2 class="text-sm font-medium text-slate dark:text-gray-400 uppercase tracking-wide">
+        Sitemap graph
+      </h2>
+      <p class="text-xs text-slate-400 mt-1">
+        {{ total_urls }} URL{{ 's' if total_urls != 1 else '' }} rendered as a hierarchy.
+        Click a node to view its full URL.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input
+        id="sitemap-graph-search-{{ job.id }}"
+        type="text"
+        placeholder="Filter nodes..."
+        class="px-3 py-1.5 rounded-lg border border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm dark:text-gray-200 focus:border-accent focus:ring-2 focus:ring-accent/20"
+      >
+      <button
+        id="sitemap-graph-fit-{{ job.id }}"
+        type="button"
+        class="py-1.5 px-3 bg-white dark:bg-gray-800 border border-stone-200 dark:border-gray-600 text-charcoal dark:text-gray-100 text-sm font-medium rounded-lg hover:bg-stone-50 dark:hover:bg-gray-700 transition-colors"
+      >
+        Fit
+      </button>
+    </div>
+  </div>
+
+  {% if collapsed %}
+  <div class="flex items-start gap-2 bg-warning/5 border border-warning/20 rounded-lg px-3 py-2">
+    <i data-lucide="alert-triangle" class="w-4 h-4 text-warning mt-0.5"></i>
+    <p class="text-xs text-slate dark:text-gray-300">
+      Large sitemap detected. Showing top 3 levels of {{ total_urls }} total nodes.
+      Use the filter above to search deeper paths.
+    </p>
+  </div>
+  {% endif %}
+
+  {% if total_urls == 0 %}
+  <div class="rounded-lg border border-dashed border-stone-300 dark:border-gray-700 p-8 text-center">
+    <p class="text-sm text-slate dark:text-gray-400">
+      No discovered URLs yet. The graph will populate once this job finishes scraping.
+    </p>
+  </div>
+  {% else %}
+  <div
+    id="sitemap-graph-{{ job.id }}"
+    class="w-full rounded-lg border border-stone-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-950"
+    style="min-height: 500px; height: 60vh;"
+  ></div>
+
+  <div class="flex items-center justify-between text-xs text-slate-400">
+    <p>
+      <span id="sitemap-graph-selected-{{ job.id }}" class="font-mono break-all">Click a node to inspect its URL.</span>
+    </p>
+    <a
+      id="sitemap-graph-open-{{ job.id }}"
+      href="#"
+      target="_blank"
+      rel="noopener"
+      class="text-accent hover:underline hidden"
+    >
+      Open in new tab
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% if total_urls > 0 %}
+<script>
+  (function () {
+    const graphData = {{ graph_data | tojson }};
+    const containerId = "sitemap-graph-{{ job.id }}";
+    const searchId = "sitemap-graph-search-{{ job.id }}";
+    const fitId = "sitemap-graph-fit-{{ job.id }}";
+    const selectedId = "sitemap-graph-selected-{{ job.id }}";
+    const openId = "sitemap-graph-open-{{ job.id }}";
+
+    const container = document.getElementById(containerId);
+    if (!container || typeof vis === "undefined") {
+      return;
+    }
+
+    // Depth-driven visual encoding. Root is largest, leaves smallest.
+    function sizeForDepth(depth) {
+      if (depth === 0) return 34;
+      if (depth === 1) return 22;
+      if (depth === 2) return 16;
+      if (depth === 3) return 12;
+      return 8;
+    }
+
+    // Stable color per top-level section so /blog/* shares a hue with itself.
+    const palette = [
+      "#3B82F6", "#22C55E", "#E8033A", "#F59E0B", "#6D08BE",
+      "#0EA5E9", "#14B8A6", "#EC4899", "#84CC16", "#F97316",
+    ];
+    const sectionColor = {};
+    function colorForSection(section) {
+      if (!section) return "#011A6B"; // navy for root
+      if (!(section in sectionColor)) {
+        const idx = Object.keys(sectionColor).length % palette.length;
+        sectionColor[section] = palette[idx];
+      }
+      return sectionColor[section];
+    }
+
+    // Map a GraphData node into a vis-network node.
+    function renderNode(n) {
+      const isRoot = n.is_root === true || n.depth === 0;
+      const dimmed = n.depth >= 4;
+      return {
+        id: n.id,
+        label: n.label,
+        title: n.url, // native tooltip
+        shape: isRoot ? "star" : "dot",
+        size: sizeForDepth(n.depth),
+        color: {
+          background: isRoot ? "#011A6B" : colorForSection(n.section),
+          border: isRoot ? "#FFB703" : "#ffffff",
+          highlight: { background: "#E8033A", border: "#FFB703" },
+        },
+        font: {
+          color: document.documentElement.classList.contains("dark") ? "#e5e7eb" : "#011A6B",
+          size: isRoot ? 16 : 12,
+        },
+        opacity: dimmed ? 0.5 : 1.0,
+        _meta: n, // keep original for click handler
+      };
+    }
+
+    const nodes = new vis.DataSet(graphData.nodes.map(renderNode));
+    const edges = new vis.DataSet(
+      graphData.edges.map(function (e, i) {
+        return { id: "e" + i, from: e.from, to: e.to, color: { color: "#94A3B8", opacity: 0.6 } };
+      })
+    );
+
+    const isDark = document.documentElement.classList.contains("dark");
+    const network = new vis.Network(
+      container,
+      { nodes: nodes, edges: edges },
+      {
+        layout: { improvedLayout: true },
+        physics: {
+          solver: "forceAtlas2Based",
+          forceAtlas2Based: { gravitationalConstant: -60, springLength: 110 },
+          stabilization: { iterations: 180 },
+        },
+        interaction: { hover: true, tooltipDelay: 150, navigationButtons: false },
+        edges: { smooth: { type: "continuous" }, arrows: { to: { enabled: false } } },
+        nodes: { borderWidth: 2 },
+      }
+    );
+
+    // Paint background to match the dashboard. vis-network defaults to white,
+    // which breaks in dark mode.
+    container.style.backgroundColor = isDark ? "#020617" : "#F8FAFC";
+
+    const selectedEl = document.getElementById(selectedId);
+    const openEl = document.getElementById(openId);
+
+    network.on("selectNode", function (params) {
+      const nodeId = params.nodes[0];
+      const meta = (nodes.get(nodeId) || {})._meta || {};
+      if (selectedEl) selectedEl.textContent = meta.url || nodeId;
+      if (openEl && meta.url) {
+        openEl.href = meta.url;
+        openEl.classList.remove("hidden");
+      }
+    });
+    network.on("deselectNode", function () {
+      if (selectedEl) selectedEl.textContent = "Click a node to inspect its URL.";
+      if (openEl) openEl.classList.add("hidden");
+    });
+
+    // Filter input: dim non-matching nodes rather than removing them,
+    // so the hierarchy stays intact while searching.
+    const searchEl = document.getElementById(searchId);
+    if (searchEl) {
+      let timer = null;
+      searchEl.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          const q = searchEl.value.trim().toLowerCase();
+          nodes.forEach(function (n) {
+            const meta = n._meta || {};
+            const hit = !q || (meta.url || "").toLowerCase().includes(q) ||
+                              (n.label || "").toLowerCase().includes(q);
+            nodes.update({ id: n.id, opacity: hit ? 1.0 : 0.15 });
+          });
+        }, 120);
+      });
+    }
+
+    const fitEl = document.getElementById(fitId);
+    if (fitEl) {
+      fitEl.addEventListener("click", function () { network.fit({ animation: true }); });
+    }
+
+    // Resize with the viewport so the graph keeps filling its container.
+    window.addEventListener("resize", function () { network.redraw(); });
+  })();
+</script>
+{% endif %}
