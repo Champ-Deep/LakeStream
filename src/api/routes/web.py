@@ -642,8 +642,16 @@ async def cancel_job(request: Request, job_id: UUID):
     from src.db.queries.jobs import cancel_job as do_cancel
 
     pool = await get_pool()
-    await do_cancel(pool, job_id)
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=302)
+    try:
+        await do_cancel(pool, job_id)
+    except Exception:
+        pass
+
+    url = f"/jobs/{job_id}"
+    if request.headers.get("HX-Request"):
+        from starlette.responses import Response
+        return Response(status_code=200, headers={"HX-Redirect": url})
+    return RedirectResponse(url=url, status_code=302)
 
 
 @router.post("/jobs/{job_id}/retry")
