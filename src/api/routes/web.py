@@ -759,7 +759,9 @@ async def retry_job(request: Request, job_id: UUID):
 
     new_job = await create_job(pool, job_input, org_id=org_id, user_id=user_id)
 
-    # Enqueue to arq worker
+    # Enqueue to arq worker. If the enqueue fails (Redis blip, etc.) we
+    # roll the row forward to FAILED so the user sees the error instead
+    # of a perpetually-PENDING job no worker will pick up.
     try:
         from arq.connections import RedisSettings
         from arq.connections import create_pool as create_arq_pool
@@ -768,17 +770,30 @@ async def retry_job(request: Request, job_id: UUID):
 
         settings = get_settings()
         redis = await create_arq_pool(RedisSettings.from_dsn(settings.redis_url))
-        await redis.enqueue_job(
-            "process_scrape_job",
-            job_id=str(new_job.id),
-            domain=original.domain,
-            template_id=original.template_id or "auto",
-            max_pages=100,
-            data_types=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"],
-        )
-        await redis.aclose()
-    except Exception:
-        pass  # Job created but enqueue failed — will stay in PENDING
+        try:
+            await redis.enqueue_job(
+                "process_scrape_job",
+                job_id=str(new_job.id),
+                domain=original.domain,
+                template_id=original.template_id or "auto",
+                max_pages=100,
+                data_types=["blog_url", "article", "contact", "tech_stack", "resource", "pricing"],
+            )
+        finally:
+            await redis.aclose()
+    except Exception as e:
+        import structlog
+        log = structlog.get_logger()
+        log.error("rerun_job_enqueue_failed", job_id=str(new_job.id), error=str(e))
+        try:
+            await pool.execute(
+                "UPDATE scrape_jobs SET status = 'failed', "
+                "error_message = $2, completed_at = NOW() WHERE id = $1",
+                new_job.id,
+                f"Enqueue failed: {e}",
+            )
+        except Exception:
+            log.exception("rerun_job_rollback_failed", job_id=str(new_job.id))
 
     return RedirectResponse(url=f"/jobs/{new_job.id}", status_code=302)
 
