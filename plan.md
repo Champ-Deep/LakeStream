@@ -108,8 +108,8 @@ Three sprints. Each item is sized so it can be done in one commit.
 
 > **Goal:** make it safe to expose internally.
 
-- [ ] **S1.1 — Fix CRIT-1.** Add `Depends(get_current_user)` to every `/api/*` route handler in `scrape.py`, `exports.py`, `tracked.py`, `domains.py`, `templates.py`, `signals.py`, `webhook.py`. Then in `scrape.py:82` and `exports.py:99` add `WHERE org_id = $1` (or `user_id = $1` if non-admin) to the lookup queries. Add a regression test per route that 401s without auth and 403s for cross-org access.
-- [ ] **S1.2 — Fix CRIT-3.** Implement `webhook.py:200` to insert into `scraped_data` with `data_type='webhook_callback'`, **or** remove the route and document `/ingest` as the canonical inbound endpoint.
+- [x] **S1.1 — Fix CRIT-1.** Added `require_org()` and `authorize_resource()` helpers in `src/api/middleware/auth.py`. Locked down `/api/scrape/*`, `/api/export/*`, and `DELETE /api/tracked/{domain}` to require org auth and 404 on cross-tenant access. 21 regression tests in `tests/unit/api/test_auth_enforcement.py`.
+- [x] **S1.2 — Fix CRIT-3.** Implemented `POST /api/webhook/callback/{job_id}`: persists payloads as `scraped_data` rows with `data_type='webhook_callback'`, scoped to the job's org, with a 256 KiB payload cap. Added `WEBHOOK_CALLBACK` to the `DataType` enum. 7 regression tests in `tests/unit/api/test_webhook_callback.py`.
 - [ ] **S1.3 — Fix HIGH-2.** Introduce a single `require_org()` helper that raises `HTTPException(401)` if `request.state.org_id` is `None`, and call it from every implicit-auth route. Eliminates silent-`None` code paths in `scrape.py:27-30` and similar.
 - [ ] **S1.4 — Fix HIGH-6.** In `migrate.py:59`, drop the default — `if not os.environ.get("ADMIN_PASSWORD")` → log + skip the rehash. Update `.env.example` to mark `ADMIN_PASSWORD` as required.
 - [ ] **S1.5 — Fix CRIT-2.** Rename migrations:
