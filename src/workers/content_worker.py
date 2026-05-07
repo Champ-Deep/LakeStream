@@ -583,98 +583,136 @@ class ContentWorker(BaseWorker):
         return results
 
     def _convert_llm_results(self, url: str, data_type: str, llm_data: dict) -> list[dict]:
-        """Convert LLM output to record dicts matching CSS extractor format."""
+        """Convert LLM output to record dicts using the same Pydantic models as CSS extractors.
+
+        Routing through the models ensures LLM and CSS records have identical
+        shapes in the DB — no silent extra fields or missing required fields.
+        """
         records: list[dict] = []
 
         if data_type == "contact":
             people = llm_data.get("people", [])
-            if isinstance(people, list):
-                for person in people:
-                    if not isinstance(person, dict):
-                        continue
-                    # Skip empty entries
-                    if not any(person.get(k) for k in ("first_name", "last_name", "email", "job_title")):
-                        continue
-                    name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
-                    records.append({
-                        "job_id": UUID(self.job_id),
-                        "domain": self.domain,
-                        "data_type": DataType.CONTACT,
-                        "url": url,
-                        "title": name or None,
-                        "metadata": {**person, "extraction_method": "llm"},
+            if not isinstance(people, list):
+                return records
+            for person in people:
+                if not isinstance(person, dict):
+                    continue
+                if not any(person.get(k) for k in ("first_name", "last_name", "email", "job_title")):
+                    continue
+                try:
+                    meta = ContactMetadata(**{
+                        k: person.get(k) for k in ContactMetadata.model_fields
                     })
+                except Exception:
+                    continue
+                name = f"{meta.first_name or ''} {meta.last_name or ''}".strip() or None
+                records.append({
+                    "job_id": UUID(self.job_id),
+                    "domain": self.domain,
+                    "data_type": DataType.CONTACT,
+                    "url": url,
+                    "title": name,
+                    "metadata": {**meta.model_dump(), "extraction_method": "llm"},
+                })
 
         elif data_type == "pricing":
             plans = llm_data.get("plans", [])
-            if isinstance(plans, list):
-                for plan in plans:
-                    if not isinstance(plan, dict) or not plan.get("plan_name"):
-                        continue
-                    records.append({
-                        "job_id": UUID(self.job_id),
-                        "domain": self.domain,
-                        "data_type": DataType.PRICING,
-                        "url": url,
-                        "title": plan.get("plan_name"),
-                        "metadata": {**plan, "extraction_method": "llm"},
+            if not isinstance(plans, list):
+                return records
+            for plan in plans:
+                if not isinstance(plan, dict) or not plan.get("plan_name"):
+                    continue
+                try:
+                    meta = PricingMetadata(**{
+                        k: plan.get(k) for k in PricingMetadata.model_fields
                     })
+                except Exception:
+                    continue
+                records.append({
+                    "job_id": UUID(self.job_id),
+                    "domain": self.domain,
+                    "data_type": DataType.PRICING,
+                    "url": url,
+                    "title": meta.plan_name,
+                    "metadata": {**meta.model_dump(), "extraction_method": "llm"},
+                })
 
         elif data_type == "article":
-            # Only add if LLM found substantive content
-            if llm_data.get("content") or llm_data.get("excerpt"):
-                records.append({
-                    "job_id": UUID(self.job_id),
-                    "domain": self.domain,
-                    "data_type": DataType.ARTICLE,
-                    "url": url,
-                    "title": llm_data.get("title") or llm_data.get("author"),
-                    "metadata": {**llm_data, "extraction_method": "llm"},
+            if not (llm_data.get("content") or llm_data.get("excerpt")):
+                return records
+            try:
+                meta = ArticleMetadata(**{
+                    k: llm_data.get(k) for k in ArticleMetadata.model_fields
                 })
+            except Exception:
+                return records
+            records.append({
+                "job_id": UUID(self.job_id),
+                "domain": self.domain,
+                "data_type": DataType.ARTICLE,
+                "url": url,
+                "title": llm_data.get("title") or llm_data.get("author"),
+                "metadata": {**meta.model_dump(), "extraction_method": "llm"},
+            })
 
         elif data_type == "tech_stack":
-            # Only add if LLM found at least one tech identifier
             has_tech = any(llm_data.get(k) for k in ("platform", "js_libraries", "frameworks", "analytics", "marketing_tools"))
-            if has_tech:
-                records.append({
-                    "job_id": UUID(self.job_id),
-                    "domain": self.domain,
-                    "data_type": DataType.TECH_STACK,
-                    "url": url,
-                    "title": f"Tech Stack: {self.domain}",
-                    "metadata": {**llm_data, "extraction_method": "llm"},
+            if not has_tech:
+                return records
+            try:
+                meta = TechStackMetadata(**{
+                    k: llm_data.get(k) for k in TechStackMetadata.model_fields
                 })
+            except Exception:
+                return records
+            records.append({
+                "job_id": UUID(self.job_id),
+                "domain": self.domain,
+                "data_type": DataType.TECH_STACK,
+                "url": url,
+                "title": f"Tech Stack: {self.domain}",
+                "metadata": {**meta.model_dump(), "extraction_method": "llm"},
+            })
 
         elif data_type == "resource":
             resources = llm_data.get("resources", [])
-            if isinstance(resources, list):
-                for res in resources:
-                    if not isinstance(res, dict) or not res.get("title"):
-                        continue
-                    records.append({
-                        "job_id": UUID(self.job_id),
-                        "domain": self.domain,
-                        "data_type": DataType.RESOURCE,
-                        "url": res.get("download_url") or url,
-                        "title": res.get("title"),
-                        "metadata": {**res, "extraction_method": "llm"},
+            if not isinstance(resources, list):
+                return records
+            for res in resources:
+                if not isinstance(res, dict) or not res.get("title"):
+                    continue
+                try:
+                    meta = ResourceMetadata(**{
+                        k: res.get(k) for k in ResourceMetadata.model_fields
                     })
-
-        elif data_type == "blog_url":
-            articles = llm_data.get("articles", [])
-            if isinstance(articles, list) and articles:
+                except Exception:
+                    continue
                 records.append({
                     "job_id": UUID(self.job_id),
                     "domain": self.domain,
-                    "data_type": DataType.BLOG_URL,
-                    "url": url,
-                    "title": f"Blog Index: {url}",
-                    "metadata": {
-                        "blog_landing_url": url,
-                        "article_urls": [a.get("url") for a in articles if isinstance(a, dict) and a.get("url")],
-                        "total_articles": len(articles),
-                        "extraction_method": "llm",
-                    },
+                    "data_type": DataType.RESOURCE,
+                    "url": res.get("download_url") or url,
+                    "title": meta.title,
+                    "metadata": {**meta.model_dump(), "extraction_method": "llm"},
                 })
+
+        elif data_type == "blog_url":
+            articles = llm_data.get("articles", [])
+            if not isinstance(articles, list) or not articles:
+                return records
+            article_urls = [a.get("url") for a in articles if isinstance(a, dict) and a.get("url")]
+            meta = BlogUrlMetadata(
+                blog_landing_url=url,
+                article_urls=article_urls,
+                total_articles=len(article_urls),
+            )
+            records.append({
+                "job_id": UUID(self.job_id),
+                "domain": self.domain,
+                "data_type": DataType.BLOG_URL,
+                "url": url,
+                "title": f"Blog Index: {url}",
+                "metadata": {**meta.model_dump(), "extraction_method": "llm"},
+            })
 
         return records

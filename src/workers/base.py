@@ -138,60 +138,12 @@ class BaseWorker(ABC):
             return result
 
         proxy_available = bool(self.proxy_url)
-        current_tier = await self._escalation.decide_initial_tier(self.domain)
-
-        while True:
-            await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(current_tier)
-            result = await retry_async(
-                fetcher.fetch,
-                url,
-                options,
-                max_retries=2,
-                base_delay=2.0,
-                retry_on=_RETRY_ON,
-            )
-            self._rate_limiter.report_result(domain, result.status_code)
-
-            if not self._escalation.should_escalate(result):
-                await self._escalation.record_result(self.domain, result, success=True)
-                return result
-
-            next_tier = self._escalation.get_next_tier(
-                current_tier, proxy_available=proxy_available,
-            )
-
-            wait_seconds = self._escalation.get_escalation_wait(
-                current_tier, next_tier, result=result, proxy_available=proxy_available
-            )
-            reason = self._escalation.get_escalation_reason(result)
-
-            if next_tier is None:
-                self.log.info(
-                    "fetch_terminating",
-                    url=url,
-                    last_tier=current_tier.value,
-                    reason=reason,
-                    wait_seconds=wait_seconds,
-                )
-                if wait_seconds:
-                    await asyncio.sleep(wait_seconds)
-                await self._escalation.record_result(self.domain, result, success=False)
-                return result
-
-            self.log.info(
-                "fetch_escalating",
-                url=url,
-                from_tier=current_tier.value,
-                to_tier=next_tier.value,
-                reason=reason,
-                status=result.status_code,
-                html_size=len(result.html),
-                wait_seconds=wait_seconds,
-            )
-            if wait_seconds:
-                await asyncio.sleep(wait_seconds)
-            current_tier = next_tier
+        await self._rate_limiter.wait(domain)
+        result = await self._escalation.fetch_with_escalation(
+            url, domain, options=options, proxy_available=proxy_available,
+        )
+        self._rate_limiter.report_result(domain, result.status_code)
+        return result
 
     async def export_results(self, data: list[dict]) -> int:
         from src.db.pool import get_pool

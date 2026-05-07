@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -6,7 +7,8 @@ import structlog
 
 from src.config.settings import get_settings
 from src.db.queries.domains import get_domain_metadata, upsert_domain_metadata
-from src.models.scraping import FetchResult, ScrapingTier
+from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+from src.scraping.fetcher.factory import create_fetcher
 
 log = structlog.get_logger()
 
@@ -54,13 +56,13 @@ class EscalationService:
         self.pool = pool
 
     async def _check_session_health(self, domain: str) -> dict[str, Any] | None:
-        """Check health of existing Playwright session for a domain.
+        """Check health of existing session for a domain.
 
-        Connects to Redis and retrieves session metadata to assess:
-        - Whether session exists
-        - Authentication status
-        - Request count (session age)
-        - Last used timestamp
+        Checks both the authenticated session store (auth_session:, written by
+        AuthenticatedSessionManager for cookie-injected LinkedIn/Apollo sessions)
+        and the fetcher session store (playwright_session:, written by the
+        Playwright fetchers during normal scraping). The authenticated store takes
+        precedence because it carries reliable `authenticated=True` state.
 
         Args:
             domain: Domain to check session for (e.g., "linkedin.com")
@@ -71,22 +73,25 @@ class EscalationService:
             request_count, authenticated
         """
         settings = get_settings()
-        key = f"playwright_session:{domain}"
         client = None
 
         try:
             client = await redis.from_url(settings.redis_url)
-            data = await client.get(key)
 
-            if data:
-                session = json.loads(data)
-                log.debug(
-                    "session_health_check",
-                    domain=domain,
-                    authenticated=session.get("authenticated", False),
-                    request_count=session.get("request_count", 0),
-                )
-                return session
+            # Prefer the authenticated session (cookie-injected via AuthenticatedSessionManager)
+            for key in (f"auth_session:{domain}", f"playwright_session:{domain}"):
+                data = await client.get(key)
+                if data:
+                    session = json.loads(data)
+                    log.debug(
+                        "session_health_check",
+                        domain=domain,
+                        key=key,
+                        authenticated=session.get("authenticated", False),
+                        request_count=session.get("request_count", 0),
+                    )
+                    return session
+
         except Exception as exc:
             log.warning(
                 "session_health_check_error",
@@ -244,3 +249,71 @@ class EscalationService:
             success=success,
             blocked=result.blocked,
         )
+
+    async def fetch_with_escalation(
+        self,
+        url: str,
+        domain: str,
+        options: FetchOptions | None = None,
+        proxy_available: bool = False,
+    ) -> FetchResult:
+        """Fetch a URL with automatic tier escalation.
+
+        Single authoritative escalation loop used by both ScraperService and
+        BaseWorker. Handles tier selection, waits, result recording, and
+        escalation decisions in one place.
+        """
+        from src.utils.retry import retry_async
+
+        _RETRY_ON = (ConnectionError, TimeoutError, OSError, asyncio.TimeoutError)
+        options = options or FetchOptions()
+
+        current_tier = await self.decide_initial_tier(domain)
+
+        while True:
+            fetcher = create_fetcher(current_tier)
+            result = await retry_async(
+                fetcher.fetch,
+                url,
+                options,
+                max_retries=2,
+                base_delay=2.0,
+                retry_on=_RETRY_ON,
+            )
+
+            if not self.should_escalate(result):
+                await self.record_result(domain, result, success=True)
+                return result
+
+            next_tier = self.get_next_tier(current_tier, proxy_available=proxy_available)
+            wait_seconds = self.get_escalation_wait(
+                current_tier, next_tier, result=result, proxy_available=proxy_available,
+            )
+            reason = self.get_escalation_reason(result)
+
+            if next_tier is None:
+                log.info(
+                    "fetch_terminating",
+                    url=url,
+                    last_tier=current_tier.value,
+                    reason=reason,
+                    wait_seconds=wait_seconds,
+                )
+                if wait_seconds:
+                    await asyncio.sleep(wait_seconds)
+                await self.record_result(domain, result, success=False)
+                return result
+
+            log.info(
+                "fetch_escalating",
+                url=url,
+                from_tier=current_tier.value,
+                to_tier=next_tier.value,
+                reason=reason,
+                status=result.status_code,
+                html_size=len(result.html),
+                wait_seconds=wait_seconds,
+            )
+            if wait_seconds:
+                await asyncio.sleep(wait_seconds)
+            current_tier = next_tier
