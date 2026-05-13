@@ -56,12 +56,13 @@ def _get_pool_proxies() -> list[dict[str, str]]:
 
 
 class LakePlaywrightProxyFetcher:
-    """Tier 3: Playwright with session persistence + residential proxy.
+    """Tier 3: Playwright with session persistence + residential/ISP proxy.
 
     Proxy Priority Chain (with health-aware pool selection):
     1. Pool proxy (health-weighted, region-filtered)
     2. Custom proxy (settings.custom_proxy_url)
-    3. Bright Data (settings.brightdata_proxy_url)
+    3. Bright Data ISP (linkedin.com only) → residential fallback
+       Bright Data residential (all other sites) → ISP fallback
     4. Smartproxy (settings.smartproxy_url)
     5. No proxy (falls back to PLAYWRIGHT behavior)
 
@@ -88,7 +89,7 @@ class LakePlaywrightProxyFetcher:
         region = options.region
 
         # Build proxy chain for failover (may be empty)
-        proxy_chain = await self._get_proxy_chain(region=region)
+        proxy_chain = await self._get_proxy_chain(region=region, target_url=url)
         # Always include a None entry as last resort (no proxy)
         proxy_configs: list[dict[str, Any] | None] = [*proxy_chain, None]
 
@@ -257,11 +258,13 @@ class LakePlaywrightProxyFetcher:
         )
 
     async def _get_proxy_chain(
-        self, region: str | None = None,
+        self, region: str | None = None, target_url: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get all available proxy configs in priority order.
 
         Priority: Pool (health-weighted) -> Custom -> BrightData -> Smartproxy
+
+        For LinkedIn domains, prefers the ISP proxy zone over residential.
         """
         settings = get_settings()
         chain: list[dict[str, Any]] = []
@@ -272,8 +275,8 @@ class LakePlaywrightProxyFetcher:
             tracker = _get_health_tracker()
             picked = await tracker.pick_proxy(pool_proxies, region=region)
             if picked:
-                url = picked.get("url") or picked.get("server", "")
-                chain.append({"server": url})
+                pool_url = picked.get("url") or picked.get("server", "")
+                chain.append({"server": pool_url})
 
         if settings.custom_proxy_url:
             proxy_config: dict[str, Any] = {
@@ -284,8 +287,20 @@ class LakePlaywrightProxyFetcher:
                 proxy_config["password"] = settings.custom_proxy_password
             chain.append(proxy_config)
 
-        if settings.brightdata_proxy_url:
+        # LinkedIn → ISP proxy first, then residential as fallback.
+        # All other sites → residential proxy directly.
+        is_linkedin = bool(
+            target_url
+            and "linkedin.com" in urlparse(target_url).netloc
+        )
+        if is_linkedin and settings.brightdata_isp_proxy_url:
+            chain.append({"server": settings.brightdata_isp_proxy_url})
+            if settings.brightdata_proxy_url:
+                chain.append({"server": settings.brightdata_proxy_url})
+        elif settings.brightdata_proxy_url:
             chain.append({"server": settings.brightdata_proxy_url})
+            if settings.brightdata_isp_proxy_url:
+                chain.append({"server": settings.brightdata_isp_proxy_url})
 
         if settings.smartproxy_url:
             chain.append({"server": settings.smartproxy_url})
