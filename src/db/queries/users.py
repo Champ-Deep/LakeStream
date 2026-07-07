@@ -165,6 +165,73 @@ async def update_user(
     return User(**row) if row else None
 
 
+async def list_users_with_counts(pool: Pool) -> list[dict]:
+    """List all users with org name, job count, and scraped-data count (admin dashboard).
+
+    Returns a list of plain dicts (rather than the User model) since this view
+    joins in aggregate counts that aren't part of the users table itself.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT u.*,
+               o.name as org_name,
+               COALESCE(j.job_count, 0) as job_count,
+               COALESCE(d.data_count, 0) as data_count
+        FROM users u
+        JOIN organizations o ON u.org_id = o.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as job_count FROM scrape_jobs GROUP BY user_id
+        ) j ON j.user_id = u.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as data_count FROM scraped_data GROUP BY user_id
+        ) d ON d.user_id = u.id
+        ORDER BY u.created_at DESC
+        """
+    )
+    return [
+        {
+            "id": row["id"],
+            "email": row["email"],
+            "full_name": row["full_name"],
+            "role": row["role"],
+            "is_admin": row["is_admin"],
+            "is_active": row["is_active"],
+            "org_name": row["org_name"],
+            "job_count": row["job_count"],
+            "data_count": row["data_count"],
+            "last_login_at": row["last_login_at"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+async def set_user_admin(pool: Pool, user_id: UUID, is_admin: bool) -> None:
+    """Set a user's is_admin flag explicitly (used after admin-created signup)."""
+    await pool.execute("UPDATE users SET is_admin = $2 WHERE id = $1", user_id, is_admin)
+
+
+async def toggle_user_active(pool: Pool, user_id: UUID) -> None:
+    """Flip a user's is_active flag (admin enable/disable action)."""
+    await pool.execute(
+        "UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+
+
+async def toggle_user_admin(pool: Pool, user_id: UUID) -> None:
+    """Flip a user's is_admin flag (admin action)."""
+    await pool.execute(
+        "UPDATE users SET is_admin = NOT is_admin, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+
+
+async def delete_user(pool: Pool, user_id: UUID) -> None:
+    """Delete a user (admin action)."""
+    await pool.execute("DELETE FROM users WHERE id = $1", user_id)
+
+
 async def update_last_login(pool: Pool, user_id: UUID) -> None:
     """Update user's last login timestamp.
 

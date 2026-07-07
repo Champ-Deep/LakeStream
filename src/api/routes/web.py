@@ -220,49 +220,18 @@ async def dashboard(request: Request):
         return redirect
     """Main dashboard page."""
     from src.db.pool import get_pool
+    from src.db.queries.jobs import get_dashboard_job_stats
+    from src.db.queries.scraped_data import count_distinct_domains
     from src.templates.registry import list_templates
 
     pool = await get_pool()
     user_filter = _get_user_filter(request)
 
     # Get job stats — filtered by user for non-admins
-    if user_filter:
-        total_jobs = await pool.fetchval(
-            "SELECT COUNT(*) FROM scrape_jobs WHERE user_id = $1", user_filter
-        )
-        running_jobs = await pool.fetchval(
-            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running' AND user_id = $1",
-            user_filter,
-        )
-        success_rate = await pool.fetchval(
-            """SELECT COALESCE(
-                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
-                0
-            ) FROM scrape_jobs WHERE user_id = $1""",
-            user_filter,
-        )
-        total_domains = await pool.fetchval(
-            "SELECT COUNT(DISTINCT domain) FROM scraped_data WHERE user_id = $1", user_filter
-        )
-    else:
-        total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
-        running_jobs = await pool.fetchval(
-            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'"
-        )
-        success_rate = await pool.fetchval(
-            """SELECT COALESCE(
-                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
-                0
-            ) FROM scrape_jobs"""
-        )
-        total_domains = await pool.fetchval("SELECT COUNT(DISTINCT domain) FROM scraped_data")
+    job_stats = await get_dashboard_job_stats(pool, user_id=user_filter)
+    total_domains = await count_distinct_domains(pool, user_id=user_filter)
 
-    stats = {
-        "total_jobs": total_jobs or 0,
-        "running_jobs": running_jobs or 0,
-        "success_rate": success_rate or 0,
-        "total_domains": total_domains or 0,
-    }
+    stats = {**job_stats, "total_domains": total_domains}
 
     # Templates for the Quick Start advanced options dropdown
     templates_list = list_templates()
@@ -732,7 +701,12 @@ async def results_browse(
         return redirect
     """Results browser page."""
     from src.db.pool import get_pool
-    from src.db.queries.scraped_data import _parse_row
+    from src.db.queries.scraped_data import (
+        count_by_data_type,
+        count_search_scraped_data,
+        list_distinct_domains,
+        search_scraped_data,
+    )
 
     pool = await get_pool()
     limit = 50
@@ -740,27 +714,10 @@ async def results_browse(
     user_filter = _get_user_filter(request)
 
     # Get unique domains for filter dropdown (scoped to user)
-    if user_filter:
-        domains_rows = await pool.fetch(
-            "SELECT DISTINCT domain FROM scraped_data WHERE user_id = $1 ORDER BY domain",
-            user_filter,
-        )
-    else:
-        domains_rows = await pool.fetch("SELECT DISTINCT domain FROM scraped_data ORDER BY domain")
-    domains = [row["domain"] for row in domains_rows]
+    domains = await list_distinct_domains(pool, user_id=user_filter)
 
     # Get per-type counts for the dropdown (scoped to user)
-    if user_filter:
-        type_count_rows = await pool.fetch(
-            "SELECT data_type, COUNT(*) AS cnt FROM scraped_data "
-            "WHERE user_id = $1 GROUP BY data_type ORDER BY cnt DESC",
-            user_filter,
-        )
-    else:
-        type_count_rows = await pool.fetch(
-            "SELECT data_type, COUNT(*) AS cnt FROM scraped_data "
-            "GROUP BY data_type ORDER BY cnt DESC"
-        )
+    type_count_rows = await count_by_data_type(pool, user_id=user_filter)
     # List of {value, label, count} for the template dropdown
     _TYPE_LABELS = {
         "blog_url": "Blog URLs",
@@ -782,78 +739,15 @@ async def results_browse(
             "count": row["cnt"],
         })
 
-    # Build dynamic query for results
-    conditions = []
-    vals: list = []
-    idx = 1
-
-    if user_filter:
-        conditions.append(f"user_id = ${idx}")
-        vals.append(user_filter)
-        idx += 1
-    if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
-        idx += 1
-    if data_type:
-        conditions.append(f"data_type = ${idx}")
-        vals.append(data_type)
-        idx += 1
-    elif not q:
-        # Default view: hide raw page records (they clutter useful results).
-        # Users can still see them by explicitly selecting "Pages" from the dropdown.
-        conditions.append("data_type != 'page'")
-    if q and q.strip():
-        # Deep search: search title, URL, domain AND inside metadata JSONB content.
-        # metadata::text casts the entire JSON to a text string for ILIKE matching,
-        # so keywords in article body, contact names, descriptions etc. are found.
-        search_cond = (
-            f"(title ILIKE ${idx} OR url ILIKE ${idx} "
-            f"OR domain ILIKE ${idx} OR metadata::text ILIKE ${idx})"
-        )
-        conditions.append(search_cond)
-        vals.append(f"%{q.strip()}%")
-        idx += 1
-
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-    # When keyword is active, rank results by relevance:
-    # title match first, then URL match, then content match
-    if q and q.strip():
-        q_idx = idx  # next param slot
-        vals_for_query = vals.copy()
-        vals_for_query.append(f"%{q.strip()}%")  # for ORDER BY ranking
-        vals_for_query.extend([limit, offset])
-        order_clause = (
-            f"ORDER BY "
-            f"CASE WHEN title ILIKE ${q_idx} THEN 0 "
-            f"WHEN url ILIKE ${q_idx} THEN 1 "
-            f"WHEN domain ILIKE ${q_idx} THEN 2 "
-            f"ELSE 3 END, "
-            f"scraped_at DESC"
-        )
-        query = (
-            f"SELECT * FROM scraped_data {where} "
-            f"{order_clause} LIMIT ${q_idx + 1} OFFSET ${q_idx + 2}"
-        )
-        rows = await pool.fetch(query, *vals_for_query)
-    else:
-        vals.extend([limit, offset])
-        query = (
-            f"SELECT * FROM scraped_data {where} "
-            f"ORDER BY scraped_at DESC LIMIT ${idx} OFFSET ${idx + 1}"
-        )
-        rows = await pool.fetch(query, *vals)
-
-    results = [_parse_row(row) for row in rows]
-
-    # Get total count with same filters (exclude limit/offset params)
-    count_vals = vals[:len(vals) - 2] if not (q and q.strip()) else vals.copy()
-    count_query = f"SELECT COUNT(*) FROM scraped_data {where}"
-    if count_vals:
-        total = await pool.fetchval(count_query, *count_vals)
-    else:
-        total = await pool.fetchval(count_query)
+    search_kwargs = {
+        "user_id": user_filter,
+        "domain": domain,
+        "data_type": data_type,
+        "q": q,
+        "hide_pages_by_default": True,
+    }
+    results = await search_scraped_data(pool, limit=limit, offset=offset, **search_kwargs)
+    total = await count_search_scraped_data(pool, **search_kwargs)
 
     # Build download URL with current filters
     download_params = []
@@ -934,6 +828,7 @@ async def domain_detail(request: Request, domain: str):
     from src.db.pool import get_pool
     from src.db.queries.domains import get_domain_metadata
     from src.db.queries.jobs import list_jobs
+    from src.db.queries.scraped_data import get_data_type_breakdown_for_domain
 
     pool = await get_pool()
     user_filter = _get_user_filter(request)
@@ -941,28 +836,7 @@ async def domain_detail(request: Request, domain: str):
     jobs = await list_jobs(pool, domain=domain, user_id=user_filter, limit=10)
 
     # Get data type breakdown (scoped to user)
-    if user_filter:
-        breakdown_rows = await pool.fetch(
-            """
-            SELECT data_type, COUNT(*) as count
-            FROM scraped_data
-            WHERE domain = $1 AND user_id = $2
-            GROUP BY data_type
-            """,
-            domain,
-            user_filter,
-        )
-    else:
-        breakdown_rows = await pool.fetch(
-            """
-            SELECT data_type, COUNT(*) as count
-            FROM scraped_data
-            WHERE domain = $1
-            GROUP BY data_type
-            """,
-            domain,
-        )
-    breakdown = {row["data_type"]: row["count"] for row in breakdown_rows}
+    breakdown = await get_data_type_breakdown_for_domain(pool, domain, user_id=user_filter)
 
     return get_templates().TemplateResponse(
         "pages/domains/detail.html",
@@ -1060,14 +934,12 @@ async def download_job_csv(request: Request, job_id: UUID):
     if redirect:
         return redirect
 
-    import csv
-    import io
-
     from fastapi.responses import StreamingResponse
 
     from src.db.pool import get_pool
     from src.db.queries.jobs import get_job
     from src.db.queries.scraped_data import get_scraped_data_by_job
+    from src.services.csv_export import scraped_data_to_csv
 
     pool = await get_pool()
     job = await get_job(pool, job_id)
@@ -1089,92 +961,12 @@ async def download_job_csv(request: Request, job_id: UUID):
 
         raise HTTPException(status_code=404, detail="No data found for this job")
 
-    # Flatten to CSV
-    fieldnames = [
-        "domain",
-        "data_type",
-        "url",
-        "title",
-        "published_date",
-        "scraped_at",
-        "author",
-        "excerpt",
-        "word_count",
-        "categories",
-        "content",
-        "first_name",
-        "last_name",
-        "job_title",
-        "email",
-        "phone",
-        "linkedin_url",
-        "total_articles",
-        "platform",
-        "frameworks",
-        "js_libraries",
-        "analytics",
-        "resource_type",
-        "description",
-        "download_url",
-        "plan_name",
-        "price",
-        "billing_cycle",
-        "features",
-        "has_free_trial",
-        "cta_text",
-    ]
-
-    def _join_list(meta, key):
-        val = meta.get(key, [])
-        return "; ".join(val) if isinstance(val, list) else ""
-
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-    for item in data:
-        meta = item.metadata or {}
-        writer.writerow(
-            {
-                "domain": item.domain,
-                "data_type": item.data_type,
-                "url": item.url or "",
-                "title": item.title or "",
-                "published_date": str(item.published_date) if item.published_date else "",
-                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
-                "author": meta.get("author", ""),
-                "excerpt": meta.get("excerpt", ""),
-                "word_count": meta.get("word_count", ""),
-                "categories": _join_list(meta, "categories"),
-                "content": meta.get("content", ""),
-                "first_name": meta.get("first_name", ""),
-                "last_name": meta.get("last_name", ""),
-                "job_title": meta.get("job_title", ""),
-                "email": meta.get("email", ""),
-                "phone": meta.get("phone", ""),
-                "linkedin_url": meta.get("linkedin_url", ""),
-                "total_articles": meta.get("total_articles", ""),
-                "platform": meta.get("platform", ""),
-                "frameworks": _join_list(meta, "frameworks"),
-                "js_libraries": _join_list(meta, "js_libraries"),
-                "analytics": _join_list(meta, "analytics"),
-                "resource_type": meta.get("resource_type", ""),
-                "description": meta.get("description", ""),
-                "download_url": meta.get("download_url", ""),
-                "plan_name": meta.get("plan_name", ""),
-                "price": meta.get("price", ""),
-                "billing_cycle": meta.get("billing_cycle", ""),
-                "features": _join_list(meta, "features"),
-                "has_free_trial": meta.get("has_free_trial", ""),
-                "cta_text": meta.get("cta_text", ""),
-            }
-        )
-
-    output.seek(0)
+    csv_content = scraped_data_to_csv(data)
     domain = job.domain.replace(".", "_")
     filename = f"{domain}_{str(job_id)[:8]}.csv"
 
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter([csv_content]),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -1192,138 +984,32 @@ async def download_all_csv(
     if redirect:
         return redirect
 
-    import csv
-    import io
-
     from fastapi.responses import StreamingResponse
 
     from src.db.pool import get_pool
-    from src.db.queries.scraped_data import _parse_row
+    from src.db.queries.scraped_data import search_scraped_data
+    from src.services.csv_export import scraped_data_to_csv
 
     pool = await get_pool()
     user_filter = _get_user_filter(request)
 
-    # Build the same filter conditions as the /results route
-    conditions = []
-    vals: list = []
-    idx = 1
-
-    if user_filter:
-        conditions.append(f"user_id = ${idx}")
-        vals.append(user_filter)
-        idx += 1
-    if domain:
-        conditions.append(f"domain = ${idx}")
-        vals.append(domain)
-        idx += 1
-    if data_type:
-        conditions.append(f"data_type = ${idx}")
-        vals.append(data_type)
-        idx += 1
-    if q and q.strip():
-        conditions.append(
-            f"(title ILIKE ${idx} OR url ILIKE ${idx} "
-            f"OR domain ILIKE ${idx} OR metadata::text ILIKE ${idx})"
-        )
-        vals.append(f"%{q.strip()}%")
-        idx += 1
-
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    download_query = f"SELECT * FROM scraped_data {where} ORDER BY scraped_at DESC LIMIT 10000"
-    if vals:
-        rows = await pool.fetch(download_query, *vals)
-    else:
-        rows = await pool.fetch(download_query)
-
-    data = [_parse_row(row) for row in rows]
+    data = await search_scraped_data(
+        pool,
+        user_id=user_filter,
+        domain=domain,
+        data_type=data_type,
+        q=q,
+        limit=10000,
+    )
 
     if not data:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="No data found")
 
-    fieldnames = [
-        "domain",
-        "data_type",
-        "url",
-        "title",
-        "published_date",
-        "scraped_at",
-        "author",
-        "excerpt",
-        "word_count",
-        "categories",
-        "content",
-        "first_name",
-        "last_name",
-        "job_title",
-        "email",
-        "phone",
-        "linkedin_url",
-        "total_articles",
-        "platform",
-        "frameworks",
-        "js_libraries",
-        "analytics",
-        "resource_type",
-        "description",
-        "download_url",
-        "plan_name",
-        "price",
-        "billing_cycle",
-        "features",
-        "has_free_trial",
-        "cta_text",
-    ]
-
-    def _join_list(meta, key):
-        val = meta.get(key, [])
-        return "; ".join(val) if isinstance(val, list) else ""
-
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-    for item in data:
-        meta = item.metadata or {}
-        writer.writerow(
-            {
-                "domain": item.domain,
-                "data_type": item.data_type,
-                "url": item.url or "",
-                "title": item.title or "",
-                "published_date": str(item.published_date) if item.published_date else "",
-                "scraped_at": item.scraped_at.isoformat() if item.scraped_at else "",
-                "author": meta.get("author", ""),
-                "excerpt": meta.get("excerpt", ""),
-                "word_count": meta.get("word_count", ""),
-                "categories": _join_list(meta, "categories"),
-                "content": meta.get("content", ""),
-                "first_name": meta.get("first_name", ""),
-                "last_name": meta.get("last_name", ""),
-                "job_title": meta.get("job_title", ""),
-                "email": meta.get("email", ""),
-                "phone": meta.get("phone", ""),
-                "linkedin_url": meta.get("linkedin_url", ""),
-                "total_articles": meta.get("total_articles", ""),
-                "platform": meta.get("platform", ""),
-                "frameworks": _join_list(meta, "frameworks"),
-                "js_libraries": _join_list(meta, "js_libraries"),
-                "analytics": _join_list(meta, "analytics"),
-                "resource_type": meta.get("resource_type", ""),
-                "description": meta.get("description", ""),
-                "download_url": meta.get("download_url", ""),
-                "plan_name": meta.get("plan_name", ""),
-                "price": meta.get("price", ""),
-                "billing_cycle": meta.get("billing_cycle", ""),
-                "features": _join_list(meta, "features"),
-                "has_free_trial": meta.get("has_free_trial", ""),
-                "cta_text": meta.get("cta_text", ""),
-            }
-        )
-
-    output.seek(0)
+    csv_content = scraped_data_to_csv(data)
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter([csv_content]),
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="lakestream_export.csv"'},
     )
@@ -1342,45 +1028,12 @@ async def users_list(request: Request):
         return redirect
 
     from src.db.pool import get_pool
+    from src.db.queries.users import list_users_with_counts
 
     pool = await get_pool()
 
     # Get all users with their job counts
-    rows = await pool.fetch(
-        """
-        SELECT u.*,
-               o.name as org_name,
-               COALESCE(j.job_count, 0) as job_count,
-               COALESCE(d.data_count, 0) as data_count
-        FROM users u
-        JOIN organizations o ON u.org_id = o.id
-        LEFT JOIN (
-            SELECT user_id, COUNT(*) as job_count FROM scrape_jobs GROUP BY user_id
-        ) j ON j.user_id = u.id
-        LEFT JOIN (
-            SELECT user_id, COUNT(*) as data_count FROM scraped_data GROUP BY user_id
-        ) d ON d.user_id = u.id
-        ORDER BY u.created_at DESC
-        """
-    )
-
-    users = []
-    for row in rows:
-        users.append(
-            {
-                "id": row["id"],
-                "email": row["email"],
-                "full_name": row["full_name"],
-                "role": row["role"],
-                "is_admin": row["is_admin"],
-                "is_active": row["is_active"],
-                "org_name": row["org_name"],
-                "job_count": row["job_count"],
-                "data_count": row["data_count"],
-                "last_login_at": row["last_login_at"],
-                "created_at": row["created_at"],
-            }
-        )
+    users = await list_users_with_counts(pool)
 
     return get_templates().TemplateResponse(
         "pages/users/list.html",
@@ -1407,7 +1060,7 @@ async def create_user_submit(
         return redirect
 
     from src.db.pool import get_pool
-    from src.db.queries.users import create_user, get_user_by_email
+    from src.db.queries.users import create_user, get_user_by_email, set_user_admin
     from src.services.auth import hash_password
 
     pool = await get_pool()
@@ -1435,7 +1088,7 @@ async def create_user_submit(
     if is_admin:
         user = await get_user_by_email(pool, email)
         if user:
-            await pool.execute("UPDATE users SET is_admin = TRUE WHERE id = $1", user.id)
+            await set_user_admin(pool, user.id, True)
 
     return RedirectResponse(url="/users?success=created", status_code=302)
 
@@ -1448,6 +1101,7 @@ async def toggle_user_active(request: Request, user_id: UUID):
         return redirect
 
     from src.db.pool import get_pool
+    from src.db.queries.users import toggle_user_active as do_toggle_active
 
     pool = await get_pool()
 
@@ -1455,10 +1109,7 @@ async def toggle_user_active(request: Request, user_id: UUID):
     if str(user_id) == request.session.get("user_id"):
         return RedirectResponse(url="/users?error=cannot_disable_self", status_code=302)
 
-    await pool.execute(
-        "UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1",
-        user_id,
-    )
+    await do_toggle_active(pool, user_id)
     return RedirectResponse(url="/users", status_code=302)
 
 
@@ -1470,6 +1121,7 @@ async def toggle_user_admin(request: Request, user_id: UUID):
         return redirect
 
     from src.db.pool import get_pool
+    from src.db.queries.users import toggle_user_admin as do_toggle_admin
 
     pool = await get_pool()
 
@@ -1477,10 +1129,7 @@ async def toggle_user_admin(request: Request, user_id: UUID):
     if str(user_id) == request.session.get("user_id"):
         return RedirectResponse(url="/users?error=cannot_change_self", status_code=302)
 
-    await pool.execute(
-        "UPDATE users SET is_admin = NOT is_admin, updated_at = NOW() WHERE id = $1",
-        user_id,
-    )
+    await do_toggle_admin(pool, user_id)
     return RedirectResponse(url="/users", status_code=302)
 
 
@@ -1492,6 +1141,7 @@ async def delete_user(request: Request, user_id: UUID):
         return redirect
 
     from src.db.pool import get_pool
+    from src.db.queries.users import delete_user as do_delete_user
 
     pool = await get_pool()
 
@@ -1499,7 +1149,7 @@ async def delete_user(request: Request, user_id: UUID):
     if str(user_id) == request.session.get("user_id"):
         return RedirectResponse(url="/users?error=cannot_delete_self", status_code=302)
 
-    await pool.execute("DELETE FROM users WHERE id = $1", user_id)
+    await do_delete_user(pool, user_id)
     return RedirectResponse(url="/users", status_code=302)
 
 
