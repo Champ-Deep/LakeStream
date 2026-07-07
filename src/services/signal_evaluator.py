@@ -1,22 +1,24 @@
 """Signal evaluation engine for intent data platform.
 
-This module contains the core logic for evaluating intent signals:
+This module contains the orchestration logic for evaluating intent signals:
 1. Check if signal conditions are met based on scraped data
-2. Execute actions when signals fire (Slack, webhook, email)
-3. Log execution results
+   (delegated to `src.services.signals.matchers`)
+2. Execute actions when signals fire, e.g. Slack, webhook, email
+   (delegated to `src.services.signals.notifications`)
+3. Log execution results and publish real-time events
+   (delegated to `src.services.signals.events`)
+
+The signal-type-specific matcher and notification-channel implementations
+live in `src.services.signals`. They are re-exported here for backward
+compatibility with existing imports/tests.
 """
 
-import json
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-import httpx
-import redis.asyncio as redis
 import structlog
 from asyncpg import Pool
 
-from src.config.settings import get_settings
 from src.db.pool import get_pool
 from src.db.queries.signals import (
     create_signal_execution,
@@ -24,8 +26,35 @@ from src.db.queries.signals import (
     increment_signal_fire_count,
 )
 from src.models.signals import Signal
+from src.services.signals.events import publish_signal_event
+from src.services.signals.matchers import (
+    check_funding_signal,
+    check_hiring_spike_signal,
+    check_job_change_signal,
+    check_tech_stack_signal,
+)
+from src.services.signals.notifications import (
+    NOTIFICATION_CHANNELS,
+    send_email_notification,
+    send_slack_notification,
+    send_webhook_notification,
+)
 
 log = structlog.get_logger()
+
+__all__ = [
+    "evaluate_signals_for_org",
+    "evaluate_signal",
+    "execute_signal_action",
+    "check_job_change_signal",
+    "check_funding_signal",
+    "check_tech_stack_signal",
+    "check_hiring_spike_signal",
+    "send_slack_notification",
+    "send_webhook_notification",
+    "send_email_notification",
+    "publish_signal_event",
+]
 
 
 # ============================================================================
@@ -83,141 +112,6 @@ async def evaluate_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str,
 
 
 # ============================================================================
-# Signal Type Evaluators
-# ============================================================================
-
-
-async def check_job_change_signal(
-    pool: Pool, signal: Signal, org_id: UUID
-) -> dict[str, Any] | None:
-    """Check if job change conditions match recent data."""
-    filters = signal.trigger_config.get("filters", {})
-    job_title = filters.get("job_title_contains", "")
-
-    # Query scraped data for recent job changes (last 24 hours)
-    query = """
-        SELECT * FROM scraped_data
-        WHERE org_id = $1
-        AND data_type = 'contact'
-        AND metadata->>'job_title' ILIKE $2
-        AND scraped_at > NOW() - INTERVAL '24 hours'
-        ORDER BY scraped_at DESC
-        LIMIT 100
-    """
-
-    rows = await pool.fetch(query, org_id, f"%{job_title}%")
-
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "job_change",
-            "trigger": f"Found {len(matches)} contacts with job title containing '{job_title}'",
-        }
-
-    return None
-
-
-async def check_funding_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str, Any] | None:
-    """Check if funding round conditions match recent data."""
-    _filters = signal.trigger_config.get("filters", {})  # noqa: F841
-
-    # In a real implementation, this would query funding data sources
-    # For now, check scraped_data for funding mentions
-    query = """
-        SELECT * FROM scraped_data
-        WHERE org_id = $1
-        AND (
-            metadata->>'type' = 'funding'
-            OR metadata->>'category' = 'funding'
-        )
-        AND scraped_at > NOW() - INTERVAL '7 days'
-        LIMIT 50
-    """
-
-    rows = await pool.fetch(query, org_id)
-
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "funding_round",
-            "trigger": f"Found {len(matches)} funding announcements",
-        }
-
-    return None
-
-
-async def check_tech_stack_signal(
-    pool: Pool, signal: Signal, org_id: UUID
-) -> dict[str, Any] | None:
-    """Check if tech stack change conditions match recent data."""
-    filters = signal.trigger_config.get("filters", {})
-    technology = filters.get("technology", "")
-
-    # Query scraped data for tech stack changes
-    query = """
-        SELECT * FROM scraped_data
-        WHERE org_id = $1
-        AND data_type = 'tech_stack'
-        AND (
-            metadata->>'platform' ILIKE $2
-            OR metadata->>'technology' ILIKE $2
-        )
-        AND scraped_at > NOW() - INTERVAL '7 days'
-        LIMIT 50
-    """
-
-    rows = await pool.fetch(query, org_id, f"%{technology}%")
-
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "tech_stack_change",
-            "trigger": f"Found {len(matches)} companies using {technology}",
-        }
-
-    return None
-
-
-async def check_hiring_spike_signal(
-    pool: Pool, signal: Signal, org_id: UUID
-) -> dict[str, Any] | None:
-    """Check if hiring volume spike conditions match."""
-    filters = signal.trigger_config.get("filters", {})
-    _department = filters.get("department", "All")  # noqa: F841
-    spike_threshold = filters.get("spike_threshold", 3)  # 3x normal
-
-    # Query for recent job postings
-    query = """
-        SELECT domain, COUNT(*) as job_count
-        FROM scraped_data
-        WHERE org_id = $1
-        AND data_type = 'job_posting'
-        AND scraped_at > NOW() - INTERVAL '7 days'
-        GROUP BY domain
-        HAVING COUNT(*) >= $2
-    """
-
-    rows = await pool.fetch(query, org_id, spike_threshold * 2)  # Simplified threshold
-
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "hiring_spike",
-            "trigger": f"Found {len(matches)} companies with hiring spikes",
-        }
-
-    return None
-
-
-# ============================================================================
 # Action Execution
 # ============================================================================
 
@@ -228,19 +122,10 @@ async def execute_signal_action(pool: Pool, signal: Signal, matched_data: dict[s
     action_type = action_config.get("type")
 
     try:
-        if action_type == "slack":
-            await send_slack_notification(signal, matched_data, action_config)
+        channel = NOTIFICATION_CHANNELS.get(action_type) if isinstance(action_type, str) else None
+        if channel is not None:
+            response = await channel.send(signal, matched_data, action_config)
             status = "success"
-            response = {"message": "Slack notification sent"}
-            error_msg = None
-        elif action_type == "webhook":
-            response = await send_webhook_notification(signal, matched_data, action_config)
-            status = "success"
-            error_msg = None
-        elif action_type == "email":
-            await send_email_notification(signal, matched_data, action_config)
-            status = "success"
-            response = {"message": "Email sent"}
             error_msg = None
         else:
             log.warning("unknown_action_type", action_type=action_type)
@@ -292,166 +177,4 @@ async def execute_signal_action(pool: Pool, signal: Signal, matched_data: dict[s
             action_status="failed",
             action_response=None,
             error_message=str(e),
-        )
-
-
-async def send_slack_notification(
-    signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
-) -> None:
-    """Send Slack notification via webhook."""
-    webhook_url = action_config.get("webhook_url")
-    if not webhook_url:
-        raise ValueError("Slack webhook URL not configured")
-
-    # Build Slack message
-    message = {
-        "text": f"🔔 Intent Signal Fired: {signal.name}",
-        "blocks": [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": f"🔔 {signal.name}"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*Signal:* {signal.name}\n"
-                        f"*Matches:* {matched_data.get('match_count', 0)}\n"
-                        f"*Trigger:* {matched_data.get('trigger', 'N/A')}"
-                    ),
-                },
-            },
-        ],
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(webhook_url, json=message, timeout=10.0)
-        response.raise_for_status()
-
-
-async def send_webhook_notification(
-    signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
-) -> dict[str, Any]:
-    """Send webhook notification."""
-    webhook_url = action_config.get("webhook_url")
-    if not webhook_url:
-        raise ValueError("Webhook URL not configured")
-
-    payload = {
-        "signal_id": str(signal.id),
-        "signal_name": signal.name,
-        "signal_type": matched_data.get("signal_type"),
-        "matched_data": matched_data,
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(webhook_url, json=payload, timeout=10.0)
-        response.raise_for_status()
-        return {"status_code": response.status_code, "response": response.text}
-
-
-async def send_email_notification(
-    signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
-) -> None:
-    """Send email notification via ChampMail engine API."""
-    email_recipients = action_config.get("email_recipients", [])
-    if not email_recipients:
-        raise ValueError("Email recipients not configured")
-
-    settings = get_settings()
-    if not settings.mail_engine_enabled:
-        raise RuntimeError(
-            "Email notifications are not enabled. "
-            "Set MAIL_ENGINE_ENABLED=true and MAIL_ENGINE_API_KEY."
-        )
-
-    subject = f"Intent Signal Fired: {signal.name}"
-    match_count = matched_data.get("match_count", 0)
-    trigger_text = matched_data.get("trigger", "Signal conditions were met")
-    signal_type = matched_data.get("signal_type", "unknown")
-
-    html_body = (
-        f"<h2>Intent Signal: {signal.name}</h2>"
-        f"<p><strong>Type:</strong> {signal_type}</p>"
-        f"<p><strong>Matches:</strong> {match_count}</p>"
-        f"<p><strong>Trigger:</strong> {trigger_text}</p>"
-        f"<hr><p>Automated notification from LakeStream.</p>"
-    )
-
-    headers = {"Content-Type": "application/json"}
-    if settings.mail_engine_api_key:
-        headers["X-API-Key"] = settings.mail_engine_api_key
-
-    async with httpx.AsyncClient() as client:
-        for recipient in email_recipients:
-            text_body = f"Signal: {signal.name} | Type: {signal_type} | Matches: {match_count}"
-            response = await client.post(
-                f"{settings.mail_engine_url}/api/v1/send",
-                headers=headers,
-                json={
-                    "recipient": recipient,
-                    "subject": subject,
-                    "html_body": html_body,
-                    "text_body": text_body,
-                    "from_address": settings.mail_engine_from_address,
-                    "track_opens": False,
-                    "track_clicks": False,
-                },
-                timeout=10.0,
-            )
-            response.raise_for_status()
-
-    log.info(
-        "email_notification_sent",
-        signal_id=str(signal.id),
-        recipients=email_recipients,
-        match_count=match_count,
-    )
-
-
-# ============================================================================
-# Real-Time Event Streaming (Phase G Preview)
-# ============================================================================
-
-
-async def publish_signal_event(signal: Signal, matched_data: dict[str, Any]) -> None:
-    """Publish signal event to Redis pub/sub for real-time streaming.
-
-    Events are published to org-specific channels that WebSocket clients
-    can subscribe to for real-time intent signal notifications.
-    """
-    settings = get_settings()
-
-    try:
-        # Create Redis client
-        redis_client = redis.from_url(settings.redis_url)
-
-        # Build event payload
-        event = {
-            "event_type": "signal_fired",
-            "signal_id": str(signal.id),
-            "signal_name": signal.name,
-            "matched_data": matched_data,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-
-        # Publish to org-specific channel
-        channel = f"intent:org:{signal.org_id}"
-        await redis_client.publish(channel, json.dumps(event))
-
-        await redis_client.aclose()
-
-        log.debug(
-            "signal_event_published",
-            signal_id=str(signal.id),
-            channel=channel,
-        )
-
-    except Exception as e:
-        log.warning(
-            "signal_event_publish_failed",
-            signal_id=str(signal.id),
-            error=str(e),
         )
