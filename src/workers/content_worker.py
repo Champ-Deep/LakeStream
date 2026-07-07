@@ -29,6 +29,8 @@ from src.scraping.parser.html_parser import HtmlParser, extract_rich_metadata
 from src.scraping.parser.pricing_parser import PricingParser
 from src.scraping.parser.resource_parser import ResourceParser
 from src.scraping.parser.tech_parser import TechParser
+from src.templates.base import BaseTemplate
+from src.templates.registry import detect_template, get_template_instance
 from src.utils.url import extract_domain
 from src.workers.base import BaseWorker
 
@@ -47,7 +49,65 @@ _ERROR_MARKERS = ("error", "404", "not found", "page not found")
 
 
 class ContentWorker(BaseWorker):
-    """Fetches each URL once and runs all applicable extractors."""
+    """Fetches each URL once and runs all applicable extractors.
+
+    Template consulting
+    --------------------
+    When a platform template (WordPress/HubSpot/Webflow/Directory) is
+    resolved for a page — either explicitly via ``self.template`` or
+    auto-detected from the fetched HTML via
+    ``src.templates.registry.detect_template`` — its per-platform CSS
+    selectors are used to *improve specific fields* on top of the existing
+    generic-parser records, rather than replacing them outright:
+
+    - Blog link discovery (``_extract_blog_landing``): the template's
+      ``extract_blog_urls`` (platform-specific ``article_link`` selectors)
+      is unioned with the generic selector list, since more targeted
+      selectors on a matching platform should only add true positives.
+    - Article title/author (``_extract_article_record``): the template's
+      ``extract_article`` dict can override ``title``/``author`` when it
+      finds a non-empty value with its platform-specific selectors. The
+      article ``content``/``word_count``/``categories`` always keep coming
+      from the generic ``HtmlParser`` — templates only return a short
+      (300-char) excerpt from a single content selector, so trusting them
+      for full body content would be a quality regression, not an
+      improvement.
+
+    Deliberately NOT wired in (left on the generic parsers):
+
+    - Contacts: every concrete template's ``extract_contacts`` returns
+      ``[]`` (dead stub) — there is nothing to gain by calling it.
+    - Tech stack / resources / pricing: ``BaseTemplate`` has no methods for
+      these data types at all.
+    - ``GenericTemplate``: never consulted — for domains with no specific
+      platform match, behavior is unchanged from today (100% generic
+      parsers), rather than routing through ``GenericTemplate``'s
+      differently-shaped (and less complete) extraction methods.
+    """
+
+    def _resolve_template(self, html: str, url: str) -> BaseTemplate | None:
+        """Resolve the platform template to consult for this page, if any.
+
+        Returns ``None`` for the generic/no-match case so callers can cheaply
+        skip all template-based logic and fall back to the existing
+        generic-parser behavior unchanged.
+
+        - If a template was passed explicitly to the worker (``self.template``,
+          set from a resolved ``template_id`` in the job), use it — unless it
+          is the generic template, which carries no extraction benefit here.
+        - Otherwise, auto-detect from the fetched HTML. ``detect_template``
+          always returns *something* (falling back to ``GenericTemplate``),
+          so we translate that fallback to ``None`` too.
+        """
+        if self.template is not None:
+            instance = get_template_instance(self.template.id)
+            if instance is not None and instance.config.id != "generic":
+                return instance
+
+        detected = detect_template(html, url)
+        if detected.config.id == "generic":
+            return None
+        return detected
 
     async def execute(  # type: ignore[override]
         self,
@@ -205,6 +265,7 @@ class ContentWorker(BaseWorker):
 
         rich_meta = extract_rich_metadata(html, url)
         records: list[dict] = []
+        template = self._resolve_template(html, url)
 
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
@@ -230,13 +291,13 @@ class ContentWorker(BaseWorker):
         # --- Specialized extraction based on URL classification ---
 
         if data_type == DataType.BLOG_URL and "blog_url" in data_types:
-            blog_rec, _ = self._extract_blog_landing(url, html, parser, rich_meta)
+            blog_rec, _ = self._extract_blog_landing(url, html, parser, rich_meta, template)
             if blog_rec:
                 records.append(blog_rec)
 
         # Article extraction for any page with substantial content
         if "article" in data_types and parser.count_words() >= MIN_ARTICLE_WORDS:
-            article_rec = self._extract_article_record(url, parser, rich_meta)
+            article_rec = self._extract_article_record(url, html, parser, rich_meta, template)
             if article_rec:
                 records.append(article_rec)
 
@@ -298,9 +359,22 @@ class ContentWorker(BaseWorker):
         }
 
     def _extract_article_record(
-        self, url: str, parser: HtmlParser, rich_meta: dict,
+        self,
+        url: str,
+        html: str,
+        parser: HtmlParser,
+        rich_meta: dict,
+        template: BaseTemplate | None = None,
     ) -> dict | None:
-        """Article record for pages with substantial text. Ported from ArticleParserWorker."""
+        """Article record for pages with substantial text. Ported from ArticleParserWorker.
+
+        Content/word_count/categories always come from the generic
+        ``HtmlParser`` — that is the full, reliable extraction. When a
+        platform template matched, its ``extract_article`` selectors are
+        used only to fill in a better ``title``/``author`` when they find a
+        non-empty value; the template's own (much shorter) excerpt/content
+        fields are intentionally ignored.
+        """
         content = parser.extract_content()
         word_count = parser.count_words()
         excerpt = parser.extract_meta("description")
@@ -308,8 +382,25 @@ class ContentWorker(BaseWorker):
         if word_count == 0 and excerpt is None:
             return None
 
+        title = parser.extract_title()
+        author = parser.extract_meta("author")
+
+        if template is not None:
+            try:
+                template_result = template.extract_article(html, url)
+            except Exception as e:
+                self.log.warning(
+                    "template_extract_article_failed",
+                    url=url,
+                    template=template.config.id,
+                    error=str(e),
+                )
+                template_result = {}
+            title = template_result.get("title") or title
+            author = template_result.get("author") or author
+
         metadata = ArticleMetadata(
-            author=parser.extract_meta("author"),
+            author=author,
             categories=parser.extract_categories(),
             word_count=word_count,
             excerpt=excerpt,
@@ -320,14 +411,25 @@ class ContentWorker(BaseWorker):
             "domain": self.domain,
             "data_type": DataType.ARTICLE,
             "url": url,
-            "title": parser.extract_title(),
+            "title": title,
             "metadata": {**rich_meta, **metadata.model_dump()},
         }
 
     def _extract_blog_landing(
-        self, url: str, html: str, parser: HtmlParser, rich_meta: dict,
+        self,
+        url: str,
+        html: str,
+        parser: HtmlParser,
+        rich_meta: dict,
+        template: BaseTemplate | None = None,
     ) -> tuple[dict, list[str]]:
-        """Blog landing page: extract article links. Ported from BlogExtractorWorker."""
+        """Blog landing page: extract article links. Ported from BlogExtractorWorker.
+
+        When a platform template matched, its (more targeted) ``article_link``
+        selectors are unioned with the generic selector list — additional
+        platform-specific selectors can only add true-positive links here,
+        they never remove links the generic selectors already find.
+        """
         article_links = parser.extract_links(
             selectors=[
                 "article a", "h2 a", ".post-title a",
@@ -335,6 +437,21 @@ class ContentWorker(BaseWorker):
             ],
             base_url=url,
         )
+
+        if template is not None:
+            try:
+                template_links = template.extract_blog_urls(html, url)
+            except Exception as e:
+                self.log.warning(
+                    "template_extract_blog_urls_failed",
+                    url=url,
+                    template=template.config.id,
+                    error=str(e),
+                )
+                template_links = []
+            if template_links:
+                article_links = list(dict.fromkeys([*article_links, *template_links]))
+
         article_links = self._filter_article_links(article_links, url)
 
         metadata = BlogUrlMetadata(

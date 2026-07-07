@@ -8,6 +8,7 @@ import structlog
 from src.db.queries import jobs as job_queries
 from src.models.job import JobStatus
 from src.models.scraped_data import DataType
+from src.templates.registry import get_template
 
 # Emit a heartbeat every N seconds of active processing so the stale-job
 # cron (10-minute threshold) never kills a legitimately busy job.
@@ -87,11 +88,17 @@ async def process_scrape_job(
             # 2. Domain mapping — discover and classify URLs
             from src.workers.domain_mapper import DomainMapperWorker
 
+            # Resolve template_id ("auto" / None / unknown id -> None, meaning
+            # "let ContentWorker auto-detect per-page from the fetched HTML").
+            resolved_template = (
+                get_template(template_id) if template_id and template_id != "auto" else None
+            )
+
             # Common kwargs for BaseWorker subclasses
             worker_kwargs = dict(
                 domain=domain, job_id=job_id, pool=pool,
                 org_id=org_id, user_id=user_id, tier_override=tier,
-                proxy_url=proxy_url, region=region,
+                proxy_url=proxy_url, region=region, template=resolved_template,
             )
 
             # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
