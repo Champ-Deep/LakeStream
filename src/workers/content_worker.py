@@ -5,47 +5,34 @@ TechDetector, ResourceFinder, PricingFinder) with a single pass that:
 1. Fetches each URL exactly once (with escalation + rate limiting)
 2. Saves full page content for every page
 3. Runs specialized extractors based on URL classification
+
+This class is orchestration-only: it owns the URL processing loop, pagination
+capping, and persistence timing. Cancellation polling and heartbeating are
+delegated to ``JobLifecycle`` (src/workers/job_lifecycle.py); the actual
+data-type extraction strategies live in ``src/workers/extractors.py`` and
+``src/workers/pdf_handler.py``; dict-to-ScrapedData wrapping is delegated to
+``src/workers/dto.py``.
 """
 
-from datetime import UTC, datetime
 from urllib.parse import urlparse
-from uuid import UUID
 
 import structlog
 
-from src.models.scraped_data import (
-    ArticleMetadata,
-    BlogUrlMetadata,
-    ContactMetadata,
-    DataType,
-    DocumentMetadata,
-    PricingMetadata,
-    ResourceMetadata,
-    ScrapedData,
-    TechStackMetadata,
-)
-from src.scraping.parser.contact_parser import ContactParser
+from src.models.scraped_data import DataType, ScrapedData
 from src.scraping.parser.html_parser import HtmlParser, extract_rich_metadata
-from src.scraping.parser.pricing_parser import PricingParser
-from src.scraping.parser.resource_parser import ResourceParser
-from src.scraping.parser.tech_parser import TechParser
 from src.templates.base import BaseTemplate
 from src.templates.registry import detect_template, get_template_instance
-from src.utils.url import extract_domain
+from src.workers import extractors
 from src.workers.base import BaseWorker
+from src.workers.dto import build_scraped_data_list
+from src.workers.job_lifecycle import JobLifecycle
+from src.workers.pdf_handler import build_document_record
 
 log = structlog.get_logger()
 
-# Minimum word count to treat a page as having article-worthy content
-MIN_ARTICLE_WORDS = 200
-
-_SKIP_EXTENSIONS = frozenset({
-    ".doc", ".docx", ".zip", ".png", ".jpg", ".jpeg",
-    ".gif", ".svg", ".webp", ".mp3", ".mp4", ".avi",
-})
-# PDF is handled separately — not skipped
-
-_ERROR_MARKERS = ("error", "404", "not found", "page not found")
+# Re-exported for backward compatibility with call sites/tests that imported
+# these constants from this module.
+MIN_ARTICLE_WORDS = extractors.MIN_ARTICLE_WORDS
 
 
 class ContentWorker(BaseWorker):
@@ -140,6 +127,8 @@ class ContentWorker(BaseWorker):
             data_types=data_types,
         )
 
+        lifecycle = JobLifecycle(self._pool, self.job_id, logger=self.log)
+
         all_results: list[ScrapedData] = []
         fetched_urls: set[str] = set()
         article_urls_from_blogs: list[str] = []
@@ -156,14 +145,8 @@ class ContentWorker(BaseWorker):
 
             # Cooperative cancellation check — run on EVERY URL so a user-cancel
             # exits within one URL iteration instead of waiting up to 5.
-            if self._pool:
-                try:
-                    from src.db.queries.jobs import is_job_cancelled
-                    if await is_job_cancelled(self._pool, UUID(self.job_id)):
-                        self.log.info("job_cancelled_by_user", urls_processed=urls_processed)
-                        return all_results
-                except Exception as e:
-                    self.log.warning("cancel_check_failed", error=str(e))
+            if await lifecycle.is_cancelled(urls_processed=urls_processed):
+                return all_results
 
             try:
                 records = await self._process_url(url, data_type, data_types)
@@ -180,14 +163,7 @@ class ContentWorker(BaseWorker):
 
             # Heartbeat every 5 URLs to signal the job is still active
             urls_processed += 1
-            if urls_processed % 5 == 0 and self._pool:
-                try:
-                    from src.db.queries.jobs import update_heartbeat
-                    await update_heartbeat(self._pool, UUID(self.job_id))
-                except Exception as e:
-                    # Non-critical — don't fail job over heartbeat — but log
-                    # so stale-job recovery has an observable trail.
-                    self.log.warning("heartbeat_failed", error=str(e))
+            await lifecycle.maybe_heartbeat(urls_processed)
 
         # --- Phase 2: Fetch article URLs discovered from blog landing pages ---
         if "article" in data_types and article_urls_from_blogs:
@@ -201,17 +177,8 @@ class ContentWorker(BaseWorker):
                 fetched_urls.add(url)
 
                 # Cooperative cancellation check — Phase 2 must honor cancels too.
-                if self._pool:
-                    try:
-                        from src.db.queries.jobs import is_job_cancelled
-                        if await is_job_cancelled(self._pool, UUID(self.job_id)):
-                            self.log.info(
-                                "job_cancelled_by_user_phase2",
-                                urls_processed=urls_processed,
-                            )
-                            return all_results
-                    except Exception as e:
-                        self.log.warning("cancel_check_failed", error=str(e))
+                if await lifecycle.is_cancelled(urls_processed=urls_processed, phase="phase2"):
+                    return all_results
 
                 try:
                     records = await self._process_url(url, DataType.ARTICLE, data_types)
@@ -221,12 +188,7 @@ class ContentWorker(BaseWorker):
 
                 # Heartbeat every 5 URLs in phase 2 as well
                 urls_processed += 1
-                if urls_processed % 5 == 0 and self._pool:
-                    try:
-                        from src.db.queries.jobs import update_heartbeat
-                        await update_heartbeat(self._pool, UUID(self.job_id))
-                    except Exception as e:
-                        self.log.warning("heartbeat_failed", error=str(e))
+                await lifecycle.maybe_heartbeat(urls_processed)
 
         self.log.info("content_worker_done", total_records=len(all_results))
         return all_results
@@ -259,7 +221,7 @@ class ContentWorker(BaseWorker):
         title = parser.extract_title()
 
         # Skip error pages
-        if title and any(m in title.lower() for m in _ERROR_MARKERS):
+        if extractors.is_error_page(title):
             self.log.debug("skipping_error_page", url=url, title=title)
             return []
 
@@ -274,19 +236,7 @@ class ContentWorker(BaseWorker):
         if self.raw_only:
             if records:
                 await self.export_results(records)
-            return [
-                ScrapedData(
-                    id=UUID(int=0),
-                    job_id=UUID(self.job_id),
-                    domain=self.domain,
-                    data_type=rec["data_type"],
-                    url=rec.get("url", url),
-                    title=rec.get("title"),
-                    metadata=rec.get("metadata", {}),
-                    scraped_at=datetime.now(UTC),
-                )
-                for rec in records
-            ]
+            return build_scraped_data_list(records, self.job_id, self.domain, url)
 
         # --- Specialized extraction based on URL classification ---
 
@@ -324,39 +274,20 @@ class ContentWorker(BaseWorker):
         if records:
             await self.export_results(records)
 
-        # Convert to ScrapedData for return value
-        return [
-            ScrapedData(
-                id=UUID(int=0),
-                job_id=UUID(self.job_id),
-                domain=self.domain,
-                data_type=rec["data_type"],
-                url=rec.get("url", url),
-                title=rec.get("title"),
-                metadata=rec.get("metadata", {}),
-                scraped_at=datetime.now(UTC),
-            )
-            for rec in records
-        ]
+        return build_scraped_data_list(records, self.job_id, self.domain, url)
 
     # ------------------------------------------------------------------
-    # Extractors — ported 1:1 from existing workers
+    # Extractor delegation — thin wrappers over src/workers/extractors.py
     # ------------------------------------------------------------------
+    # Kept as methods (rather than inlining calls to `extractors.*` at each
+    # call site) so existing direct callers/tests of these names keep working
+    # unchanged, and so `self.log`/`self.job_id`/`self.domain` don't need to
+    # be threaded through every call site in `_process_url`.
 
     def _extract_page_record(
         self, url: str, parser: HtmlParser, rich_meta: dict,
     ) -> dict:
-        """Full page content record — saved for every successfully fetched page."""
-        content = parser.extract_content()
-        word_count = len(content.split()) if content else 0
-        return {
-            "job_id": UUID(self.job_id),
-            "domain": self.domain,
-            "data_type": DataType.PAGE,
-            "url": url,
-            "title": parser.extract_title(),
-            "metadata": {**rich_meta, "content": content, "word_count": word_count},
-        }
+        return extractors.extract_page_record(self.job_id, self.domain, url, parser, rich_meta)
 
     def _extract_article_record(
         self,
@@ -366,54 +297,9 @@ class ContentWorker(BaseWorker):
         rich_meta: dict,
         template: BaseTemplate | None = None,
     ) -> dict | None:
-        """Article record for pages with substantial text. Ported from ArticleParserWorker.
-
-        Content/word_count/categories always come from the generic
-        ``HtmlParser`` — that is the full, reliable extraction. When a
-        platform template matched, its ``extract_article`` selectors are
-        used only to fill in a better ``title``/``author`` when they find a
-        non-empty value; the template's own (much shorter) excerpt/content
-        fields are intentionally ignored.
-        """
-        content = parser.extract_content()
-        word_count = parser.count_words()
-        excerpt = parser.extract_meta("description")
-
-        if word_count == 0 and excerpt is None:
-            return None
-
-        title = parser.extract_title()
-        author = parser.extract_meta("author")
-
-        if template is not None:
-            try:
-                template_result = template.extract_article(html, url)
-            except Exception as e:
-                self.log.warning(
-                    "template_extract_article_failed",
-                    url=url,
-                    template=template.config.id,
-                    error=str(e),
-                )
-                template_result = {}
-            title = template_result.get("title") or title
-            author = template_result.get("author") or author
-
-        metadata = ArticleMetadata(
-            author=author,
-            categories=parser.extract_categories(),
-            word_count=word_count,
-            excerpt=excerpt,
-            content=content,
+        return extractors.extract_article_record(
+            self.job_id, self.domain, url, html, parser, rich_meta, template, logger=self.log,
         )
-        return {
-            "job_id": UUID(self.job_id),
-            "domain": self.domain,
-            "data_type": DataType.ARTICLE,
-            "url": url,
-            "title": title,
-            "metadata": {**rich_meta, **metadata.model_dump()},
-        }
 
     def _extract_blog_landing(
         self,
@@ -423,71 +309,14 @@ class ContentWorker(BaseWorker):
         rich_meta: dict,
         template: BaseTemplate | None = None,
     ) -> tuple[dict, list[str]]:
-        """Blog landing page: extract article links. Ported from BlogExtractorWorker.
-
-        When a platform template matched, its (more targeted) ``article_link``
-        selectors are unioned with the generic selector list — additional
-        platform-specific selectors can only add true-positive links here,
-        they never remove links the generic selectors already find.
-        """
-        article_links = parser.extract_links(
-            selectors=[
-                "article a", "h2 a", ".post-title a",
-                ".entry-title a", "a[rel='bookmark']",
-            ],
-            base_url=url,
+        return extractors.extract_blog_landing(
+            self.job_id, self.domain, url, html, parser, rich_meta, template, logger=self.log,
         )
-
-        if template is not None:
-            try:
-                template_links = template.extract_blog_urls(html, url)
-            except Exception as e:
-                self.log.warning(
-                    "template_extract_blog_urls_failed",
-                    url=url,
-                    template=template.config.id,
-                    error=str(e),
-                )
-                template_links = []
-            if template_links:
-                article_links = list(dict.fromkeys([*article_links, *template_links]))
-
-        article_links = self._filter_article_links(article_links, url)
-
-        metadata = BlogUrlMetadata(
-            blog_landing_url=url,
-            article_urls=article_links,
-            total_articles=len(article_links),
-        )
-        record = {
-            "job_id": UUID(self.job_id),
-            "domain": self.domain,
-            "data_type": DataType.BLOG_URL,
-            "url": url,
-            "title": parser.extract_title(),
-            "metadata": {**rich_meta, **metadata.model_dump()},
-        }
-        return record, article_links
 
     def _extract_contacts(
         self, url: str, html: str, rich_meta: dict,
     ) -> list[dict]:
-        """Contact records from team/about pages. Ported from ContactFinderWorker."""
-        cp = ContactParser(html, url)
-        people = cp.extract_people()
-        records = []
-        for person in people:
-            meta = ContactMetadata(**person)
-            name = f"{meta.first_name or ''} {meta.last_name or ''}".strip() or None
-            records.append({
-                "job_id": UUID(self.job_id),
-                "domain": self.domain,
-                "data_type": DataType.CONTACT,
-                "url": url,
-                "title": name,
-                "metadata": {**rich_meta, **meta.model_dump()},
-            })
-        return records
+        return extractors.extract_contacts(self.job_id, self.domain, url, html, rich_meta)
 
     def _extract_tech_stack(
         self,
@@ -496,134 +325,38 @@ class ContentWorker(BaseWorker):
         headers: dict[str, str],
         rich_meta: dict,
     ) -> dict | None:
-        """Tech stack from homepage. Ported from TechDetectorWorker."""
-        tp = TechParser(html, headers)
-        detected = tp.detect()
-        metadata = TechStackMetadata(
-            platform=detected.get("platform"),
-            js_libraries=detected.get("js_libraries", []),
-            analytics=detected.get("analytics", []),
-            marketing_tools=detected.get("marketing_tools", []),
-            frameworks=detected.get("frameworks", []),
+        return extractors.extract_tech_stack(
+            self.job_id, self.domain, url, html, headers, rich_meta,
         )
-        return {
-            "job_id": UUID(self.job_id),
-            "domain": self.domain,
-            "data_type": DataType.TECH_STACK,
-            "url": url,
-            "title": f"Tech Stack: {self.domain}",
-            "metadata": {**rich_meta, **metadata.model_dump()},
-        }
 
     def _extract_resources(
         self, url: str, html: str, rich_meta: dict,
     ) -> list[dict]:
-        """Resource records. Ported from ResourceFinderWorker."""
-        rp = ResourceParser(html, url)
-        resources = rp.extract_resources()
-        records = []
-        for resource in resources:
-            meta = ResourceMetadata(**resource)
-            records.append({
-                "job_id": UUID(self.job_id),
-                "domain": self.domain,
-                "data_type": DataType.RESOURCE,
-                "url": resource.get("url", url),
-                "title": resource.get("title"),
-                "metadata": {**rich_meta, **meta.model_dump()},
-            })
-        return records
+        return extractors.extract_resources(self.job_id, self.domain, url, html, rich_meta)
 
     def _extract_pricing(
         self, url: str, html: str, rich_meta: dict,
     ) -> list[dict]:
-        """Pricing plan records. Ported from PricingFinderWorker."""
-        pp = PricingParser(html, url)
-        plans = pp.extract_pricing_plans()
-        records = []
-        for plan in plans:
-            meta = PricingMetadata(**plan)
-            records.append({
-                "job_id": UUID(self.job_id),
-                "domain": self.domain,
-                "data_type": DataType.PRICING,
-                "url": url,
-                "title": plan.get("plan_name"),
-                "metadata": {**rich_meta, **meta.model_dump()},
-            })
-        return records
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+        return extractors.extract_pricing(self.job_id, self.domain, url, html, rich_meta)
 
     def _filter_article_links(self, links: list[str], source_url: str) -> list[str]:
-        """Remove homepage, non-HTML, and off-domain links. From BlogExtractorWorker."""
-        source_domain = extract_domain(source_url)
-        filtered = []
-        for link in links:
-            parsed = urlparse(link)
-            path = parsed.path.rstrip("/")
-            if not path:
-                continue
-            if any(path.lower().endswith(ext) for ext in _SKIP_EXTENSIONS):
-                continue
-            if extract_domain(link) != source_domain:
-                continue
-            filtered.append(link)
-        return filtered
+        return extractors.filter_article_links(links, source_url)
+
+    # ------------------------------------------------------------------
+    # PDF handling
+    # ------------------------------------------------------------------
 
     async def _process_pdf(
         self, url: str, fetch_result: object,
     ) -> list[ScrapedData]:
-        """Extract content from a PDF document."""
-        from src.scraping.parser.pdf_parser import parse_pdf, pdf_to_markdown
-
+        """Extract content from a PDF document, persist it, and return its DTO."""
         content_bytes = getattr(fetch_result, "content_bytes", None)
-        if not content_bytes:
-            self.log.warning("pdf_no_content", url=url)
-            return []
-
-        try:
-            result = parse_pdf(content_bytes)
-        except ValueError as e:
-            self.log.warning("pdf_parse_error", url=url, error=str(e))
-            return []
-
-        if not result.text and not result.tables:
-            return []
-
-        markdown = pdf_to_markdown(result)
-
-        metadata = DocumentMetadata(
-            source_type="pdf",
-            page_count=result.page_count,
-            author=result.metadata.get("author"),
-            tables=result.tables,
-            word_count=result.word_count,
-            text_content=markdown,
+        record = build_document_record(
+            self.job_id, self.domain, url, content_bytes, logger=self.log,
         )
-
-        record = {
-            "job_id": UUID(self.job_id),
-            "domain": self.domain,
-            "data_type": DataType.DOCUMENT,
-            "url": url,
-            "title": result.metadata.get("title") or f"PDF: {url.split('/')[-1]}",
-            "metadata": metadata.model_dump(),
-        }
+        if record is None:
+            return []
 
         await self.export_results([record])
 
-        return [
-            ScrapedData(
-                id=UUID(int=0),
-                job_id=UUID(self.job_id),
-                domain=self.domain,
-                data_type=DataType.DOCUMENT,
-                url=url,
-                title=record["title"],
-                metadata=record["metadata"],
-                scraped_at=datetime.now(UTC),
-            )
-        ]
+        return build_scraped_data_list([record], self.job_id, self.domain, url)
