@@ -101,7 +101,12 @@ async def process_scrape_job(
                 proxy_url=proxy_url, region=region, template=resolved_template,
             )
 
-            # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
+            # DomainMapperWorker is intentionally not a BaseWorker subclass: it's a
+            # URL-discovery/classification worker (delegates fetching to
+            # CrawlerService, returns plain dicts, never persists) rather than a
+            # content-extraction worker, so it only takes the subset of
+            # worker_kwargs that are actually meaningful to it. See the class
+            # docstring in src/workers/domain_mapper.py for the full rationale.
             mapper = DomainMapperWorker(
                 domain=domain,
                 job_id=job_id,

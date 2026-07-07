@@ -1,5 +1,4 @@
 import asyncio
-import time
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse
 from uuid import UUID
@@ -13,14 +12,12 @@ from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
 from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
+from src.workers.job_lifecycle import JobLifecycle
 
 _RETRY_ON = (
     ConnectionError, TimeoutError, OSError,
     httpx.TimeoutException, asyncio.TimeoutError,
 )
-
-# Minimum seconds between heartbeat DB writes to avoid excessive queries
-_HEARTBEAT_INTERVAL = 30
 
 
 class BaseWorker(ABC):
@@ -51,7 +48,7 @@ class BaseWorker(ABC):
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
         self._rate_limiter = RateLimiter()
-        self._last_heartbeat: float = 0.0
+        self._lifecycle = JobLifecycle(pool, job_id, logger=self.log)
 
         if pool is not None:
             from src.services.escalation import EscalationService
@@ -63,22 +60,13 @@ class BaseWorker(ABC):
     async def heartbeat(self) -> None:
         """Update heartbeat timestamp to signal the job is still active.
 
-        Throttled to at most once per _HEARTBEAT_INTERVAL seconds to avoid
-        excessive DB writes.
+        Throttled to at most once per 30 seconds (see
+        ``JobLifecycle.heartbeat`` / ``DEFAULT_HEARTBEAT_MIN_INTERVAL_SECONDS``)
+        to avoid excessive DB writes. Delegates to ``JobLifecycle`` so this
+        time-based throttling behavior is shared, byte-for-byte, with
+        non-``BaseWorker`` workers like ``DomainMapperWorker``.
         """
-        now = time.time()
-        if now - self._last_heartbeat < _HEARTBEAT_INTERVAL:
-            return
-        self._last_heartbeat = now
-
-        if self._pool is None:
-            return
-        try:
-            from src.db.queries.jobs import update_heartbeat
-
-            await update_heartbeat(self._pool, UUID(self.job_id))
-        except Exception as e:
-            self.log.warning("heartbeat_failed", error=str(e))
+        await self._lifecycle.heartbeat()
 
     @abstractmethod
     async def execute(self, urls: list[str]) -> list[ScrapedData]: ...
