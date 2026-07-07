@@ -181,8 +181,15 @@ async def enqueue_bulk_jobs(
     user_id: UUID,
     max_pages: int = 100,
     data_types: list[str] | None = None,
+    stagger_seconds: int = STAGGER_DELAY_SECONDS,
 ) -> list[dict]:
     """Create job records and enqueue them with staggered delays.
+
+    Args:
+        stagger_seconds: Seconds between each job's deferred start time.
+            Passed explicitly (rather than mutating the module-level
+            STAGGER_DELAY_SECONDS default) so concurrent calls with different
+            values never interfere with each other.
 
     Returns list of {job_id, domain, status} for each enqueued job.
     """
@@ -203,7 +210,10 @@ async def enqueue_bulk_jobs(
         redis = await create_arq_pool(RedisSettings.from_dsn(settings.redis_url))
     except Exception as e:
         log.error("bulk_upload_redis_connect_failed", error=str(e))
-        return [{"domain": d, "status": "error", "error": "Redis connection failed"} for d in domains]
+        return [
+            {"domain": d, "status": "error", "error": "Redis connection failed"}
+            for d in domains
+        ]
 
     try:
         for i, domain in enumerate(domains):
@@ -215,8 +225,8 @@ async def enqueue_bulk_jobs(
                 )
                 job = await create_job(pool, job_input, org_id=org_id, user_id=user_id)
 
-                # Stagger: each job starts N*30s after the previous one
-                defer_seconds = i * STAGGER_DELAY_SECONDS
+                # Stagger: each job starts N*stagger_seconds after the previous one
+                defer_seconds = i * stagger_seconds
 
                 await redis.enqueue_job(
                     "process_scrape_job",
@@ -234,7 +244,12 @@ async def enqueue_bulk_jobs(
                     "status": "queued",
                     "defer_seconds": defer_seconds,
                 })
-                log.info("bulk_job_enqueued", domain=domain, job_id=str(job.id), defer_seconds=defer_seconds)
+                log.info(
+                    "bulk_job_enqueued",
+                    domain=domain,
+                    job_id=str(job.id),
+                    defer_seconds=defer_seconds,
+                )
 
             except Exception as e:
                 log.error("bulk_job_enqueue_failed", domain=domain, error=str(e))

@@ -533,21 +533,16 @@ async def bulk_upload_start(request: Request):
     org_id = UUID(request.session["org_id"])
     user_id = UUID(request.session["user_id"])
 
-    # Override stagger delay if user chose a different value
-    import src.services.bulk_upload as bulk_mod
-    original_stagger = bulk_mod.STAGGER_DELAY_SECONDS
-    bulk_mod.STAGGER_DELAY_SECONDS = stagger_seconds
-
-    try:
-        results = await enqueue_bulk_jobs(
-            pool,
-            domains,
-            org_id=org_id,
-            user_id=user_id,
-            max_pages=max_pages,
-        )
-    finally:
-        bulk_mod.STAGGER_DELAY_SECONDS = original_stagger
+    # Pass stagger_seconds explicitly rather than mutating the module-level
+    # default — keeps concurrent uploads with different values isolated.
+    results = await enqueue_bulk_jobs(
+        pool,
+        domains,
+        org_id=org_id,
+        user_id=user_id,
+        max_pages=max_pages,
+        stagger_seconds=stagger_seconds,
+    )
 
     return get_templates().TemplateResponse(
         "pages/jobs/bulk.html",
