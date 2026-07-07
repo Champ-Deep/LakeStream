@@ -7,12 +7,12 @@ from scrapling.fetchers import Fetcher
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
-from src.scraping.fetcher.captcha_detector import detect_captcha
+from src.scraping.fetcher.base import BaseFetcher
 
 log = structlog.get_logger()
 
 
-class LakeLightPandaFetcher:
+class LakeLightPandaFetcher(BaseFetcher):
     """Tier 0: Cheapest/fastest tier.
 
     When LIGHTPANDA_WS_URL is configured: connects to a real LightPanda
@@ -26,6 +26,7 @@ class LakeLightPandaFetcher:
     """
 
     def __init__(self):
+        super().__init__()
         self._http_fetcher = Fetcher()
 
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
@@ -71,10 +72,7 @@ class LakeLightPandaFetcher:
                         await context.close()
                     await browser.close()
 
-            http_error = status_code in (403, 429, 503)
-            tiny_html = len(html) < settings.min_html_bytes
-            captcha = detect_captcha(html) if html else False
-            blocked = http_error or tiny_html
+            blocked, captcha = self.is_blocked(status_code, html)
 
         except Exception as exc:
             log.warning(
@@ -127,10 +125,7 @@ class LakeLightPandaFetcher:
             html = response.html_content
             status_code = response.status
 
-            http_error = status_code in (403, 429, 503)
-            tiny_html = len(html) < settings.min_html_bytes
-            captcha = detect_captcha(html) if html else False
-            blocked = http_error or tiny_html
+            blocked, captcha = self.is_blocked(status_code, html)
 
         except Exception as exc:
             log.warning(

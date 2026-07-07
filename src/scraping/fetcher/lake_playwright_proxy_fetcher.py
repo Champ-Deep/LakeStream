@@ -5,14 +5,13 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-import redis.asyncio as redis
 import structlog
 from playwright.async_api import async_playwright
 
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
-from src.scraping.fetcher.captcha_detector import detect_captcha
+from src.scraping.fetcher.base import BaseFetcher
 from src.services.proxy_health import (
     ProxyHealthTracker,
     get_region_headers,
@@ -55,7 +54,7 @@ def _get_pool_proxies() -> list[dict[str, str]]:
     return []
 
 
-class LakePlaywrightProxyFetcher:
+class LakePlaywrightProxyFetcher(BaseFetcher):
     """Tier 3: Playwright with session persistence + residential proxy.
 
     Proxy Priority Chain (with health-aware pool selection):
@@ -68,9 +67,6 @@ class LakePlaywrightProxyFetcher:
     Sessions are stored in Redis with TTL (default 1 hour).
     Cost: $0.0035 per request
     """
-
-    def __init__(self):
-        self._redis_client: redis.Redis | None = None
 
     async def fetch(
         self, url: str, options: FetchOptions | None = None,
@@ -188,10 +184,7 @@ class LakePlaywrightProxyFetcher:
                         await browser.close()
 
                 # Block detection
-                http_error = status_code in (403, 429, 503)
-                tiny_html = len(html) < settings.min_html_bytes
-                captcha = detect_captcha(html) if html else False
-                blocked = http_error or tiny_html
+                blocked, captcha = self.is_blocked(status_code, html)
 
                 # Record proxy health
                 fetch_ms = int((time.time() - start) * 1000)
@@ -291,66 +284,3 @@ class LakePlaywrightProxyFetcher:
             chain.append({"server": settings.smartproxy_url})
 
         return chain
-
-    async def _get_redis_client(self) -> redis.Redis:
-        if self._redis_client is None:
-            settings = get_settings()
-            self._redis_client = redis.from_url(settings.redis_url)
-        return self._redis_client
-
-    async def _load_session(
-        self, client: redis.Redis, domain: str,
-    ) -> dict[str, Any] | None:
-        key = f"playwright_session:{domain}"
-        try:
-            data = await client.get(key)
-            if data:
-                return json.loads(data)
-        except Exception as exc:
-            log.warning(
-                "playwright_session_load_error",
-                domain=domain,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-        return None
-
-    async def _save_session(
-        self,
-        client: redis.Redis,
-        domain: str,
-        storage_state: dict[str, Any],
-        metadata: dict[str, Any],
-    ) -> None:
-        settings = get_settings()
-        key = f"playwright_session:{domain}"
-
-        session_data = {
-            "storage_state": storage_state,
-            "created_at": metadata.get("created_at", time.time()),
-            "last_used_at": metadata.get("last_used_at", time.time()),
-            "request_count": metadata.get("request_count", 1),
-            "authenticated": metadata.get("authenticated", False),
-            "proxy_used": metadata.get("proxy_used"),
-        }
-
-        try:
-            await client.set(
-                key,
-                json.dumps(session_data),
-                ex=settings.playwright_session_ttl_seconds,
-            )
-            log.debug(
-                "playwright_session_saved",
-                domain=domain,
-                ttl=settings.playwright_session_ttl_seconds,
-                request_count=session_data["request_count"],
-                proxy_used=session_data["proxy_used"],
-            )
-        except Exception as exc:
-            log.warning(
-                "playwright_session_save_error",
-                domain=domain,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
