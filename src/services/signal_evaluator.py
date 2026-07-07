@@ -41,28 +41,24 @@ async def evaluate_signals_for_org(org_id: UUID) -> int:
     """
     pool = await get_pool()
 
-    # Set RLS context
-    async with pool.acquire() as conn:
-        await conn.execute(f"SET LOCAL app.current_org_id = '{org_id}'")
+    signals = await get_active_signals(pool, org_id)
+    fired_count = 0
 
-        signals = await get_active_signals(pool, org_id)
-        fired_count = 0
+    for signal in signals:
+        try:
+            matched_data = await evaluate_signal(pool, signal, org_id)
+            if matched_data:
+                await execute_signal_action(pool, signal, matched_data)
+                fired_count += 1
+        except Exception as e:
+            log.error(
+                "signal_evaluation_error",
+                signal_id=str(signal.id),
+                org_id=str(org_id),
+                error=str(e),
+            )
 
-        for signal in signals:
-            try:
-                matched_data = await evaluate_signal(pool, signal, org_id)
-                if matched_data:
-                    await execute_signal_action(pool, signal, matched_data)
-                    fired_count += 1
-            except Exception as e:
-                log.error(
-                    "signal_evaluation_error",
-                    signal_id=str(signal.id),
-                    org_id=str(org_id),
-                    error=str(e),
-                )
-
-        return fired_count
+    return fired_count
 
 
 async def evaluate_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str, Any] | None:
