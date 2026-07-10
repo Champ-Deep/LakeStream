@@ -93,9 +93,9 @@ async def run_benchmarks(
     """Run benchmarks for all domains and tiers."""
     if tiers is None:
         tiers = [
-            ScrapingTier.BASIC_HTTP,
-            ScrapingTier.HEADLESS_BROWSER,
-            ScrapingTier.HEADLESS_PROXY,
+            ScrapingTier.LIGHTPANDA,
+            ScrapingTier.PLAYWRIGHT,
+            ScrapingTier.PLAYWRIGHT_PROXY,
         ]
 
     summaries: dict[str, BenchmarkSummary] = {}
@@ -116,7 +116,7 @@ async def run_benchmarks(
             if result.success:
                 summary.success_count += 1
                 print(f"OK ({result.duration_ms}ms)")
-            elif result.captcha_count:
+            elif result.captcha_detected:
                 summary.captcha_count += 1
                 print(f"CAPTCHA ({result.duration_ms}ms)")
             elif result.blocked:
