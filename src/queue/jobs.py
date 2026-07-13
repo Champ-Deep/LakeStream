@@ -105,6 +105,7 @@ async def process_scrape_job(
                 job_id=job_id,
                 org_id=org_id,
                 pool=pool,
+                user_id=user_id,
             )
             classified_urls = await mapper.execute(max_pages=max_pages)
 

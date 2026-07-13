@@ -6,6 +6,7 @@ from src.api.routes import (
     discover,
     domains,
     exports,
+    graph,
     health,
     ingest,
     scrape,
@@ -27,6 +28,7 @@ api_router.include_router(screenshots.router, tags=["screenshots"])
 api_router.include_router(ingest.router, tags=["ingest"])
 api_router.include_router(discover.router)
 api_router.include_router(domains.router, tags=["domains"])
+api_router.include_router(graph.router, tags=["graph"])
 api_router.include_router(templates.router, tags=["templates"])
 api_router.include_router(exports.router)
 api_router.include_router(webhook.router)
