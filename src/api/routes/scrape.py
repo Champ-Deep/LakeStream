@@ -51,6 +51,9 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             tier=input.tier,
             region=input.region,
             llm_mode=input.llm_mode,
+            raw_only=input.raw_only,
+            extraction_schema=input.extraction_schema,
+            extraction_mode=input.extraction_mode,
         )
         await redis.aclose()
     except Exception as e:
@@ -365,43 +368,21 @@ async def extract_structured(request: Request):
 
     # Schema-based extraction path (css / ai / auto)
     from src.models.extraction import ExtractionSchema
-    from src.scraping.parser.schema_extractor import SchemaExtractor
 
     try:
         schema = ExtractionSchema(**schema_data)
     except Exception as e:
         return {"success": False, "error": f"Invalid schema: {e}"}
 
-    result = None
-    mode_used = mode
+    from src.services.structured_extract import AIUnavailableError, extract_with_fallback
 
-    # CSS extraction
-    if mode in ("css", "auto"):
-        extractor = SchemaExtractor(fetch_result.html, url)
-        result = extractor.extract(schema)
-        mode_used = "css"
-
-        # Auto mode: fallback to AI if <50% fields found
-        if mode == "auto" and len(schema.fields) > 0:
-            coverage = result.fields_found / len(schema.fields)
-            if coverage < 0.5:
-                mode_used = "ai"
-                result = None
-
-    # AI extraction (mode=ai, or auto fallback)
-    if result is None and mode in ("ai", "auto"):
-        from src.services.llm_extractor import LLMExtractor, get_openrouter_config
-
-        org_id = getattr(request.state, "org_id", None)
-        try:
-            await get_openrouter_config(org_id)
-        except ValueError:
-            return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
-
-        llm = LLMExtractor(org_id=org_id)
-        result = await llm.extract_from_html(fetch_result.html, schema, instructions)
-        result.url = url
-        mode_used = "ai"
+    org_id = getattr(request.state, "org_id", None)
+    try:
+        result = await extract_with_fallback(
+            fetch_result.html, url, schema, mode, org_id=org_id, instructions=instructions
+        )
+    except AIUnavailableError:
+        return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
 
     if result is None:
         return {"success": False, "error": "No extraction result"}
@@ -412,7 +393,7 @@ async def extract_structured(request: Request):
         "schema_name": result.schema_name,
         "fields_found": result.fields_found,
         "fields_missing": result.fields_missing,
-        "mode": mode_used,
+        "mode": result.mode,
         "url": result.url,
     }
 

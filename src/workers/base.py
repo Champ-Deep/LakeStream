@@ -37,6 +37,9 @@ class BaseWorker(ABC):
         region: str | None = None,
         raw_only: bool = False,
         llm_mode: str = "off",
+        extraction_schema: dict | None = None,
+        extraction_mode: str = "css",
+        force_refresh: bool = False,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -49,6 +52,9 @@ class BaseWorker(ABC):
         self.region = region
         self.raw_only = raw_only
         self.llm_mode = llm_mode  # "off" | "fallback" | "only"
+        self.extraction_schema = extraction_schema  # custom CSS/AI schema (dict) or None
+        self.extraction_mode = extraction_mode  # "css" | "ai" | "auto"
+        self.force_refresh = force_refresh  # bypass content cache (Phase 2)
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )

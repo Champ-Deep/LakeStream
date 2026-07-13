@@ -192,6 +192,10 @@ class ContentWorker(BaseWorker):
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
 
+        # Persist durable page content (markdown + raw HTML + hash) for
+        # fidelity output, caching, and change monitoring (v2, flag-gated).
+        await self._persist_page_content(url, html, parser)
+
         # raw_only mode: save page content only, skip all specialized extraction
         if self.raw_only:
             if records:
@@ -257,6 +261,15 @@ class ContentWorker(BaseWorker):
             if llm_records:
                 records.extend(llm_records)
 
+        # --- Custom-schema extraction (markdown + schema fallback) ---
+        # When a job supplies a custom schema, run it on every page. Pages that
+        # match no built-in typed schema still yield structured data here (or,
+        # failing that, the persisted markdown above), so nothing is lost.
+        if self.extraction_schema:
+            ext_rec = await self._extract_custom_schema(url, html)
+            if ext_rec:
+                records.append(ext_rec)
+
         # Batch insert all records for this URL
         if records:
             await self.export_results(records)
@@ -293,6 +306,62 @@ class ContentWorker(BaseWorker):
             "url": url,
             "title": parser.extract_title(),
             "metadata": {**rich_meta, "content": content, "word_count": word_count},
+        }
+
+    async def _persist_page_content(self, url: str, html: str, parser: HtmlParser) -> None:
+        """Upsert clean markdown + raw HTML + content hash to the page_content cache."""
+        from src.config.settings import get_settings
+
+        if not get_settings().enable_content_persistence or not self._pool:
+            return
+        try:
+            from src.db.queries.page_content import upsert_page_content
+            from src.scraping.parser.markdown import content_hash, html_to_markdown
+
+            markdown = html_to_markdown(html, find_main=True)
+            await upsert_page_content(
+                self._pool,
+                domain=self.domain,
+                url=url,
+                content_hash=content_hash(markdown),
+                markdown=markdown,
+                raw_html=html,
+                title=parser.extract_title(),
+                org_id=UUID(self.org_id) if self.org_id else None,
+                user_id=UUID(self.user_id) if self.user_id else None,
+            )
+        except Exception as e:
+            self.log.warning("page_content_persist_failed", url=url, error=str(e))
+
+    async def _extract_custom_schema(self, url: str, html: str) -> dict | None:
+        """Run the job's custom extraction schema (css/ai/auto) on one page."""
+        from src.models.extraction import ExtractionSchema
+        from src.services.structured_extract import AIUnavailableError, extract_with_fallback
+
+        try:
+            schema = ExtractionSchema(**self.extraction_schema)
+        except Exception as e:
+            self.log.warning("invalid_extraction_schema", error=str(e))
+            return None
+
+        try:
+            result = await extract_with_fallback(
+                html, url, schema, self.extraction_mode, org_id=self.org_id,
+            )
+        except AIUnavailableError:
+            self.log.info("custom_schema_ai_unavailable", url=url)
+            return None
+
+        if not result or not result.data:
+            return None
+
+        return {
+            "job_id": UUID(self.job_id),
+            "domain": self.domain,
+            "data_type": DataType.EXTRACTED,
+            "url": url,
+            "title": None,
+            "metadata": {"schema": schema.name, "mode": result.mode, "fields": result.data},
         }
 
     def _extract_article_record(
