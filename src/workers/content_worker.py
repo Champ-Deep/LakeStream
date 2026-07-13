@@ -192,10 +192,19 @@ class ContentWorker(BaseWorker):
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
 
+        # Save a screenshot to storage if one was captured (Phase 3).
+        screenshot_path = None
+        if fetch_result.screenshot_bytes:
+            from src.services.storage import get_storage
+
+            screenshot_path = get_storage().save_screenshot(
+                self.job_id, fetch_result.screenshot_bytes
+            )
+
         # Persist durable page content (markdown + raw HTML + hash), record any
         # change, and learn whether the page is unchanged since last fetch
         # (v2, flag-gated).
-        cache_hit = await self._handle_page_content(url, html, parser)
+        cache_hit = await self._handle_page_content(url, html, parser, screenshot_path)
 
         # raw_only, or cache hit (content unchanged): save the page record only
         # and skip the expensive specialized/LLM/custom-schema extraction.
@@ -312,7 +321,9 @@ class ContentWorker(BaseWorker):
             "metadata": {**rich_meta, "content": content, "word_count": word_count},
         }
 
-    async def _handle_page_content(self, url: str, html: str, parser: HtmlParser) -> bool:
+    async def _handle_page_content(
+        self, url: str, html: str, parser: HtmlParser, screenshot_path: str | None = None,
+    ) -> bool:
         """Persist page content, record changes, and report whether it's a cache hit.
 
         Returns True when the content is unchanged since the last fetch and the
@@ -343,6 +354,7 @@ class ContentWorker(BaseWorker):
                 markdown=markdown,
                 raw_html=html,
                 title=parser.extract_title(),
+                screenshot_path=screenshot_path,
                 org_id=UUID(self.org_id) if self.org_id else None,
                 user_id=user_uuid,
             )

@@ -36,6 +36,7 @@ async def process_scrape_job(
     extraction_schema: dict | None = None,
     extraction_mode: str = "css",
     force_refresh: bool = False,
+    capture_screenshot: bool = False,
 ) -> dict:
     """Main scrape job processor. Orchestrates all workers for a domain.
 
@@ -141,6 +142,7 @@ async def process_scrape_job(
                     extraction_schema=extraction_schema,
                     extraction_mode=extraction_mode,
                     force_refresh=force_refresh,
+                    capture_screenshot=capture_screenshot,
                 )
                 results = await content_worker.execute(classified_urls, data_types)
                 total_data = len(results)

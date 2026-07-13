@@ -45,11 +45,14 @@ services:
       JWT_SECRET: "local-dev-secret-do-not-use-in-production"
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
+      SCREENSHOT_DIR: "/app/data/screenshots"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - screenshots_local:/app/data/screenshots
     command: ./start.sh
 
   worker:
@@ -60,6 +63,7 @@ services:
       JWT_SECRET: "local-dev-secret-do-not-use-in-production"
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
+      SCREENSHOT_DIR: "/app/data/screenshots"
       # Tier 3 proxy — uncomment and set for headless + residential proxy:
       # BRIGHTDATA_PROXY_URL: "http://user:pass@brd.superproxy.io:22225"
       # SMARTPROXY_URL: "http://user:pass@gate.smartproxy.com:10000"
@@ -68,7 +72,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - screenshots_local:/app/data/screenshots
     command: arq src.queue.worker.WorkerSettings
 
 volumes:
   pgdata_local:
+  screenshots_local:

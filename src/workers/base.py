@@ -40,6 +40,7 @@ class BaseWorker(ABC):
         extraction_schema: dict | None = None,
         extraction_mode: str = "css",
         force_refresh: bool = False,
+        capture_screenshot: bool = False,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -55,6 +56,7 @@ class BaseWorker(ABC):
         self.extraction_schema = extraction_schema  # custom CSS/AI schema (dict) or None
         self.extraction_mode = extraction_mode  # "css" | "ai" | "auto"
         self.force_refresh = force_refresh  # bypass content cache (Phase 2)
+        self.capture_screenshot = capture_screenshot  # per-page screenshot (Phase 3)
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
@@ -105,6 +107,8 @@ class BaseWorker(ABC):
             options.proxy_url = self.proxy_url
         if self.region:
             options.region = self.region
+        if self.capture_screenshot:
+            options.capture_screenshot = True
 
         domain = urlparse(url).netloc or self.domain
 

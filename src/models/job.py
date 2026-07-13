@@ -45,6 +45,10 @@ class ScrapeJobInput(BaseModel):
         default=False,
         description="Bypass the content cache and re-extract even if unchanged.",
     )
+    capture_screenshot: bool = Field(
+        default=False,
+        description="Capture a full-page screenshot per page (Playwright tier).",
+    )
     priority: int = Field(default=5, ge=1, le=10)
     llm_mode: str = Field(
         default="off",

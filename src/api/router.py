@@ -9,6 +9,7 @@ from src.api.routes import (
     health,
     ingest,
     scrape,
+    screenshots,
     settings,
     signals,
     templates,
@@ -22,6 +23,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(api_keys.router, tags=["auth"])
 api_router.include_router(scrape.router, tags=["scrape"])
+api_router.include_router(screenshots.router, tags=["screenshots"])
 api_router.include_router(ingest.router, tags=["ingest"])
 api_router.include_router(discover.router)
 api_router.include_router(domains.router, tags=["domains"])
