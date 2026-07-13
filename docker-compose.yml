@@ -68,5 +68,19 @@ services:
     command: arq src.queue.worker.WorkerSettings
     restart: unless-stopped
 
+  # Experimental Go fetcher sidecars. Point the api/worker at these by setting
+  # ENABLE_GO_FETCHERS=true and the GO_*_FETCHER_URL env vars in .env.
+  go-http-fetcher:
+    build: ./go-fetchers/http
+    environment:
+      PORT: "8080"
+    restart: unless-stopped
+
+  go-browser-fetcher:
+    build: ./go-fetchers/browser
+    environment:
+      PORT: "8080"
+    restart: unless-stopped
+
 volumes:
   pgdata:

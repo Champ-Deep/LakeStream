@@ -97,6 +97,15 @@ async def run_benchmarks(
             ScrapingTier.PLAYWRIGHT,
             ScrapingTier.PLAYWRIGHT_PROXY,
         ]
+        # Include the experimental Go sidecar tiers only when configured, so an
+        # A/B run (Python vs Go-HTTP vs Go-browser) is a single invocation.
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        if getattr(settings, "go_http_fetcher_url", ""):
+            tiers.append(ScrapingTier.GO_HTTP)
+        if getattr(settings, "go_browser_fetcher_url", ""):
+            tiers.append(ScrapingTier.GO_BROWSER)
 
     summaries: dict[str, BenchmarkSummary] = {}
 

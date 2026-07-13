@@ -46,6 +46,10 @@ services:
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
       SCREENSHOT_DIR: "/app/data/screenshots"
+      # Experimental Go fetcher sidecars (Python fetchers stay default)
+      ENABLE_GO_FETCHERS: "true"
+      GO_HTTP_FETCHER_URL: "http://go-http-fetcher:8080"
+      GO_BROWSER_FETCHER_URL: "http://go-browser-fetcher:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +68,9 @@ services:
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
       SCREENSHOT_DIR: "/app/data/screenshots"
+      ENABLE_GO_FETCHERS: "true"
+      GO_HTTP_FETCHER_URL: "http://go-http-fetcher:8080"
+      GO_BROWSER_FETCHER_URL: "http://go-browser-fetcher:8080"
       # Tier 3 proxy — uncomment and set for headless + residential proxy:
       # BRIGHTDATA_PROXY_URL: "http://user:pass@brd.superproxy.io:22225"
       # SMARTPROXY_URL: "http://user:pass@gate.smartproxy.com:10000"
@@ -75,6 +82,16 @@ services:
     volumes:
       - screenshots_local:/app/data/screenshots
     command: arq src.queue.worker.WorkerSettings
+
+  go-http-fetcher:
+    build: ./go-fetchers/http
+    environment:
+      PORT: "8080"
+
+  go-browser-fetcher:
+    build: ./go-fetchers/browser
+    environment:
+      PORT: "8080"
 
 volumes:
   pgdata_local:

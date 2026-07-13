@@ -3,6 +3,9 @@ TIER_COSTS: dict[str, float] = {
     "lightpanda": 0.001,
     "playwright": 0.003,
     "playwright_proxy": 0.0035,
+    # Experimental Go sidecar tiers (self-hosted; near-zero marginal cost)
+    "go_http": 0.0005,
+    "go_browser": 0.002,
 }
 
 QUEUE_NAMES: dict[str, str] = {
