@@ -71,17 +71,22 @@ _is_production = bool(
 )
 app.add_middleware(
     SessionMiddleware,
-    secret_key=_settings.jwt_secret,
+    # Distinct session secret when set; falls back to jwt_secret for compatibility.
+    secret_key=_settings.session_secret or _settings.jwt_secret,
     session_cookie="ls_session",
     https_only=_is_production,
     same_site="lax",
     max_age=86400,  # 24 hours
 )
 # CORS: outermost middleware (added last in Starlette LIFO) — handles preflight
-# before auth. Allows Chrome extensions + local dev + Railway domains.
+# before auth. Allows Chrome extensions + local dev + Railway domains + Clerk.
+_cors_regex = r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app"
+if _settings.clerk_domain:
+    _cors_regex += r"|https://" + _settings.clerk_domain.replace(".", r"\.")
+_cors_regex += r")"
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app)",
+    allow_origin_regex=_cors_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],

@@ -59,6 +59,25 @@ class Settings(BaseSettings):
     admin_email: str = "admin@lakeb2b.internal"
     admin_password: str = "LakeB2B_admin!"
 
+    # --- Auth provider (v2) ---
+    # "legacy" = bcrypt + local HS256 JWT (default; app runs with no Clerk keys).
+    # "clerk"  = verify Clerk session JWTs (set the CLERK_* vars below).
+    auth_provider: str = "legacy"
+    # Keep the legacy HS256 path reachable as a fallback while migrating.
+    enable_legacy_jwt: bool = True
+    # Distinct secret for Starlette session cookies (decoupled from jwt_secret).
+    session_secret: str = ""
+    # Clerk configuration (only needed when auth_provider="clerk").
+    clerk_secret_key: str = ""
+    clerk_publishable_key: str = ""
+    clerk_jwks_url: str = ""  # e.g. https://<subdomain>.clerk.accounts.dev/.well-known/jwks.json
+    clerk_issuer: str = ""  # e.g. https://<subdomain>.clerk.accounts.dev
+    clerk_domain: str = ""  # e.g. <subdomain>.clerk.accounts.dev (for CORS)
+    # Link a new Clerk identity to an existing local user with the same email.
+    # OFF by default: only enable for a one-time migration of existing users,
+    # and only if Clerk email verification is enforced (else it risks takeover).
+    clerk_link_by_email: bool = False
+
     # Email notifications (ChampMail engine)
     mail_engine_url: str = "http://localhost:8025"
     mail_engine_api_key: str = ""

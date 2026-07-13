@@ -256,3 +256,77 @@ async def list_organization_teams(pool: Pool, org_id: UUID) -> list[Team]:
     query = "SELECT * FROM teams WHERE org_id = $1 ORDER BY name"
     rows = await pool.fetch(query, org_id)
     return [Team(**row) for row in rows]
+
+
+async def get_or_create_by_clerk_id(
+    pool: Pool,
+    clerk_user_id: str,
+    email: str,
+    is_admin: bool = False,
+    role: str = "member",
+    link_by_email: bool = False,
+) -> User:
+    """Resolve a Clerk identity to a local users row, provisioning on first sight.
+
+    - Existing Clerk-linked user: returned (is_admin kept in sync with Clerk).
+    - Existing legacy user with the same email: linked to this Clerk id so their
+      data survives the migration.
+    - Otherwise: a new user is created in the default organization.
+
+    Per-user data scoping (user_id) is preserved; role is stored as a value the
+    users CHECK constraint allows (is_admin is the real privilege gate).
+    """
+    local_role = "org_owner" if is_admin else "member"
+
+    row = await pool.fetchrow("SELECT * FROM users WHERE clerk_user_id = $1", clerk_user_id)
+    if row:
+        if row["is_admin"] != is_admin:
+            await pool.execute(
+                "UPDATE users SET is_admin = $1, updated_at = NOW() WHERE id = $2",
+                is_admin, row["id"],
+            )
+            row = await pool.fetchrow("SELECT * FROM users WHERE id = $1", row["id"])
+        return User(**row)
+
+    if email and link_by_email:
+        existing = await pool.fetchrow("SELECT * FROM users WHERE email = $1", email)
+        if existing:
+            await pool.execute(
+                "UPDATE users SET clerk_user_id = $1, is_admin = $2, updated_at = NOW() "
+                "WHERE id = $3",
+                clerk_user_id, is_admin, existing["id"],
+            )
+            row = await pool.fetchrow("SELECT * FROM users WHERE id = $1", existing["id"])
+            return User(**row)
+
+    org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+    if not org_id:
+        org_id = await pool.fetchval(
+            "INSERT INTO organizations (name, slug, plan) "
+            "VALUES ('Default Organization', 'default', 'free') RETURNING id"
+        )
+
+    # Choose an email that won't collide with an existing (unlinked) user. When
+    # link_by_email is off and the email is already taken, isolate the new Clerk
+    # user under a synthetic address rather than taking over the existing row.
+    insert_email = email or f"{clerk_user_id}@clerk.local"
+    if email:
+        clash = await pool.fetchval("SELECT 1 FROM users WHERE email = $1", email)
+        if clash:
+            insert_email = f"{clerk_user_id}@clerk.local"
+
+    row = await pool.fetchrow(
+        """
+        INSERT INTO users (org_id, email, password_hash, full_name, role,
+                           is_active, is_admin, clerk_user_id)
+        VALUES ($1, $2, '', $3, $4, TRUE, $5, $6)
+        RETURNING *
+        """,
+        org_id,
+        insert_email,
+        None,
+        local_role,
+        is_admin,
+        clerk_user_id,
+    )
+    return User(**row)

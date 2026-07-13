@@ -46,6 +46,15 @@ services:
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
       SCREENSHOT_DIR: "/app/data/screenshots"
+      SESSION_SECRET: "local-session-secret-change-me"
+      # Auth: default "legacy" (password login). Flip to "clerk" and fill the
+      # CLERK_* vars below (from your Clerk dev instance) to test Clerk.
+      AUTH_PROVIDER: "legacy"
+      # CLERK_PUBLISHABLE_KEY: "pk_test_..."
+      # CLERK_SECRET_KEY: "sk_test_..."
+      # CLERK_JWKS_URL: "https://<subdomain>.clerk.accounts.dev/.well-known/jwks.json"
+      # CLERK_ISSUER: "https://<subdomain>.clerk.accounts.dev"
+      # CLERK_DOMAIN: "<subdomain>.clerk.accounts.dev"
       # Experimental Go fetcher sidecars (Python fetchers stay default)
       ENABLE_GO_FETCHERS: "true"
       GO_HTTP_FETCHER_URL: "http://go-http-fetcher:8080"
