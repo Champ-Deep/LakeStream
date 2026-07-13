@@ -76,6 +76,25 @@ class Settings(BaseSettings):
     playwright_timeout_ms: int = 30000  # Page load timeout (30 seconds)
     linkedin_session_cookies: str = ""  # Pre-authenticated cookies as JSON
 
+    # --- LakeStream v2 feature flags (additive; safe defaults) ---
+    lakestream_version: str = "v2"
+    # Persist clean markdown + raw HTML + content_hash per page (Phase 1)
+    enable_content_persistence: bool = True
+    # Skip re-extraction when a page's content_hash is unchanged (Phase 2)
+    enable_scrape_cache: bool = True
+    # Record content changes and fire change webhooks (Phase 2)
+    enable_change_monitoring: bool = True
+    # Capture page screenshots when requested (Phase 3; heavier, opt-in)
+    enable_screenshots: bool = False
+    # Local directory for screenshot storage (filesystem StorageBackend)
+    screenshot_dir: str = "./data/screenshots"
+    # Go fetcher sidecars (Phase 4); Python fetchers remain default
+    enable_go_fetchers: bool = False
+    go_http_fetcher_url: str = ""  # e.g. http://go-http-fetcher:8080
+    go_browser_fetcher_url: str = ""  # e.g. http://go-browser-fetcher:8080
+    # Capture + serve the sitemap link graph (Phase 5)
+    enable_knowledge_graph: bool = True
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

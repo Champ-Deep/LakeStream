@@ -2,11 +2,11 @@ import re
 from typing import Any
 
 import structlog
-from markdownify import markdownify as md
 from selectolax.parser import HTMLParser
 
 from src.models.scraping import FetchOptions, ScrapingTier
 from src.scraping.fetcher.factory import create_fetcher
+from src.scraping.parser.markdown import html_to_markdown
 from src.services.escalation import EscalationService
 
 log = structlog.get_logger()
@@ -100,16 +100,8 @@ class ScraperService:
         return body
 
     def _html_to_markdown(self, html: str) -> str:
-        """Convert HTML to clean Markdown."""
-        content = md(
-            html,
-            heading_style="ATX",
-            bullets="-",
-            strip=["script", "style", "nav", "footer", "header", "aside"],
-        )
-        # Clean up excessive newlines
-        content = re.sub(r"\n{3,}", "\n\n", content)
-        return content.strip()
+        """Convert HTML to clean Markdown (main content already isolated)."""
+        return html_to_markdown(html, find_main=False)
 
     def _extract_metadata(self, parser: HTMLParser, url: str) -> dict[str, Any]:
         """Extract OG, Schema, and meta tags."""

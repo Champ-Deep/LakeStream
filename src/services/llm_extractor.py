@@ -14,7 +14,6 @@ Production-grade extractor with:
 from __future__ import annotations
 
 import json
-import re
 import time
 from datetime import UTC, datetime
 
@@ -22,6 +21,7 @@ import structlog
 
 from src.config.settings import get_settings
 from src.models.extraction import ExtractionResult, ExtractionSchema
+from src.scraping.parser.markdown import html_to_markdown
 
 log = structlog.get_logger()
 
@@ -180,55 +180,8 @@ _TYPE_SCHEMAS: dict[str, dict] = {
 # --------------------------------------------------------------------------
 
 def _html_to_markdown(html: str, max_chars: int = _MAX_CONTENT_CHARS) -> str:
-    """Convert HTML to clean Markdown, preserving tables/headings/links."""
-    from selectolax.parser import HTMLParser
-
-    try:
-        tree = HTMLParser(html)
-
-        for tag in tree.css("script, style, noscript, nav, footer, header, aside, "
-                           ".sidebar, .ads, .cookie-banner, .popup, iframe"):
-            tag.decompose()
-
-        main = None
-        for selector in ["main", "article", "[role='main']", "#content", ".content",
-                         ".main-content", "#main-content", ".post-content", ".entry-content"]:
-            main = tree.css_first(selector)
-            if main:
-                break
-
-        source_html = main.html if main else (tree.body.html if tree.body else "")
-        if not source_html:
-            text = tree.text(separator="\n", strip=True)
-            return text[:max_chars] if len(text) > max_chars else text
-
-        from markdownify import markdownify as md
-
-        markdown = md(
-            source_html,
-            heading_style="ATX",
-            bullets="-",
-            strip=["script", "style", "nav", "footer", "header", "aside", "img"],
-        )
-
-        markdown = re.sub(r"\n{3,}", "\n\n", markdown)
-        markdown = markdown.strip()
-
-        if len(markdown) > max_chars:
-            markdown = markdown[:max_chars] + "\n\n[... truncated]"
-
-        return markdown
-
-    except Exception as e:
-        log.warning("html_to_markdown_failed", error=str(e))
-        try:
-            tree = HTMLParser(html)
-            for tag in tree.css("script, style, noscript"):
-                tag.decompose()
-            text = tree.text(separator="\n", strip=True)
-            return text[:max_chars] if len(text) > max_chars else text
-        except Exception:
-            return html[:max_chars]
+    """Convert HTML to clean Markdown for LLM input (images stripped, truncated)."""
+    return html_to_markdown(html, strip_images=True, max_chars=max_chars)
 
 
 def _strip_html_to_text(html: str, max_chars: int = _MAX_CONTENT_CHARS) -> str:
