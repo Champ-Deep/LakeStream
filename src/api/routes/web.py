@@ -953,6 +953,16 @@ async def domain_detail(request: Request, domain: str):
         )
     breakdown = {row["data_type"]: row["count"] for row in breakdown_rows}
 
+    # Recent content changes (v2 change monitoring), scoped to the user
+    from src.db.queries.content_changes import get_recent_changes_by_domain
+
+    recent_changes = [
+        dict(row)
+        for row in await get_recent_changes_by_domain(
+            pool, domain, user_id=user_filter, limit=20
+        )
+    ]
+
     return get_templates().TemplateResponse(
         "pages/domains/detail.html",
         {
@@ -962,6 +972,7 @@ async def domain_detail(request: Request, domain: str):
             "metadata": domain_meta,
             "jobs": jobs,
             "breakdown": breakdown,
+            "recent_changes": recent_changes,
         },
     )
 

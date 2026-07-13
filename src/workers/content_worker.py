@@ -192,12 +192,16 @@ class ContentWorker(BaseWorker):
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
 
-        # Persist durable page content (markdown + raw HTML + hash) for
-        # fidelity output, caching, and change monitoring (v2, flag-gated).
-        await self._persist_page_content(url, html, parser)
+        # Persist durable page content (markdown + raw HTML + hash), record any
+        # change, and learn whether the page is unchanged since last fetch
+        # (v2, flag-gated).
+        cache_hit = await self._handle_page_content(url, html, parser)
 
-        # raw_only mode: save page content only, skip all specialized extraction
-        if self.raw_only:
+        # raw_only, or cache hit (content unchanged): save the page record only
+        # and skip the expensive specialized/LLM/custom-schema extraction.
+        if self.raw_only or cache_hit:
+            if cache_hit and not self.raw_only:
+                self.log.info("cache_hit_skip_extraction", url=url)
             if records:
                 await self.export_results(records)
             return [
@@ -308,30 +312,74 @@ class ContentWorker(BaseWorker):
             "metadata": {**rich_meta, "content": content, "word_count": word_count},
         }
 
-    async def _persist_page_content(self, url: str, html: str, parser: HtmlParser) -> None:
-        """Upsert clean markdown + raw HTML + content hash to the page_content cache."""
+    async def _handle_page_content(self, url: str, html: str, parser: HtmlParser) -> bool:
+        """Persist page content, record changes, and report whether it's a cache hit.
+
+        Returns True when the content is unchanged since the last fetch and the
+        cache is enabled — callers may then skip expensive re-extraction.
+        """
         from src.config.settings import get_settings
 
-        if not get_settings().enable_content_persistence or not self._pool:
-            return
+        settings = get_settings()
+        if not settings.enable_content_persistence or not self._pool:
+            return False
         try:
-            from src.db.queries.page_content import upsert_page_content
+            from src.db.queries.page_content import get_hash, upsert_page_content
             from src.scraping.parser.markdown import content_hash, html_to_markdown
 
+            user_uuid = UUID(self.user_id) if self.user_id else None
             markdown = html_to_markdown(html, find_main=True)
+            new_hash = content_hash(markdown)
+            old_hash = await get_hash(self._pool, url, user_uuid)
+
+            if old_hash is not None and old_hash != new_hash and settings.enable_change_monitoring:
+                await self._record_change(url, old_hash, new_hash, user_uuid)
+
             await upsert_page_content(
                 self._pool,
                 domain=self.domain,
                 url=url,
-                content_hash=content_hash(markdown),
+                content_hash=new_hash,
                 markdown=markdown,
                 raw_html=html,
                 title=parser.extract_title(),
                 org_id=UUID(self.org_id) if self.org_id else None,
-                user_id=UUID(self.user_id) if self.user_id else None,
+                user_id=user_uuid,
+            )
+
+            return (
+                settings.enable_scrape_cache
+                and not self.force_refresh
+                and old_hash is not None
+                and old_hash == new_hash
             )
         except Exception as e:
-            self.log.warning("page_content_persist_failed", url=url, error=str(e))
+            self.log.warning("page_content_handle_failed", url=url, error=str(e))
+            return False
+
+    async def _record_change(
+        self, url: str, old_hash: str, new_hash: str, user_uuid: UUID | None,
+    ) -> None:
+        """Log a content change and fire the tracked-domain webhook, if any."""
+        try:
+            from src.db.queries.content_changes import insert_change
+
+            await insert_change(
+                self._pool, domain=self.domain, url=url,
+                old_hash=old_hash, new_hash=new_hash, user_id=user_uuid,
+            )
+            from src.db.queries.tracked_domains import get_tracked_domain
+
+            tracked = await get_tracked_domain(self._pool, self.domain)
+            if tracked and getattr(tracked, "webhook_url", None):
+                from src.services.change_monitor import notify_content_change
+
+                await notify_content_change(
+                    tracked.webhook_url, domain=self.domain, url=url,
+                    old_hash=old_hash, new_hash=new_hash,
+                )
+        except Exception as e:
+            self.log.warning("record_change_failed", url=url, error=str(e))
 
     async def _extract_custom_schema(self, url: str, html: str) -> dict | None:
         """Run the job's custom extraction schema (css/ai/auto) on one page."""

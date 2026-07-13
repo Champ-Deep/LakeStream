@@ -142,5 +142,32 @@
     {% endif %}
   </div>
 
+  <!-- Recent Content Changes (v2 change monitoring) -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 mt-6">
+    <div class="px-6 py-4 border-b border-stone-100 dark:border-gray-700">
+      <h2 class="text-sm font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Recent Content Changes</h2>
+    </div>
+
+    {% if recent_changes %}
+    <div class="divide-y divide-stone-100 dark:divide-gray-700">
+      {% for change in recent_changes %}
+      <div class="px-6 py-4 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="font-medium text-charcoal dark:text-gray-100 truncate">{{ change.url }}</p>
+          <p class="text-sm text-stone-400 font-mono">
+            {{ change.old_hash[:8] if change.old_hash else '—' }} → {{ change.new_hash[:8] }}
+          </p>
+        </div>
+        <span class="text-sm text-stone-400 whitespace-nowrap">{{ change.changed_at | timeago }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-8 text-center">
+      <p class="text-stone-500">No content changes detected yet</p>
+    </div>
+    {% endif %}
+  </div>
+
 </div>
 {% endblock %}
