@@ -13,8 +13,34 @@ docker compose -f docker-compose.local.yml up --build
 ```
 
 Brings up: postgres (:7432), redis (:7379), the API (**http://localhost:7100**),
-the arq worker, and the two Go fetcher sidecars. Migrations (through 028) run on
-API start.
+the arq worker, and the two Go fetcher sidecars. Migrations run on API start.
+Open **http://localhost:7100** — that is your local test link.
+
+### Named public URL (default for shareable local dev)
+
+`http://localhost:7100` only works on the machine running the stack. To test
+from a link (phone, another laptop, a teammate) use a **named tunnel** — this is
+our standard for local dev instead of passing bare localhost URLs around.
+
+Zero extra tooling — add the `tunnel` profile:
+
+```bash
+TUNNEL_SUBDOMAIN=lakestream-dev \
+  docker compose -f docker-compose.local.yml --profile tunnel up --build
+# → https://lakestream-dev.loca.lt  (maps to the api on :7100)
+```
+
+Or, if the app is already running, from the host:
+
+```bash
+./scripts/dev-link.sh lakestream-dev        # https://lakestream-dev.loca.lt
+TUNNEL=cloudflared ./scripts/dev-link.sh     # random *.trycloudflare.com, no interstitial
+```
+
+loca.lt shows a one-time interstitial on first visit; the password it asks for
+is your machine's public IP (`curl https://loca.lt/mytunnelpassword`). For a
+durable, always-on URL (not tied to your laptop being on), deploy to Railway —
+see `DEPLOYMENT.md`.
 
 ## Feature flags (env, all set in docker-compose.local.yml)
 

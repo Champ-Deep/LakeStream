@@ -99,6 +99,19 @@ services:
       - screenshots_local:/app/data/screenshots
     command: arq src.queue.worker.WorkerSettings
 
+  # Named public URL for the local app (opt-in): expose http://localhost:7100 as
+  # https://${TUNNEL_SUBDOMAIN}.loca.lt so you can test from a link/phone.
+  #   docker compose -f docker-compose.local.yml --profile tunnel up
+  # Change the name with TUNNEL_SUBDOMAIN=lenovo-test docker compose ... up
+  tunnel:
+    image: node:20-alpine
+    profiles: ["tunnel"]
+    command: >
+      sh -c "npx --yes localtunnel --port 7100 --local-host api
+             --subdomain ${TUNNEL_SUBDOMAIN:-lakestream-dev}"
+    depends_on:
+      - api
+
   go-http-fetcher:
     build: ./go-fetchers/http
     environment:
