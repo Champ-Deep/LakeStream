@@ -114,6 +114,20 @@ class Settings(BaseSettings):
     # Capture + serve the sitemap link graph (Phase 5)
     enable_knowledge_graph: bool = True
 
+    # --- v2.1 "Enrichment Edition" flags ---
+    # Parse Bytes: POST /api/parse (PDF/DOCX/HTML/text → markdown)
+    enable_document_parsing: bool = True
+    # First-class search endpoint (needs LakeCurrent): POST /api/search
+    enable_search_api: bool = True
+    # Company/brand enrichment: POST /api/enrich
+    enable_enrichment: bool = True
+    # Inbound API protection (public exposure)
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 60
+    # Usage metering records always; enforcement (402 past the allowance) is opt-in
+    enable_credit_enforcement: bool = False
+    free_monthly_credits: int = 5000
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

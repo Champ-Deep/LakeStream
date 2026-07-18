@@ -6,6 +6,8 @@
 package main
 
 import (
+	"compress/flate"
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"log"
@@ -65,7 +67,9 @@ func stealthHeaders(req *http.Request, ua string) {
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	// Advertise only what we can decode with the stdlib (no brotli): setting this
+	// header disables Go's transparent gzip handling, so we decode manually below.
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
 	req.Header.Set("sec-ch-ua", `"Chromium";v="125", "Not.A/Brand";v="24"`)
 	req.Header.Set("sec-ch-ua-mobile", "?0")
 	req.Header.Set("sec-ch-ua-platform", `"Windows"`)
@@ -131,7 +135,7 @@ func handleFetch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, _ := io.ReadAll(io.LimitReader(decodeBody(resp), 10<<20)) // 10 MB cap
 	html := string(body)
 
 	headers := map[string]string{}
@@ -151,6 +155,22 @@ func handleFetch(w http.ResponseWriter, r *http.Request) {
 		CaptchaDetected: detectCaptcha(html),
 		ContentType:     resp.Header.Get("Content-Type"),
 	})
+}
+
+// decodeBody transparently decompresses gzip/deflate responses. Because we set
+// Accept-Encoding manually, Go's transport does NOT auto-decompress, so a
+// compressed body would otherwise be returned as garbage. Unknown encodings
+// (e.g. brotli, which we do not advertise) fall through untouched.
+func decodeBody(resp *http.Response) io.Reader {
+	switch strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding"))) {
+	case "gzip":
+		if gz, err := gzip.NewReader(resp.Body); err == nil {
+			return gz
+		}
+	case "deflate":
+		return flate.NewReader(resp.Body)
+	}
+	return resp.Body
 }
 
 func msSince(t time.Time) int { return int(time.Since(t).Milliseconds()) }

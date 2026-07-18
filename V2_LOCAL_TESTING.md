@@ -65,6 +65,58 @@ New in v2:
 - [ ] Knowledge graph: crawl a domain, open its detail page → interactive
       Cytoscape graph; `GET /api/graph/{domain}` returns nodes+edges JSON.
 
+## v2.1 "Enrichment Edition" — new public-API surface
+
+Four new endpoint families (all `X-API-Key`-authenticated; create a key in
+Settings → API keys):
+
+```bash
+KEY="ls_..."   # your API key
+B=http://localhost:7100
+
+# 1. Sync single-URL scrape → markdown (the careers-page fetch for pipeline-v2)
+curl -s $B/api/scrape/url -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"url":"https://stripe.com/careers"}'
+
+# 2. Parse Bytes — PDF/DOCX/HTML/text → markdown (upload OR url)
+curl -s $B/api/parse -H "X-API-Key: $KEY" -F file=@whitepaper.pdf
+curl -s $B/api/parse -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/report.pdf"}'
+
+# 3. Web search (LakeCurrent-backed), optional inline markdown scrape
+curl -s $B/api/search -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"query":"series b fintech india", "scrape": true}'
+
+# 4. Company enrichment (domain | email | company_name)
+curl -s $B/api/enrich -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"domain":"stripe.com"}'
+
+# Usage + limits
+curl -s $B/api/usage -H "X-API-Key: $KEY"
+# Job-status alias used by the enrichment-pipeline playbook:
+curl -s $B/api/jobs/<job_id> -H "X-API-Key: $KEY"
+```
+
+Inbound protection: every `/api/*` call is rate-limited per key
+(`RATE_LIMIT_PER_MINUTE`, default 60/min → 429 + Retry-After); billable POSTs
+(scrape/parse/search/enrich/discover) are metered 1 credit each into
+`api_usage`. Hard credit enforcement is off by default
+(`ENABLE_CREDIT_ENFORCEMENT=false` records only).
+
+### Enrichment-pipeline (Lenovo/Harte Hanks) fit checklist
+
+- [ ] `POST /api/scrape/execute` + poll `GET /api/jobs/{job_id}` → status +
+      export links (the Intern Playbook's exact polling path now works).
+- [ ] `POST /api/scrape/url` returns markdown for a single careers page
+      (JS-rendered via Playwright tier escalation) — pipeline-v2's `fetch.py`
+      hosted-mode path.
+- [ ] `/api/search` answers the "DuckDuckGo blocks us" pivot in the runbook
+      without a paid Serper/Brave key (needs LakeCurrent up).
+- [ ] `/api/enrich` fills the firmographic passthrough columns (industry,
+      NAICS/SIC, size) of the combined-file schema.
+- [ ] The in-repo contract `ScraperService().scrape(url)` → `{"markdown": ...}`
+      is unchanged (pipeline-v2 `fetch.py` imports it directly).
+
 ## Notes / limitations observed while building
 
 - In this cloud sandbox, headless-Chrome tiers (Playwright and `go_browser`)

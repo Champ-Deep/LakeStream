@@ -27,6 +27,8 @@ dependencies = [
     "youtube-transcript-api>=1.2.4",
     "pymupdf>=1.24.0",
     "pdfplumber>=0.11.0",
+    "mammoth>=1.8.0",
+    "python-multipart>=0.0.9",
     "openai>=1.50.0",
 ]
 

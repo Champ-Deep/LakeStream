@@ -59,6 +59,13 @@ services:
       ENABLE_GO_FETCHERS: "true"
       GO_HTTP_FETCHER_URL: "http://go-http-fetcher:8080"
       GO_BROWSER_FETCHER_URL: "http://go-browser-fetcher:8080"
+      # v2.1 Enrichment Edition (parse/search/enrich + inbound protection)
+      ENABLE_DOCUMENT_PARSING: "true"
+      ENABLE_SEARCH_API: "true"
+      ENABLE_ENRICHMENT: "true"
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_PER_MINUTE: "60"
+      ENABLE_CREDIT_ENFORCEMENT: "false"
     depends_on:
       postgres:
         condition: service_healthy

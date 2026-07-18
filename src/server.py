@@ -62,8 +62,14 @@ async def root_ping() -> dict:
 #   Request → SessionMiddleware (decode cookie) → set_tenant_context (read session) → Route
 # So register set_tenant_context first, then SessionMiddleware on top.
 from src.api.middleware.auth import TenantContextMiddleware  # noqa: E402
+from src.api.middleware.rate_limit import (  # noqa: E402
+    RateLimitMiddleware,
+    UsageMeteringMiddleware,
+)
 from src.config.settings import get_settings as _get_settings  # noqa: E402
 
+# Innermost: runs after auth, sees request.state.user_id (credit check + metering)
+app.add_middleware(UsageMeteringMiddleware)
 app.add_middleware(TenantContextMiddleware)
 _settings = _get_settings()
 _is_production = bool(
@@ -78,6 +84,8 @@ app.add_middleware(
     same_site="lax",
     max_age=86400,  # 24 hours
 )
+# Rate limiting: outside session/auth so 429s are served cheaply, inside CORS.
+app.add_middleware(RateLimitMiddleware)
 # CORS: outermost middleware (added last in Starlette LIFO) — handles preflight
 # before auth. Allows Chrome extensions + local dev + Railway domains + Clerk.
 _cors_regex = r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app"

@@ -505,6 +505,62 @@ async def store_session_cookies(request: Request):
     }
 
 
+@router.post("/url")
+async def scrape_url_sync(request: Request):
+    """Scrape a single URL synchronously and return clean markdown.
+
+    Body: {url: str, tier?: str, only_main_content?: bool, max_chars?: int}
+
+    This is the hosted-API twin of the in-repo ScraperService used by the
+    enrichment pipeline: same tier escalation, same markdown conversion.
+    Use /scrape/execute for multi-page crawls; this is one page, right now.
+    """
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    if not url:
+        return {"success": False, "error": "url is required"}
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+
+    from src.models.scraping import ScrapingTier
+    from src.scraping.parser.markdown import content_hash
+    from src.services.scraper import ScraperService
+
+    tier = None
+    tier_raw = (body.get("tier") or "").strip().lower()
+    if tier_raw:
+        try:
+            tier = ScrapingTier(tier_raw)
+        except ValueError:
+            return {
+                "success": False,
+                "error": f"Unknown tier '{tier_raw}' (valid: {', '.join(t.value for t in ScrapingTier)})",
+            }
+    only_main = bool(body.get("only_main_content", True))
+    max_chars = body.get("max_chars")
+
+    try:
+        result = await ScraperService().scrape(url, tier=tier, only_main_content=only_main)
+    except Exception as e:
+        logger.error("scrape_url_failed", url=url, error=str(e))
+        return {"success": False, "error": f"Scrape failed: {e}"}
+
+    markdown = result.get("markdown", "")
+    if max_chars and markdown:
+        markdown = markdown[: int(max_chars)]
+
+    return {
+        "success": result.get("success", False),
+        "url": url,
+        "markdown": markdown,
+        "metadata": result.get("metadata", {}),
+        "tier_used": result.get("tier_used"),
+        "status_code": result.get("status_code"),
+        "content_hash": content_hash(markdown) if markdown else None,
+        "error": result.get("error"),
+    }
+
+
 @router.post("/youtube-transcript")
 async def youtube_transcript(request: Request):
     """Extract transcript from a YouTube video URL. Returns immediately (no job queue)."""
