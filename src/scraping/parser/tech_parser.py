@@ -135,6 +135,7 @@ class TechParser:
                 "confidence": _EVIDENCE_CONFIDENCE.get(evidence_type, "low"),
                 "evidence": evidence,
                 "evidence_type": evidence_type,
+                "recommended": _EVIDENCE_CONFIDENCE.get(evidence_type, "low") in ("high", "medium"),
             }
             result["detections"].append(detection)
 

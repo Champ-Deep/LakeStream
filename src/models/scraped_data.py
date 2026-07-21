@@ -65,6 +65,7 @@ class DetectedTech(BaseModel):
     confidence: Literal["high", "medium", "low"]
     evidence: str
     evidence_type: str
+    recommended: bool = False
 
 
 class TechStackMetadata(BaseModel):
