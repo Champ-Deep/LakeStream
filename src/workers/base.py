@@ -7,6 +7,7 @@ from uuid import UUID
 import httpx
 import structlog
 
+from src.config.settings import get_settings
 from src.models.scraped_data import ScrapedData
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 from src.models.template import TemplateConfig
@@ -135,7 +136,13 @@ class BaseWorker(ABC):
 
         if self._escalation is None:
             await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+            settings = get_settings()
+            fallback_tier = (
+                ScrapingTier.GO_HTTP
+                if settings.enable_go_fetchers and settings.go_http_fetcher_url
+                else ScrapingTier.PLAYWRIGHT
+            )
+            fetcher = create_fetcher(fallback_tier)
             result = await retry_async(
                 fetcher.fetch,
                 url,

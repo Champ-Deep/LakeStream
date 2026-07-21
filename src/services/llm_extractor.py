@@ -59,11 +59,19 @@ _TYPE_PROMPTS: dict[str, str] = {
         "Ignore navigation, ads, sidebar, and footer content."
     ),
     "tech_stack": (
-        "Analyze this page to detect the technology stack. "
-        "Identify: CMS/platform (WordPress, Shopify, etc.), JavaScript libraries, "
-        "analytics tools (Google Analytics, Hotjar, etc.), marketing tools (HubSpot, Mailchimp, etc.), "
-        "and frameworks (React, Next.js, etc.). "
-        "Look at script references, meta tags, class naming patterns, and generator tags."
+        "Analyze this page's SOURCE CODE to detect the full technology stack. "
+        "Look at: (1) <script src> URLs for JS frameworks/libraries (React, Vue, Angular, jQuery, etc.), "
+        "(2) <link href> for CSS frameworks (Tailwind, Bootstrap), fonts (Google Fonts, Typekit), "
+        "(3) <meta name='generator'> for CMS (WordPress, Drupal, HubSpot), "
+        "(4) inline script patterns for framework globals (__next_data__, __nuxt, __vue__), "
+        "(5) CDN domains in asset URLs (cloudflare, fastly, akamai, vercel, netlify), "
+        "(6) marketing/analytics pixels (GTM, Segment, HubSpot, Marketo), "
+        "(7) class naming patterns (e.g. 'wp-' for WordPress, 'wf-' for Webflow), "
+        "(8) any mentioned backend tech (GraphQL endpoints, API patterns), "
+        "(9) build tool signatures (webpack chunks, vite modulepreload), "
+        "(10) monitoring/error tracking (Sentry, Datadog, New Relic). "
+        "Also check if the page content (e.g. blog post, case study) MENTIONS specific "
+        "technologies the company uses internally."
     ),
     "resource": (
         "Extract downloadable resources from this page. "
@@ -133,10 +141,20 @@ _TYPE_SCHEMAS: dict[str, dict] = {
         "type": "object",
         "properties": {
             "platform": {"type": "string"},
+            "frameworks": {"type": "array", "items": {"type": "string"}},
             "js_libraries": {"type": "array", "items": {"type": "string"}},
             "analytics": {"type": "array", "items": {"type": "string"}},
             "marketing_tools": {"type": "array", "items": {"type": "string"}},
-            "frameworks": {"type": "array", "items": {"type": "string"}},
+            "cdn": {"type": "array", "items": {"type": "string"}},
+            "hosting": {"type": "array", "items": {"type": "string"}},
+            "backend": {"type": "array", "items": {"type": "string"}},
+            "build_tools": {"type": "array", "items": {"type": "string"}},
+            "fonts": {"type": "array", "items": {"type": "string"}},
+            "payment": {"type": "array", "items": {"type": "string"}},
+            "auth": {"type": "array", "items": {"type": "string"}},
+            "monitoring": {"type": "array", "items": {"type": "string"}},
+            "search": {"type": "array", "items": {"type": "string"}},
+            "ecommerce": {"type": "array", "items": {"type": "string"}},
         },
     },
     "resource": {

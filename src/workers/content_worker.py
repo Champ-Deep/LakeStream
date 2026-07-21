@@ -18,6 +18,7 @@ from src.models.scraped_data import (
     BlogUrlMetadata,
     ContactMetadata,
     DataType,
+    DetectedTech,
     DocumentMetadata,
     PricingMetadata,
     ResourceMetadata,
@@ -258,15 +259,13 @@ class ContentWorker(BaseWorker):
             if data_type == DataType.PRICING and "pricing" in data_types:
                 records.extend(self._extract_pricing(url, html, rich_meta))
 
-            # Tech stack: homepage only
+            # Tech stack: scan every page, merge signals across the site
             if "tech_stack" in data_types:
-                path = urlparse(url).path.rstrip("/")
-                if path in ("", "/index.html"):
-                    tech_rec = self._extract_tech_stack(
-                        url, html, fetch_result.headers, rich_meta,
-                    )
-                    if tech_rec:
-                        records.append(tech_rec)
+                tech_rec = self._extract_tech_stack(
+                    url, html, fetch_result.headers, rich_meta,
+                )
+                if tech_rec:
+                    records.append(tech_rec)
 
         # --- LLM extraction: runs on every page for every requested type ---
         if run_llm:
@@ -506,15 +505,28 @@ class ContentWorker(BaseWorker):
         headers: dict[str, str],
         rich_meta: dict,
     ) -> dict | None:
-        """Tech stack from homepage. Ported from TechDetectorWorker."""
+        """Detect tech stack from raw HTML source code + HTTP headers.
+        Returns a record with flat lists (backward compat) and an enriched
+        detections list carrying confidence + evidence per match."""
         tp = TechParser(html, headers)
         detected = tp.detect()
         metadata = TechStackMetadata(
             platform=detected.get("platform"),
+            frameworks=detected.get("frameworks", []),
             js_libraries=detected.get("js_libraries", []),
             analytics=detected.get("analytics", []),
             marketing_tools=detected.get("marketing_tools", []),
-            frameworks=detected.get("frameworks", []),
+            cdn=detected.get("cdn", []),
+            hosting=detected.get("hosting", []),
+            backend=detected.get("backend", []),
+            build_tools=detected.get("build_tools", []),
+            fonts=detected.get("fonts", []),
+            payment=detected.get("payment", []),
+            auth=detected.get("auth", []),
+            monitoring=detected.get("monitoring", []),
+            search=detected.get("search", []),
+            ecommerce=detected.get("ecommerce", []),
+            detections=[DetectedTech(**d) for d in detected.get("detections", [])],
         )
         return {
             "job_id": UUID(self.job_id),

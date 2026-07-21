@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -58,12 +59,31 @@ class ContactMetadata(BaseModel):
     source: str = ""
 
 
+class DetectedTech(BaseModel):
+    name: str
+    category: str
+    confidence: Literal["high", "medium", "low"]
+    evidence: str
+    evidence_type: str
+
+
 class TechStackMetadata(BaseModel):
     platform: str | None = None
+    frameworks: list[str] = []
     js_libraries: list[str] = []
     analytics: list[str] = []
     marketing_tools: list[str] = []
-    frameworks: list[str] = []
+    cdn: list[str] = []
+    hosting: list[str] = []
+    backend: list[str] = []
+    build_tools: list[str] = []
+    fonts: list[str] = []
+    payment: list[str] = []
+    auth: list[str] = []
+    monitoring: list[str] = []
+    search: list[str] = []
+    ecommerce: list[str] = []
+    detections: list[DetectedTech] = []
 
 
 class ResourceMetadata(BaseModel):
