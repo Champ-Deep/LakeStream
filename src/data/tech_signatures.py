@@ -124,23 +124,24 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "Stencil", "category": "framework", "signals": ["stencil", "/build/app.esm.js"]},
 
     # ===== CDN / Edge =====
-    {"name": "Cloudflare", "category": "cdn", "signals": ["cf-ray", "cdnjs.cloudflare.com"], "header_signals": ["cf-ray", "cf-cache-status", "server: cloudflare"]},
+    {"name": "Cloudflare", "category": "cdn", "signals": [], "header_signals": ["cf-ray", "server: cloudflare"]},
+    
 
     {"name": "Fastly", "category": "cdn", "signals": [], "header_signals": ["x-served-by: cache-", "fastly-debug-digest"]},
     {"name": "Akamai", "category": "cdn", "signals": ["akamaized.net"], "header_signals": ["x-akamai-", "akamai-transform"]},
-    {"name": "AWS CloudFront", "category": "cdn", "signals": ["cloudfront.net"], "header_signals": ["x-amz-cf-", "x-cache: hit from cloudfront"]},
+    {"name": "AWS CloudFront", "category": "cdn", "signals": [], "header_signals": ["x-amz-cf-id", "x-amz-cf-pop"]},
     {"name": "Vercel", "category": "cdn", "signals": ["vercel.app", "vercel.com"], "header_signals": ["x-vercel-", "server: vercel"]},
     {"name": "Netlify", "category": "cdn", "signals": ["netlify.app", "netlify.com"], "header_signals": ["x-nf-request-id", "server: netlify"]},
-    {"name": "Azure CDN", "category": "cdn", "signals": ["azureedge.net", "azure.com"], "header_signals": ["x-azure-ref"]},
+    {"name": "Azure CDN", "category": "cdn", "signals": [], "header_signals": ["x-azure-ref", "x-msedge-ref"]},
     {"name": "Google Cloud CDN", "category": "cdn", "signals": ["googleusercontent.com"], "header_signals": ["x-goog-meta-", "x-goog-generation"]},
     {"name": "KeyCDN", "category": "cdn", "signals": ["kxcdn.com", "keycdn.com"]},
     {"name": "StackPath", "category": "cdn", "signals": ["stackpath.com", "stackpathcdn.com"]},
     {"name": "Imperva/Incapsula", "category": "cdn", "signals": ["incapsula", "imperva"], "header_signals": ["x-cdn: imperva", "x-iinfo"]},
 
     # ===== Hosting / Cloud =====
-    {"name": "AWS", "category": "hosting", "signals": ["amazonaws.com", "aws.amazon.com", "elasticbeanstalk.com"], "header_signals": ["x-amz-", "server: amazons3"]},
+    {"name": "AWS", "category": "hosting", "signals": [], "header_signals": ["x-amz-request-id", "x-amz-id-2", "server: aws"]},
     {"name": "Google Cloud", "category": "hosting", "signals": ["cloud.google.com", "appspot.com", "run.app"], "header_signals": ["x-cloud-trace-context"]},
-    {"name": "Azure", "category": "hosting", "signals": ["azure.com", "azurewebsites.net", "windows.net"], "header_signals": ["x-azure-ref", "x-ms-"]},
+    {"name": "Azure", "category": "hosting", "signals": [], "header_signals": ["x-azure-ref", "x-ms-edge", "x-ms-request-id"]},
     {"name": "Heroku", "category": "hosting", "signals": ["herokuapp.com"], "header_signals": ["via: heroku"]},
     {"name": "DigitalOcean", "category": "hosting", "signals": ["digitalocean.com", "digitaloceanspaces.com"]},
     {"name": "Render", "category": "hosting", "signals": ["onrender.com"], "header_signals": ["server: render"]},
