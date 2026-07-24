@@ -10,6 +10,7 @@ Self-contained (no external enrichment vendor):
   6. Map industry → NAICS/SIC via the deterministic crosswalk.
 """
 
+import asyncio
 import ipaddress
 import json
 import re
@@ -25,7 +26,9 @@ from src.config.settings import get_settings
 from src.db.queries.company_profiles import get_by_domain, upsert_company_profile
 from src.models.company import CompanyProfile
 from src.models.lake_b2b import LAKE_B2B_INDUSTRIES
+from src.services.dns_intel import lookup_domain_intel
 from src.services.naics_crosswalk import industry_to_codes
+from src.services.ssl_intel import inspect_certificate
 
 log = structlog.get_logger()
 
@@ -189,6 +192,13 @@ def _row_to_profile(row, source: str | None = None) -> CompanyProfile:
     socials = row["socials"]
     if isinstance(socials, str):
         socials = json.loads(socials or "{}")
+    cdn_providers = row["cdn_providers"]
+    if isinstance(cdn_providers, str):
+        cdn_providers = json.loads(cdn_providers or "[]")
+    san_domains = row["ssl_san_domains"]
+    if isinstance(san_domains, str):
+        san_domains = json.loads(san_domains or "[]")
+
     return CompanyProfile(
         id=row["id"],
         domain=row["domain"],
@@ -204,6 +214,15 @@ def _row_to_profile(row, source: str | None = None) -> CompanyProfile:
         socials=socials or {},
         source=source or row["source"],
         fetched_at=row["fetched_at"],
+        web_hosting_provider=row["web_hosting_provider"],
+        email_hosting_provider=row["email_hosting_provider"],
+        cdn_providers=cdn_providers or [],
+        ssl_issuer=row["ssl_issuer"],
+        ssl_valid_from=row["ssl_valid_from"],
+        ssl_valid_to=row["ssl_valid_to"],
+        ssl_days_until_expiry=row["ssl_days_until_expiry"],
+        ssl_protocol=row["ssl_protocol"],
+        ssl_san_domains=san_domains or [],
     )
 
 
@@ -229,7 +248,15 @@ async def enrich_company(
         raise EnrichmentError(f"Domain does not resolve to a public address: {resolved}")
 
     base_url = f"https://{resolved}"
-    home_html = await _fetch_page(base_url)
+
+    # DNS + SSL are independent of the page fetch (and of each other) — a
+    # DNS/TLS check is ~seconds; run everything concurrently rather than
+    # serially stacking latency.
+    home_html, dns_intel, ssl_intel = await asyncio.gather(
+        _fetch_page(base_url),
+        lookup_domain_intel(resolved),
+        inspect_certificate(resolved),
+    )
     if not home_html:
         raise EnrichmentError(f"Could not fetch {base_url}")
 
@@ -262,5 +289,14 @@ async def enrich_company(
         raw={"llm": llm, "meta_name": meta.get("name")},
         org_id=org_id,
         user_id=user_id,
+        web_hosting_provider=dns_intel.web_hosting_provider,
+        email_hosting_provider=dns_intel.email_hosting_provider,
+        cdn_providers=dns_intel.cdn_providers,
+        ssl_issuer=ssl_intel.issuer,
+        ssl_valid_from=ssl_intel.valid_from,
+        ssl_valid_to=ssl_intel.valid_to,
+        ssl_days_until_expiry=ssl_intel.days_until_expiry,
+        ssl_protocol=ssl_intel.protocol,
+        ssl_san_domains=ssl_intel.san_domains,
     )
     return _row_to_profile(row)

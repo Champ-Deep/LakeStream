@@ -270,7 +270,9 @@ class ContentWorker(BaseWorker):
 
         # --- LLM extraction: runs on every page for every requested type ---
         if run_llm:
-            llm_records = await self._llm_extract_every_type(url, html, data_types)
+            llm_records = await self._llm_extract_every_type(
+                url, html, data_types, existing_records=records,
+            )
             if llm_records:
                 records.extend(llm_records)
 
@@ -515,6 +517,11 @@ class ContentWorker(BaseWorker):
             analytics=detected.get("analytics", []),
             marketing_tools=detected.get("marketing_tools", []),
             frameworks=detected.get("frameworks", []),
+            cdn=detected.get("cdn", []),
+            widgets=detected.get("widgets", []),
+            web_servers=detected.get("web_servers", []),
+            programming_languages=detected.get("programming_languages", []),
+            server_os=detected.get("server_os"),
         )
         return {
             "job_id": UUID(self.job_id),
@@ -647,12 +654,17 @@ class ContentWorker(BaseWorker):
         url: str,
         html: str,
         data_types: list[str],
+        existing_records: list[dict] | None = None,
     ) -> list[dict]:
         """Run LLM extraction on this page for every requested data type.
 
         Called when llm_mode is 'fallback' or 'only'. Unlike CSS extraction
         which is gated by URL classification, this runs for every requested
         data type on every page — maximizing extraction coverage.
+
+        `existing_records` is the CSS pass's output for this same page (only
+        populated when llm_mode == "fallback"); tech_stack merges into it
+        in place rather than appending a duplicate tech_stack row.
         """
         from src.services.llm_extractor import LLMExtractor
 
@@ -674,7 +686,9 @@ class ContentWorker(BaseWorker):
                     self.log.debug("llm_no_results", url=url, data_type=dt)
                     continue
 
-                converted = self._convert_llm_results(url, dt, llm_data)
+                converted = self._convert_llm_results(
+                    url, dt, llm_data, existing_records=existing_records,
+                )
                 if converted:
                     results.extend(converted)
                     self.log.info(
@@ -694,7 +708,13 @@ class ContentWorker(BaseWorker):
 
         return results
 
-    def _convert_llm_results(self, url: str, data_type: str, llm_data: dict) -> list[dict]:
+    def _convert_llm_results(
+        self,
+        url: str,
+        data_type: str,
+        llm_data: dict,
+        existing_records: list[dict] | None = None,
+    ) -> list[dict]:
         """Convert LLM output to record dicts matching CSS extractor format."""
         records: list[dict] = []
 
@@ -747,15 +767,41 @@ class ContentWorker(BaseWorker):
         elif data_type == "tech_stack":
             # Only add if LLM found at least one tech identifier
             has_tech = any(llm_data.get(k) for k in ("platform", "js_libraries", "frameworks", "analytics", "marketing_tools"))
-            if has_tech:
-                records.append({
-                    "job_id": UUID(self.job_id),
-                    "domain": self.domain,
-                    "data_type": DataType.TECH_STACK,
-                    "url": url,
-                    "title": f"Tech Stack: {self.domain}",
-                    "metadata": {**llm_data, "extraction_method": "llm"},
-                })
+            if not has_tech:
+                pass
+            else:
+                # When the CSS pass already produced a tech_stack row for this
+                # URL (llm_mode == "fallback"), merge into it — union the list
+                # fields, fill scalars only if empty — instead of inserting a
+                # second tech_stack record for the same page.
+                existing = next(
+                    (
+                        r for r in (existing_records or [])
+                        if r.get("data_type") == DataType.TECH_STACK and r.get("url") == url
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    meta = existing["metadata"]
+                    for key in (
+                        "js_libraries", "analytics", "marketing_tools", "frameworks",
+                        "cdn", "widgets", "web_servers", "programming_languages",
+                    ):
+                        llm_vals = llm_data.get(key)
+                        if isinstance(llm_vals, list) and llm_vals:
+                            meta[key] = sorted(set((meta.get(key) or [])) | set(llm_vals))
+                    meta["platform"] = meta.get("platform") or llm_data.get("platform")
+                    meta["server_os"] = meta.get("server_os") or llm_data.get("server_os")
+                    meta["extraction_method"] = "css+llm"
+                else:
+                    records.append({
+                        "job_id": UUID(self.job_id),
+                        "domain": self.domain,
+                        "data_type": DataType.TECH_STACK,
+                        "url": url,
+                        "title": f"Tech Stack: {self.domain}",
+                        "metadata": {**llm_data, "extraction_method": "llm"},
+                    })
 
         elif data_type == "resource":
             resources = llm_data.get("resources", [])

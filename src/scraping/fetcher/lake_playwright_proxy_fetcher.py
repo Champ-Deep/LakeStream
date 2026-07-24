@@ -156,8 +156,11 @@ class LakePlaywrightProxyFetcher:
                         except Exception as e:
                             log.debug("playwright_proxy_networkidle_timeout", url=url, error=str(e))
 
+                        from src.scraping.fetcher.actions import response_headers
+
                         html = await page.content()
                         status_code = response.status if response else 0
+                        resp_headers = await response_headers(response)
 
                         # Save updated session
                         updated_storage_state = await context.storage_state()
@@ -241,6 +244,7 @@ class LakePlaywrightProxyFetcher:
                     status_code = 0
                     blocked = True
                     captcha = False
+                    resp_headers = {}
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -248,7 +252,7 @@ class LakePlaywrightProxyFetcher:
             url=url,
             status_code=status_code,
             html=html,
-            headers={},
+            headers=resp_headers,
             tier_used=ScrapingTier.PLAYWRIGHT_PROXY,
             cost_usd=TIER_COSTS["playwright_proxy"],
             duration_ms=duration_ms,

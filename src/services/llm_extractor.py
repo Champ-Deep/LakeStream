@@ -62,8 +62,11 @@ _TYPE_PROMPTS: dict[str, str] = {
         "Analyze this page to detect the technology stack. "
         "Identify: CMS/platform (WordPress, Shopify, etc.), JavaScript libraries, "
         "analytics tools (Google Analytics, Hotjar, etc.), marketing tools (HubSpot, Mailchimp, etc.), "
-        "and frameworks (React, Next.js, etc.). "
-        "Look at script references, meta tags, class naming patterns, and generator tags."
+        "frameworks (React, Next.js, etc.), CDN (Cloudflare, Fastly, etc. — from script/asset domains), "
+        "widgets (chat: Intercom/Drift/Zendesk; cookie consent: OneTrust/Cookiebot; reviews: Trustpilot/Yotpo), "
+        "and programming languages implied by the code (PHP, Ruby, Java, Python, TypeScript, etc.). "
+        "Look at script references, meta tags, class naming patterns, and generator tags. "
+        "Do not guess web server, OS, hosting, email hosting, or SSL — those come from headers/DNS/TLS, not page content."
     ),
     "resource": (
         "Extract downloadable resources from this page. "
@@ -137,6 +140,9 @@ _TYPE_SCHEMAS: dict[str, dict] = {
             "analytics": {"type": "array", "items": {"type": "string"}},
             "marketing_tools": {"type": "array", "items": {"type": "string"}},
             "frameworks": {"type": "array", "items": {"type": "string"}},
+            "cdn": {"type": "array", "items": {"type": "string"}},
+            "widgets": {"type": "array", "items": {"type": "string"}},
+            "programming_languages": {"type": "array", "items": {"type": "string"}},
         },
     },
     "resource": {

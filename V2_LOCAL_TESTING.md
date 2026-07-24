@@ -117,6 +117,16 @@ curl -s $B/api/search -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
 curl -s $B/api/enrich -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
   -d '{"domain":"stripe.com"}'
 
+# 5. Tech stack detection (v2.1.1) — page-level signals via a scrape job
+curl -s $B/api/scrape/execute -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"domain":"example.com","max_pages":1,"data_types":["tech_stack"]}'
+# -> {"job_id":"..."}; poll /api/jobs/{job_id}, then read the tech_stack record's
+# metadata: platform, js_libraries, analytics, marketing_tools, frameworks,
+# cdn, widgets, web_servers, programming_languages, server_os.
+# Domain-level facts (hosting, email hosting, CDN via DNS, SSL certificate) are
+# on /api/enrich instead — see its response's web_hosting_provider,
+# email_hosting_provider, cdn_providers, ssl_issuer/ssl_valid_to/ssl_protocol.
+
 # Usage + limits
 curl -s $B/api/usage -H "X-API-Key: $KEY"
 # Job-status alias used by the enrichment-pipeline playbook:
@@ -142,6 +152,55 @@ Inbound protection: every `/api/*` call is rate-limited per key
       NAICS/SIC, size) of the combined-file schema.
 - [ ] The in-repo contract `ScraperService().scrape(url)` → `{"markdown": ...}`
       is unchanged (pipeline-v2 `fetch.py` imports it directly).
+
+## Tech stack detection (v2.1.1) — BuiltWith-comparison fields
+
+Added to close the gap identified when comparing LakeStream's tech-stack output
+against BuiltWith: OS, web hosting, email hosting, JS libraries, widgets, web
+servers, analytics, frameworks, frontend/backend programming languages, SSL
+certificate, and CDN.
+
+**Split by where the fact actually lives** (this is deliberate, not an oversight):
+- **Page-level** (varies per page, from HTML/headers/cookies of the scraped
+  page): `platform`, `js_libraries`, `analytics`, `marketing_tools`,
+  `frameworks`, `cdn`, `widgets`, `web_servers`, `programming_languages`,
+  `server_os` — on `TechStackMetadata`, via `data_types:["tech_stack"]` jobs.
+- **Domain-level** (doesn't vary per page, resolved once via DNS/TLS, cached):
+  `web_hosting_provider`, `email_hosting_provider`, `cdn_providers`,
+  `ssl_issuer`, `ssl_valid_from/to`, `ssl_days_until_expiry`, `ssl_protocol`,
+  `ssl_san_domains` — on `CompanyProfile`, via `/api/enrich`.
+
+**Detection method:** an original, hand-curated regex fingerprint database
+(`src/data/tech_signatures.py`, ~130 signatures) matched against HTML body,
+response headers (by name AND value — e.g. the bare presence of a `CF-RAY`
+header signals Cloudflare even though its value is just a request ID), and
+`Set-Cookie` cookie names (e.g. `PHPSESSID` → PHP, `ASP.NET_SessionId` →
+ASP.NET). Hosting/email-hosting/CDN come from DNS (`src/services/dns_intel.py`
+— NS/MX/CNAME records against a nameserver/MX heuristic table); the SSL
+certificate comes from a real TLS handshake (`src/services/ssl_intel.py` —
+stdlib `ssl`/`socket` + `cryptography` for the unverified-cert fallback).
+
+**Known limitations, stated honestly:**
+- The fingerprint set is hand-curated (~130 signatures across CMS, analytics,
+  marketing, frameworks, CDN, JS libraries, widgets, web servers, programming
+  languages) — not the thousands of entries a mature commercial database like
+  BuiltWith's has built up over years. Long-tail/niche technologies will miss.
+- Any substring-style fingerprint (ours or BuiltWith's) risks false positives
+  when a page merely *mentions* a technology (e.g. a customer-logo strip) —
+  we found and fixed one live during testing (a bare "shopify" mention
+  misdetected a non-Shopify site); if you hit another, tighten that signature
+  in `tech_signatures.py` to require a domain-qualified or header-based marker.
+- `web_hosting_provider`/`cdn_providers` (DNS-based) only recognize the
+  providers in the curated nameserver/CNAME tables — an unrecognized host
+  returns `null`, not a wrong answer.
+- **This sandbox's outbound TLS is intercepted** (same limitation as the
+  Playwright/chromedp note below) — `/api/enrich`'s `ssl_issuer` will show the
+  interception proxy's cert here, not the real one. Verified correct in
+  isolation (real cert parsing logic tested directly); will show real
+  certificate data in your local Docker environment, which has no such proxy.
+- Response headers now flow through on **all** Playwright-based tiers (this
+  branch fixes a bug where they were hardcoded to `{}`); the Go HTTP tier
+  already captured them correctly.
 
 ## Notes / limitations observed while building
 

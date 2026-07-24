@@ -12,6 +12,23 @@ log = structlog.get_logger()
 _SUPPORTED = {"click", "scroll", "wait", "wait_for_selector", "screenshot"}
 
 
+async def response_headers(response) -> dict[str, str]:
+    """Best-effort response headers from a Playwright navigation Response.
+
+    Uses all_headers() (includes headers the browser would otherwise dedupe,
+    e.g. repeated Set-Cookie) rather than the sync .headers property. Returns
+    {} for a None response (e.g. same-document navigation) or on any error —
+    tech detection degrades to body-only signals rather than failing the fetch.
+    """
+    if response is None:
+        return {}
+    try:
+        return dict(await response.all_headers())
+    except Exception as e:
+        log.debug("response_headers_failed", error=str(e))
+        return {}
+
+
 async def apply_pre_capture(page, options, default_timeout_ms: int) -> None:
     """Honor wait_for_selector and run the scripted action list, if any."""
     if options.wait_for_selector:
