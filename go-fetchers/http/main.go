@@ -8,6 +8,7 @@ package main
 import (
 	"compress/flate"
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"log"
@@ -38,6 +39,14 @@ type fetchOptions struct {
 	ProxyURL          string            `json:"proxy_url"`
 	UserAgent         string            `json:"user_agent"`
 	CaptureScreenshot bool              `json:"capture_screenshot"`
+	// TLSVerify controls certificate chain verification. Scraping wants the
+	// page content; an expired or self-signed certificate is not a reason to
+	// lose the whole record (it accounts for a large share of real-world
+	// fetch failures). Certificate validity is reported separately and
+	// truthfully by the SSL inspection service, so tolerating it here hides
+	// nothing. Pointer so that an omitted field means "tolerate", while an
+	// explicit false/true is still honoured.
+	TLSVerify *bool `json:"tls_verify"`
 }
 
 type fetchRequest struct {
@@ -105,6 +114,10 @@ func handleFetch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transport := &http.Transport{}
+	// Default to tolerating certificate problems (see fetchOptions.TLSVerify).
+	if fr.Options.TLSVerify == nil || !*fr.Options.TLSVerify {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402
+	}
 	if fr.Options.ProxyURL != "" {
 		if p, err := url.Parse(fr.Options.ProxyURL); err == nil {
 			transport.Proxy = http.ProxyURL(p)
