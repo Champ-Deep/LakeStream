@@ -508,21 +508,19 @@ class ContentWorker(BaseWorker):
         headers: dict[str, str],
         rich_meta: dict,
     ) -> dict | None:
-        """Tech stack from homepage. Ported from TechDetectorWorker."""
-        tp = TechParser(html, headers)
-        detected = tp.detect()
-        metadata = TechStackMetadata(
-            platform=detected.get("platform"),
-            js_libraries=detected.get("js_libraries", []),
-            analytics=detected.get("analytics", []),
-            marketing_tools=detected.get("marketing_tools", []),
-            frameworks=detected.get("frameworks", []),
-            cdn=detected.get("cdn", []),
-            widgets=detected.get("widgets", []),
-            web_servers=detected.get("web_servers", []),
-            programming_languages=detected.get("programming_languages", []),
-            server_os=detected.get("server_os"),
+        """Tech stack from the homepage, via the precompiled catalog engine."""
+        from src.scraping.parser.tech_engine import (
+            detect,
+            detections_to_metadata,
+            extract_page_signals,
         )
+
+        signals = extract_page_signals(html, url=url, headers=headers)
+        detected = detections_to_metadata(detect(signals))
+        metadata = TechStackMetadata(**{
+            k: v for k, v in detected.items()
+            if k in TechStackMetadata.model_fields
+        })
         return {
             "job_id": UUID(self.job_id),
             "domain": self.domain,

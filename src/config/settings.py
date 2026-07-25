@@ -114,6 +114,19 @@ class Settings(BaseSettings):
     # Capture + serve the sitemap link graph (Phase 5)
     enable_knowledge_graph: bool = True
 
+    # --- Technology detection (v2.2) ---
+    # Optional path to an external Wappalyzer-format fingerprint catalog
+    # (a .json file or a directory of them). Loaded at runtime and merged on
+    # top of the built-in curated set, so the catalog can be updated without a
+    # code release — and is deliberately NOT vendored into this repo (see
+    # docs/TECH_CATALOG.md for the licensing reason).
+    tech_catalog_path: str = ""
+    # LLM judge reviews low-confidence/outlier detections after regex matching.
+    # It never performs primary extraction.
+    enable_tech_judge: bool = False
+    # Only detections at or below this confidence are sent to the judge.
+    tech_judge_max_detections: int = 40
+
     # --- v2.1 "Enrichment Edition" flags ---
     # Parse Bytes: POST /api/parse (PDF/DOCX/HTML/text → markdown)
     enable_document_parsing: bool = True

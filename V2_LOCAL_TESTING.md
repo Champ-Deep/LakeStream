@@ -127,6 +127,16 @@ curl -s $B/api/scrape/execute -H "X-API-Key: $KEY" -H 'Content-Type: application
 # on /api/enrich instead — see its response's web_hosting_provider,
 # email_hosting_provider, cdn_providers, ssl_issuer/ssl_valid_to/ssl_protocol.
 
+# 6. Technology lookup (v2.2) — domain in, full stack out (API)
+curl -s $B/api/tech -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"domain":"wordpress.org"}'
+# Bulk (up to 50 domains, resolved concurrently — this is the 100K-run path):
+curl -s $B/api/tech/bulk -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"domains":["stripe.com","shopify.com"],"include_detections":false}'
+# What catalog is loaded?
+curl -s $B/api/tech/catalog -H "X-API-Key: $KEY"
+# Frontend: http://localhost:7100/tech  (paste domains, get a results table)
+
 # Usage + limits
 curl -s $B/api/usage -H "X-API-Key: $KEY"
 # Job-status alias used by the enrichment-pipeline playbook:
@@ -152,6 +162,34 @@ Inbound protection: every `/api/*` call is rate-limited per key
       NAICS/SIC, size) of the combined-file schema.
 - [ ] The in-repo contract `ScraperService().scrape(url)` → `{"markdown": ...}`
       is unchanged (pipeline-v2 `fetch.py` imports it directly).
+
+## Technology detection engine (v2.2) — catalog-scale + LLM judge
+
+`POST /api/tech` (single), `POST /api/tech/bulk` (concurrent), and the
+**`/tech` frontend page** all run the same engine. Full detail in
+[`docs/TECH_CATALOG.md`](docs/TECH_CATALOG.md).
+
+**Regex catalog extracts; the LLM only judges.** Detection is deterministic.
+The judge (opt-in via `ENABLE_TECH_JUDGE=true` or `{"judge":true}`) reviews
+only medium-confidence body matches and can *remove* a false positive — it can
+never add a technology, never overrule a high-confidence structural match, and
+never fail the pipeline.
+
+**Bring your own catalog.** The built-in curated set (~130 signatures) always
+loads. Point `TECH_CATALOG_PATH` at a Wappalyzer-format catalog to add
+thousands more — it is loaded at runtime and deliberately not vendored into
+this repo, because the maintained community forks are **GPL-3.0** and
+LakeStream is distributed. `docs/TECH_CATALOG.md` explains the position;
+`scripts/import_tech_catalog.py` validates a catalog and reports how many of
+its entries rely on `js`/`dom` signals that need a browser and so will never
+fire.
+
+**Performance.** Precompiled catalog + targeted matching (script URLs, a named
+header, a cookie, a meta tag — not the whole document) + a literal prefilter:
+~24 ms/page, ≈0.7 h per 100K on one core. A naive full-HTML scan of the same
+catalog is ~25 s/page (~690 h per 100K). Measure yours:
+`python -m benchmarks.tech_engine_benchmark 100000`. At 100K, network fetch —
+not detection — is the bottleneck.
 
 ## Tech stack detection (v2.1.1) — BuiltWith-comparison fields
 

@@ -17,6 +17,7 @@ from src.api.routes import (
     search,
     settings,
     signals,
+    tech,
     templates,
     tracked,
     usage,
@@ -33,6 +34,7 @@ api_router.include_router(jobs_alias.router, tags=["scrape"])
 api_router.include_router(parse.router, tags=["parse"])
 api_router.include_router(search.router, tags=["search"])
 api_router.include_router(enrich.router, tags=["enrich"])
+api_router.include_router(tech.router, tags=["tech"])
 api_router.include_router(usage.router, tags=["usage"])
 api_router.include_router(screenshots.router, tags=["screenshots"])
 api_router.include_router(ingest.router, tags=["ingest"])

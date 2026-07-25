@@ -933,6 +933,38 @@ async def results_browse(
 
 
 # =============================================================================
+# TECH LOOKUP PAGE
+# =============================================================================
+
+
+@router.get("/tech", response_class=HTMLResponse)
+async def tech_lookup_page(request: Request):
+    """Paste-domains technology lookup. Calls /api/tech/bulk from the browser."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.config.settings import get_settings
+    from src.scraping.parser.tech_engine import get_catalog
+
+    settings = get_settings()
+    try:
+        catalog_size = get_catalog().size
+    except Exception:
+        catalog_size = 0
+
+    return get_templates().TemplateResponse(
+        "pages/tech/index.html",
+        {
+            "request": request,
+            "active_page": "tech",
+            "catalog_size": catalog_size,
+            "catalog_external": bool(settings.tech_catalog_path),
+        },
+    )
+
+
+# =============================================================================
 # DOMAINS PAGES
 # =============================================================================
 

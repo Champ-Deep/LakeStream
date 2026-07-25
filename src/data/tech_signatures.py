@@ -33,7 +33,9 @@ TECH_SIGNATURES: list[dict] = [
     # / case-study mentions (e.g. "Shopify" name-dropped on an unrelated site).
     # Domain-qualified signals only.
     {"name": "Shopify", "category": "cms", "signals": ["cdn.shopify.com", "myshopify.com", r"shopify\.shop\b", "x-shopid"]},
-    {"name": "Ghost", "category": "cms", "signals": ["ghost.io", "ghost-", "content/themes"]},
+    # "content/themes" removed — it also matches WordPress's wp-content/themes,
+    # and a bare "ghost-" matches unrelated class names. Ghost-specific only.
+    {"name": "Ghost", "category": "cms", "signals": [r"ghost\.io", r"/ghost/api/", "ghost-sdk"]},
     {"name": "Contentful", "category": "cms", "signals": ["contentful.com", "ctfassets.net"]},
     {"name": "Sanity", "category": "cms", "signals": ["cdn.sanity.io", "sanity.io"]},
     {"name": "Webby (custom)", "category": "cms", "signals": [r"generator[\"'\s:=]+webby"], "scope": "html"},

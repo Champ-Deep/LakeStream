@@ -76,6 +76,17 @@ class TechStackMetadata(BaseModel):
     web_servers: list[str] = []
     programming_languages: list[str] = []
     server_os: str | None = None
+    # v2.2 — additional BuiltWith-comparable categories
+    databases: list[str] = []
+    seo_tools: list[str] = []
+    security: list[str] = []
+    ecommerce: list[str] = []
+    payment_processors: list[str] = []
+    # Anything the catalog detected whose category has no dedicated field.
+    other_technologies: list[str] = []
+    # Per-detection audit trail: name, category, confidence, version,
+    # evidence snippet, and which signal produced it.
+    detections: list[dict] = []
 
 
 class ResourceMetadata(BaseModel):
