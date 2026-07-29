@@ -356,6 +356,56 @@ Also relevant: Firecrawl plan concurrency is 2–150+ browsers and 10–7,500 sc
 - The §6d typed-export JSON is a historical sample from a March 2026 production run (retained from the prior doc), consistent with the current `ScrapedData` models.
 - LLM extraction modes were not exercised live (no OpenRouter key in the sandbox); described from `src/services/llm_extractor.py`.
 
+### Head-to-head content measurement vs Firecrawl — 2026-07-29, post-branch-merge
+
+Run on the consolidated branch (`claude/merge-branches-v2-2ikri5`, all seven
+feature/refactor branches merged) against Firecrawl's live `/v1/scrape`.
+
+**Method.** Fetching on the LakeStream side is the Go HTTP sidecar
+(`go-fetchers/http`, no JS execution); extraction is
+`html_to_markdown()`. Compared like-for-like in both modes on the same pages —
+`find_main=True` vs Firecrawl `onlyMainContent: true`, and `find_main=False` vs
+`onlyMainContent: false`. Ratios are LakeStream word count ÷ Firecrawl word count.
+
+| Page (server-rendered) | main content | full page |
+|---|---|---|
+| wordpress.org/news/ | 0.92x | 3.56x |
+| blog.cloudflare.com/ | 0.89x | 1.36x |
+| www.python.org/community/ | 0.95x | 0.92x |
+| www.djangoproject.com/weblog/ | 1.00x | 1.03x |
+| about.gitlab.com/company/team/ | 0.92x | 2.14x |
+| lwn.net/ | 0.90x | 0.93x |
+| **mean** | **0.93x** | **1.66x** |
+
+Full-page extraction returns more text than Firecrawl; main-content mode lands
+just under it, the residual gap being boilerplate Firecrawl retains.
+
+This run found and fixed a real extraction bug: `find_main_html` returned the
+first container matching its selector priority list without checking it held the
+page's content, so blog *listing* pages collapsed to their first `<article>`
+(djangoproject.com/weblog/ measured **0.33x** before the fix) and pages with a
+JS-populated `<main>` shell lost nearly everything (stripe.com/blog **0.07x**,
+now **2.40x** — the content was in the HTML all along, outside the shell).
+Candidates are now scored by text volume; see
+`tests/unit/scraping/test_markdown_main_content.py`.
+
+**Tech-stack detection** was verified end-to-end through the same Go sidecar:
+wordpress.org → WordPress (high, `<meta generator>`) + nginx (high, `Server`
+header); vercel.com → Vercel (high, `x-vercel-` header) + Node.js + Next.js;
+cloudflare.com → Cloudflare (high, `cf-ray`); gitlab.com → Cloudflare, Marketo,
+Optimizely. The false-positive guards hold on live pages: a `cloudfront.net`
+asset URL does not yield "AWS CloudFront", and prose naming Cloudflare/Fastly
+yields nothing.
+
+**Not verified in this sandbox.** The Go *browser* sidecar (chromedp) could not
+be exercised — headless Chromium cannot egress through the container's
+TLS-intercepting proxy (`ERR_CONNECTION_RESET`), the same constraint noted for
+Playwright above. Consequently JS-rendered pages were only measured on the
+HTTP tier, and `PricingParser` returned 0 plans on live React pricing pages
+(digitalocean.com/pricing, sentry.io/pricing) — reproduced identically on
+`lakestream/v2` against byte-identical cached HTML, so it is a pre-existing
+extractor limit on JS-rendered markup, not a merge regression.
+
 ### Superseded / fixed artifacts
 - `FIRECRAWL_COMPARISON.md` → tombstone pointing here (kept to preserve inbound links).
 - `benchmarks/lake_benchmark.py` → updated to current `ScrapingTier` members (`LIGHTPANDA`/`PLAYWRIGHT`/`PLAYWRIGHT_PROXY`) and fixed a `captcha_count`→`captcha_detected` attribute bug; runnable again.
