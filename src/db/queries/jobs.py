@@ -238,6 +238,45 @@ async def is_job_cancelled(pool: asyncpg.Pool, job_id: UUID) -> bool:
     return status == "cancelled"
 
 
+async def get_dashboard_job_stats(pool: asyncpg.Pool, *, user_id: UUID | None = None) -> dict:
+    """Return aggregate job counters for the dashboard: total, running, success_rate.
+
+    Scoped to a single user's jobs when user_id is given, otherwise global.
+    """
+    if user_id:
+        total_jobs = await pool.fetchval(
+            "SELECT COUNT(*) FROM scrape_jobs WHERE user_id = $1", user_id
+        )
+        running_jobs = await pool.fetchval(
+            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running' AND user_id = $1",
+            user_id,
+        )
+        success_rate = await pool.fetchval(
+            """SELECT COALESCE(
+                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
+                0
+            ) FROM scrape_jobs WHERE user_id = $1""",
+            user_id,
+        )
+    else:
+        total_jobs = await pool.fetchval("SELECT COUNT(*) FROM scrape_jobs")
+        running_jobs = await pool.fetchval(
+            "SELECT COUNT(*) FROM scrape_jobs WHERE status = 'running'"
+        )
+        success_rate = await pool.fetchval(
+            """SELECT COALESCE(
+                COUNT(*) FILTER (WHERE status = 'completed') * 100 / NULLIF(COUNT(*), 0),
+                0
+            ) FROM scrape_jobs"""
+        )
+
+    return {
+        "total_jobs": total_jobs or 0,
+        "running_jobs": running_jobs or 0,
+        "success_rate": success_rate or 0,
+    }
+
+
 async def list_jobs(
     pool: asyncpg.Pool,
     *,

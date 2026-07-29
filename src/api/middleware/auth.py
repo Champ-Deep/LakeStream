@@ -1,11 +1,16 @@
-"""Authentication middleware for JWT validation and RLS context injection.
+"""Authentication middleware for JWT validation and request-state population.
 
 This middleware:
 1. Extracts JWT tokens from Authorization header OR access_token cookie
 2. Validates token and extracts claims (user_id, org_id, role)
-3. Sets PostgreSQL session variable for Row-Level Security: app.current_org_id
-4. Stores user context in request.state for route access
-5. Redirects unauthenticated users to /login for protected web routes
+3. Stores user context (user_id, org_id, role, is_admin) in request.state for route access
+4. Redirects unauthenticated users to /login for protected web routes
+
+Note: Row-Level Security is disabled at the database level (see
+src/db/migrations/017_disable_rls.sql). Org/user data isolation is enforced
+entirely in application code via explicit `WHERE org_id = $1` filtering in
+each query (see e.g. src/api/routes/web.py's _get_user_filter helper), not
+via a PostgreSQL session variable.
 """
 
 import asyncio
@@ -195,7 +200,9 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
     Registered AFTER SessionMiddleware so request.session is available.
     Extracts JWT from Authorization header or access_token cookie,
-    sets PostgreSQL RLS context, and redirects unauthenticated users.
+    populates request.state with user/org context, and redirects
+    unauthenticated users. Org/user scoping is enforced by each query's
+    own WHERE clause, not by PostgreSQL RLS (which is disabled).
     """
 
     async def dispatch(self, request: Request, call_next):

@@ -28,7 +28,7 @@ def _make_signal():
 class TestSendEmailNotification:
     @pytest.mark.asyncio
     async def test_raises_without_recipients(self):
-        from src.services.signal_evaluator import send_email_notification
+        from src.services.signals.notifications import send_email_notification
 
         with pytest.raises(ValueError, match="Email recipients not configured"):
             await send_email_notification(
@@ -37,9 +37,9 @@ class TestSendEmailNotification:
 
     @pytest.mark.asyncio
     async def test_raises_when_disabled(self):
-        from src.services.signal_evaluator import send_email_notification
+        from src.services.signals.notifications import send_email_notification
 
-        with patch("src.services.signal_evaluator.get_settings") as mock_s:
+        with patch("src.services.signals.notifications.get_settings") as mock_s:
             mock_s.return_value = MagicMock(mail_engine_enabled=False)
             with pytest.raises(RuntimeError, match="not enabled"):
                 await send_email_notification(
@@ -48,11 +48,11 @@ class TestSendEmailNotification:
 
     @pytest.mark.asyncio
     async def test_sends_via_champmail_engine(self):
-        from src.services.signal_evaluator import send_email_notification
+        from src.services.signals.notifications import send_email_notification
 
         with (
-            patch("src.services.signal_evaluator.get_settings") as mock_s,
-            patch("src.services.signal_evaluator.httpx.AsyncClient") as mock_client_cls,
+            patch("src.services.signals.notifications.get_settings") as mock_s,
+            patch("src.services.signals.notifications.httpx.AsyncClient") as mock_client_cls,
         ):
             mock_s.return_value = MagicMock(
                 mail_engine_enabled=True,

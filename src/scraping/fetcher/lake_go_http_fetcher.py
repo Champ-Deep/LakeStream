@@ -13,11 +13,12 @@ import structlog
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
+from src.scraping.fetcher.base import BaseFetcher
 
 log = structlog.get_logger()
 
 
-class LakeGoHttpFetcher:
+class LakeGoHttpFetcher(BaseFetcher):
     """Tier: fast HTTP fetch via the Go sidecar (no JS rendering)."""
 
     tier = ScrapingTier.GO_HTTP
@@ -56,16 +57,23 @@ class LakeGoHttpFetcher:
 
     def _to_result(self, url: str, data: dict, start: float) -> FetchResult:
         screenshot = data.get("screenshot_base64")
+        status_code = data.get("status_code", 0)
+        html = data.get("html", "") or ""
+        # The sidecar reports its own view of blocked/captcha, but block
+        # detection has to mean the same thing on every tier or escalation
+        # decisions differ by which fetcher happened to run. Combine the
+        # sidecar's answer with the shared BaseFetcher checks.
+        blocked, captcha = self.is_blocked(status_code, html)
         return FetchResult(
             url=data.get("url", url),
-            status_code=data.get("status_code", 0),
-            html=data.get("html", "") or "",
+            status_code=status_code,
+            html=html,
             headers=data.get("headers", {}) or {},
             tier_used=self.tier,
             cost_usd=TIER_COSTS.get(self.tier.value, 0.0),
             duration_ms=data.get("duration_ms", int((time.time() - start) * 1000)),
-            blocked=data.get("blocked", False),
-            captcha_detected=data.get("captcha_detected", False),
+            blocked=bool(data.get("blocked", False)) or blocked,
+            captcha_detected=bool(data.get("captcha_detected", False)) or captcha,
             content_type=data.get("content_type", "text/html") or "text/html",
             screenshot_bytes=base64.b64decode(screenshot) if screenshot else None,
         )
