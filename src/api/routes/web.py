@@ -18,28 +18,44 @@ def get_templates():
     return templates
 
 
+def _auth_user_id(request: Request):
+    """Authenticated user id from request.state (set by the auth middleware for
+    Clerk, legacy JWT, and session alike)."""
+    return getattr(request.state, "user_id", None)
+
+
+def _auth_is_admin(request: Request) -> bool:
+    """Super-admin flag from request.state (Clerk publicMetadata.role, legacy is_admin)."""
+    return bool(getattr(request.state, "is_admin", False))
+
+
+def _auth_org_id(request: Request):
+    """Authenticated org id from request.state (provider-agnostic)."""
+    return getattr(request.state, "org_id", None)
+
+
 def _require_login(request: Request):
-    """Return a redirect to /login if the user is not in session, else None."""
-    if not request.session.get("user_id"):
+    """Return a redirect to /login if the user is not authenticated, else None."""
+    if not _auth_user_id(request):
         return RedirectResponse(url="/login", status_code=302)
     return None
 
 
 def _require_admin(request: Request):
-    """Return a redirect if user is not admin, else None."""
+    """Return a redirect if the user is not a super-admin, else None."""
     redir = _require_login(request)
     if redir:
         return redir
-    if not request.session.get("is_admin"):
+    if not _auth_is_admin(request):
         return RedirectResponse(url="/", status_code=302)
     return None
 
 
 def _get_user_filter(request: Request) -> UUID | None:
-    """Return user_id for filtering data, or None if admin (sees all)."""
-    if request.session.get("is_admin"):
-        return None  # Admin sees everything
-    uid = request.session.get("user_id")
+    """Return user_id for filtering data, or None for super-admin (sees all)."""
+    if _auth_is_admin(request):
+        return None  # Super-admin sees everything (god view)
+    uid = _auth_user_id(request)
     return UUID(uid) if uid else None
 
 
@@ -50,12 +66,41 @@ def _get_user_filter(request: Request) -> UUID | None:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    """Login page."""
-    if request.session.get("user_id"):
+    """Login page. Renders Clerk.js when auth_provider='clerk', else the legacy form."""
+    if _auth_user_id(request):
         return RedirectResponse(url="/", status_code=302)
+    from src.config.settings import get_settings
+
+    cfg = get_settings()
     return get_templates().TemplateResponse(
-        "pages/login.html", {"request": request, "error": None, "email": None}
+        "pages/login.html",
+        {
+            "request": request,
+            "error": None,
+            "email": None,
+            "auth_provider": cfg.auth_provider,
+            "clerk_publishable_key": cfg.clerk_publishable_key,
+            "clerk_frontend_api": _clerk_frontend_api(cfg.clerk_publishable_key),
+        },
     )
+
+
+def _clerk_frontend_api(publishable_key: str) -> str:
+    """Derive the Clerk Frontend API host encoded in a publishable key.
+
+    Keys look like ``pk_test_<base64(host$)>``; decoding yields e.g.
+    ``clerk.example.com$``. Returns "" if the key is absent/malformed.
+    """
+    if not publishable_key:
+        return ""
+    try:
+        import base64
+
+        encoded = publishable_key.split("_", 2)[-1]
+        decoded = base64.b64decode(encoded + "===").decode("utf-8")
+        return decoded.rstrip("$")
+    except Exception:
+        return ""
 
 
 @router.post("/login")
@@ -201,9 +246,23 @@ async def signup_submit(
 
 @router.get("/logout")
 async def logout(request: Request):
-    """Log out and clear session + JWT cookie."""
+    """Log out: clear the local session + JWT cookie, and Clerk session if active."""
     request.session.clear()
-    response = RedirectResponse(url="/login", status_code=302)
+    from src.config.settings import get_settings
+
+    cfg = get_settings()
+    if cfg.auth_provider == "clerk":
+        # Clerk's session cookie is managed by Clerk.js; sign out client-side.
+        fapi = _clerk_frontend_api(cfg.clerk_publishable_key)
+        html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Signing out…</title>
+<script async crossorigin="anonymous"
+  data-clerk-publishable-key="{cfg.clerk_publishable_key}"
+  src="https://{fapi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+  onload="(async()=>{{try{{await window.Clerk.load();await window.Clerk.signOut();}}catch(e){{}}window.location.href='/login';}})()"></script>
+</head><body>Signing out…</body></html>"""
+        response = HTMLResponse(content=html)
+    else:
+        response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("access_token", path="/")
     return response
 
@@ -414,8 +473,8 @@ async def new_job_form(request: Request):
 
 @router.get("/jobs/bulk", response_class=HTMLResponse)
 async def bulk_upload_form(request: Request):
-    """Bulk CSV upload page (admin only)."""
-    redirect = _require_admin(request)
+    """Bulk CSV upload page (available to all authenticated users in v2)."""
+    redirect = _require_login(request)
     if redirect:
         return redirect
 
@@ -434,7 +493,7 @@ async def bulk_upload_form(request: Request):
 @router.post("/jobs/bulk", response_class=HTMLResponse)
 async def bulk_upload_preview(request: Request):
     """Parse uploaded CSV and show preview of domains to scrape."""
-    redirect = _require_admin(request)
+    redirect = _require_login(request)
     if redirect:
         return redirect
 
@@ -503,7 +562,7 @@ async def bulk_upload_preview(request: Request):
 @router.post("/jobs/bulk/start")
 async def bulk_upload_start(request: Request):
     """Enqueue all validated domains from the preview step."""
-    redirect = _require_admin(request)
+    redirect = _require_login(request)
     if redirect:
         return redirect
 
@@ -530,8 +589,8 @@ async def bulk_upload_start(request: Request):
         )
 
     pool = await get_pool()
-    org_id = UUID(request.session["org_id"])
-    user_id = UUID(request.session["user_id"])
+    org_id = UUID(_auth_org_id(request))
+    user_id = UUID(_auth_user_id(request))
 
     # Override stagger delay if user chose a different value
     import src.services.bulk_upload as bulk_mod
@@ -754,7 +813,7 @@ async def retry_job(request: Request, job_id: UUID):
     # Create new job with same parameters
     job_input = ScrapeJobInput(domain=original.domain, template_id=original.template_id)
     org_id = original.org_id
-    user_id_str = request.session.get("user_id")
+    user_id_str = _auth_user_id(request)
     user_id = UUID(user_id_str) if user_id_str else original.user_id
 
     new_job = await create_job(pool, job_input, org_id=org_id, user_id=user_id)
@@ -984,6 +1043,38 @@ async def results_browse(
 
 
 # =============================================================================
+# TECH LOOKUP PAGE
+# =============================================================================
+
+
+@router.get("/tech", response_class=HTMLResponse)
+async def tech_lookup_page(request: Request):
+    """Paste-domains technology lookup. Calls /api/tech/bulk from the browser."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.config.settings import get_settings
+    from src.scraping.parser.tech_engine import get_catalog
+
+    settings = get_settings()
+    try:
+        catalog_size = get_catalog().size
+    except Exception:
+        catalog_size = 0
+
+    return get_templates().TemplateResponse(
+        "pages/tech/index.html",
+        {
+            "request": request,
+            "active_page": "tech",
+            "catalog_size": catalog_size,
+            "catalog_external": bool(settings.tech_catalog_path),
+        },
+    )
+
+
+# =============================================================================
 # DOMAINS PAGES
 # =============================================================================
 
@@ -1063,6 +1154,16 @@ async def domain_detail(request: Request, domain: str):
         )
     breakdown = {row["data_type"]: row["count"] for row in breakdown_rows}
 
+    # Recent content changes (v2 change monitoring), scoped to the user
+    from src.db.queries.content_changes import get_recent_changes_by_domain
+
+    recent_changes = [
+        dict(row)
+        for row in await get_recent_changes_by_domain(
+            pool, domain, user_id=user_filter, limit=20
+        )
+    ]
+
     return get_templates().TemplateResponse(
         "pages/domains/detail.html",
         {
@@ -1072,6 +1173,7 @@ async def domain_detail(request: Request, domain: str):
             "metadata": domain_meta,
             "jobs": jobs,
             "breakdown": breakdown,
+            "recent_changes": recent_changes,
         },
     )
 
@@ -1531,7 +1633,7 @@ async def create_user_submit(
         return RedirectResponse(url="/users?error=email_exists", status_code=302)
 
     # Use the admin's org_id
-    org_id = UUID(request.session["org_id"])
+    org_id = UUID(_auth_org_id(request))
 
     password_hash = hash_password(password)
     await create_user(
@@ -1564,7 +1666,7 @@ async def toggle_user_active(request: Request, user_id: UUID):
     pool = await get_pool()
 
     # Don't allow disabling yourself
-    if str(user_id) == request.session.get("user_id"):
+    if str(user_id) == _auth_user_id(request):
         return RedirectResponse(url="/users?error=cannot_disable_self", status_code=302)
 
     await pool.execute(
@@ -1586,7 +1688,7 @@ async def toggle_user_admin(request: Request, user_id: UUID):
     pool = await get_pool()
 
     # Don't allow removing your own admin
-    if str(user_id) == request.session.get("user_id"):
+    if str(user_id) == _auth_user_id(request):
         return RedirectResponse(url="/users?error=cannot_change_self", status_code=302)
 
     await pool.execute(
@@ -1608,7 +1710,7 @@ async def delete_user(request: Request, user_id: UUID):
     pool = await get_pool()
 
     # Don't allow deleting yourself
-    if str(user_id) == request.session.get("user_id"):
+    if str(user_id) == _auth_user_id(request):
         return RedirectResponse(url="/users?error=cannot_delete_self", status_code=302)
 
     await pool.execute("DELETE FROM users WHERE id = $1", user_id)
@@ -1651,7 +1753,7 @@ async def account_page(request: Request):
     from src.db.queries.users import get_user_by_id
 
     pool = await get_pool()
-    user_id = UUID(request.session["user_id"])
+    user_id = UUID(_auth_user_id(request))
     user = await get_user_by_id(pool, user_id)
 
     return get_templates().TemplateResponse(
@@ -1681,7 +1783,7 @@ async def account_update(
     from src.db.queries.users import update_user
 
     pool = await get_pool()
-    user_id = UUID(request.session["user_id"])
+    user_id = UUID(_auth_user_id(request))
     try:
         updated = await update_user(pool, user_id, full_name.strip(), email.strip().lower())
         if updated:

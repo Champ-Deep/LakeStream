@@ -93,10 +93,19 @@ async def run_benchmarks(
     """Run benchmarks for all domains and tiers."""
     if tiers is None:
         tiers = [
-            ScrapingTier.BASIC_HTTP,
-            ScrapingTier.HEADLESS_BROWSER,
-            ScrapingTier.HEADLESS_PROXY,
+            ScrapingTier.LIGHTPANDA,
+            ScrapingTier.PLAYWRIGHT,
+            ScrapingTier.PLAYWRIGHT_PROXY,
         ]
+        # Include the experimental Go sidecar tiers only when configured, so an
+        # A/B run (Python vs Go-HTTP vs Go-browser) is a single invocation.
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        if getattr(settings, "go_http_fetcher_url", ""):
+            tiers.append(ScrapingTier.GO_HTTP)
+        if getattr(settings, "go_browser_fetcher_url", ""):
+            tiers.append(ScrapingTier.GO_BROWSER)
 
     summaries: dict[str, BenchmarkSummary] = {}
 
@@ -116,7 +125,7 @@ async def run_benchmarks(
             if result.success:
                 summary.success_count += 1
                 print(f"OK ({result.duration_ms}ms)")
-            elif result.captcha_count:
+            elif result.captcha_detected:
                 summary.captcha_count += 1
                 print(f"CAPTCHA ({result.duration_ms}ms)")
             elif result.blocked:

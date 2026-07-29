@@ -57,6 +57,33 @@
       </div>
       {% endif %}
 
+      {% if auth_provider == 'clerk' %}
+      <!-- Clerk embedded sign-in -->
+      <div id="clerk-signin"></div>
+      {% if clerk_frontend_api %}
+      <script
+        async
+        crossorigin="anonymous"
+        data-clerk-publishable-key="{{ clerk_publishable_key }}"
+        src="https://{{ clerk_frontend_api }}/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+        type="text/javascript"
+        onload="window.__startClerk && window.__startClerk()"
+      ></script>
+      <script>
+        window.__startClerk = async function () {
+          try {
+            await window.Clerk.load();
+            if (window.Clerk.user) { window.location.href = "/"; return; }
+            window.Clerk.mountSignIn(document.getElementById("clerk-signin"), {
+              afterSignInUrl: "/", afterSignUpUrl: "/",
+            });
+          } catch (e) { console.error("Clerk load failed", e); }
+        };
+      </script>
+      {% else %}
+      <p class="text-sm text-red-600">Clerk is enabled but not configured. Set CLERK_PUBLISHABLE_KEY.</p>
+      {% endif %}
+      {% else %}
       <form method="POST" action="/login" class="space-y-5">
 
         <div>
@@ -98,6 +125,7 @@
         </button>
 
       </form>
+      {% endif %}
     </div>
 
     <p class="text-center text-xs text-slate-400 mt-6">

@@ -60,11 +60,34 @@ class ContactMetadata(BaseModel):
 
 
 class TechStackMetadata(BaseModel):
+    """Page-level tech signals (from the homepage's HTML/headers/cookies).
+
+    Domain-level facts — web hosting, email hosting, SSL certificate — are
+    NOT here: they don't vary per page and are resolved via DNS/TLS once per
+    domain, cached on CompanyProfile (see src/models/company.py, /api/enrich).
+    """
+
     platform: str | None = None
     js_libraries: list[str] = []
     analytics: list[str] = []
     marketing_tools: list[str] = []
     frameworks: list[str] = []
+    cdn: list[str] = []
+    widgets: list[str] = []
+    web_servers: list[str] = []
+    programming_languages: list[str] = []
+    server_os: str | None = None
+    # v2.2 — additional BuiltWith-comparable categories
+    databases: list[str] = []
+    seo_tools: list[str] = []
+    security: list[str] = []
+    ecommerce: list[str] = []
+    payment_processors: list[str] = []
+    # Anything the catalog detected whose category has no dedicated field.
+    other_technologies: list[str] = []
+    # Per-detection audit trail: name, category, confidence, version,
+    # evidence snippet, and which signal produced it.
+    detections: list[dict] = []
 
 
 class ResourceMetadata(BaseModel):

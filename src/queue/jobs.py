@@ -33,6 +33,10 @@ async def process_scrape_job(
     raw_only: bool = False,
     region: str | None = None,
     llm_mode: str = "off",
+    extraction_schema: dict | None = None,
+    extraction_mode: str = "css",
+    force_refresh: bool = False,
+    capture_screenshot: bool = False,
 ) -> dict:
     """Main scrape job processor. Orchestrates all workers for a domain.
 
@@ -101,6 +105,7 @@ async def process_scrape_job(
                 job_id=job_id,
                 org_id=org_id,
                 pool=pool,
+                user_id=user_id,
             )
             classified_urls = await mapper.execute(max_pages=max_pages)
 
@@ -131,7 +136,15 @@ async def process_scrape_job(
                             0, {"url": homepage, "data_type": "page", "confidence": 1.0},
                         )
 
-                content_worker = ContentWorker(**worker_kwargs, raw_only=raw_only, llm_mode=llm_mode)
+                content_worker = ContentWorker(
+                    **worker_kwargs,
+                    raw_only=raw_only,
+                    llm_mode=llm_mode,
+                    extraction_schema=extraction_schema,
+                    extraction_mode=extraction_mode,
+                    force_refresh=force_refresh,
+                    capture_screenshot=capture_screenshot,
+                )
                 results = await content_worker.execute(classified_urls, data_types)
                 total_data = len(results)
             except Exception as e:

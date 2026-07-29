@@ -62,8 +62,11 @@ class LakeLightPandaFetcher:
                     except Exception as e:
                         log.debug("lightpanda_networkidle_timeout", url=url, error=str(e))
 
+                    from src.scraping.fetcher.actions import response_headers
+
                     html = await page.content()
                     status_code = response.status if response else 0
+                    resp_headers = await response_headers(response)
                 finally:
                     if page:
                         await page.close()
@@ -87,6 +90,7 @@ class LakeLightPandaFetcher:
             status_code = 0
             blocked = True
             captcha = False
+            resp_headers = {}
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -103,7 +107,7 @@ class LakeLightPandaFetcher:
             url=url,
             status_code=status_code,
             html=html,
-            headers={},
+            headers=resp_headers,
             tier_used=ScrapingTier.LIGHTPANDA,
             cost_usd=TIER_COSTS["lightpanda"],
             duration_ms=duration_ms,
@@ -126,6 +130,7 @@ class LakeLightPandaFetcher:
             )
             html = response.html_content
             status_code = response.status
+            resp_headers = dict(getattr(response, "headers", None) or {})
 
             http_error = status_code in (403, 429, 503)
             tiny_html = len(html) < settings.min_html_bytes
@@ -143,6 +148,7 @@ class LakeLightPandaFetcher:
             status_code = 0
             blocked = True
             captcha = False
+            resp_headers = {}
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -159,7 +165,7 @@ class LakeLightPandaFetcher:
             url=url,
             status_code=status_code,
             html=html,
-            headers={},
+            headers=resp_headers,
             tier_used=ScrapingTier.LIGHTPANDA,
             cost_usd=TIER_COSTS["lightpanda"],
             duration_ms=duration_ms,

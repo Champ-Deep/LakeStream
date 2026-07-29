@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Tech Lookup - LakeStream{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-charcoal dark:text-gray-100">Technology Lookup</h1>
+      <p class="text-slate dark:text-gray-400 mt-1">
+        Paste domains (one per line) to detect their full technology stack —
+        CMS, frameworks, libraries, analytics, widgets, servers, languages,
+        plus hosting, email hosting, CDN and SSL from DNS/TLS.
+      </p>
+    </div>
+    <div class="text-right text-sm text-slate dark:text-gray-400 shrink-0 ml-6">
+      <div><span class="font-semibold text-charcoal dark:text-gray-100">{{ catalog_size }}</span> signatures loaded</div>
+      {% if catalog_external %}
+        <div class="text-xs mt-1">external catalog active</div>
+      {% else %}
+        <div class="text-xs mt-1">built-in catalog only</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-6">
+    <textarea id="domains" rows="5"
+      class="w-full px-4 py-3 border border-stone-200 dark:border-gray-700 rounded-lg
+             bg-white dark:bg-gray-800 text-charcoal dark:text-gray-100 font-mono text-sm"
+      placeholder="stripe.com&#10;shopify.com&#10;wordpress.org"></textarea>
+
+    <div class="flex items-center justify-between mt-4">
+      <label class="flex items-center gap-2 text-sm text-slate dark:text-gray-400">
+        <input type="checkbox" id="judge" class="rounded border-stone-300">
+        Run LLM judge on low-confidence detections (slower, needs an API key)
+      </label>
+      <button id="run"
+        class="py-2.5 px-5 bg-accent text-white font-medium rounded-lg hover:bg-accent-dark transition-colors">
+        Analyze
+      </button>
+    </div>
+    <p id="status" class="text-sm text-slate dark:text-gray-400 mt-3 hidden"></p>
+  </div>
+
+  <div id="results" class="space-y-4"></div>
+</div>
+
+<script>
+const CATS = [
+  ["platform", "Platform / CMS"],
+  ["frameworks", "Frameworks"],
+  ["js_libraries", "JavaScript Libraries"],
+  ["analytics", "Analytics"],
+  ["marketing_tools", "Marketing"],
+  ["widgets", "Widgets"],
+  ["web_servers", "Web Server"],
+  ["programming_languages", "Programming Languages"],
+  ["server_os", "Operating System"],
+  ["cdn", "CDN (page signals)"],
+  ["databases", "Databases"],
+  ["seo_tools", "SEO"],
+  ["security", "Security"],
+  ["ecommerce", "Ecommerce"],
+  ["payment_processors", "Payments"],
+  ["other_technologies", "Other"],
+];
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
+  ));
+}
+
+function chip(text, tone) {
+  const tones = {
+    high: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800",
+    medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800",
+    plain: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700",
+  };
+  return `<span class="inline-block px-2 py-0.5 text-xs rounded border ${tones[tone] || tones.plain} mr-1 mb-1">${esc(text)}</span>`;
+}
+
+function renderRow(r) {
+  if (!r.success) {
+    return `<div class="bg-white dark:bg-gray-900 rounded-xl border border-red-200 dark:border-red-800 p-5">
+      <div class="font-semibold text-charcoal dark:text-gray-100">${esc(r.domain)}</div>
+      <div class="text-sm text-red-600 dark:text-red-400 mt-1">${esc(r.error || "Lookup failed")}</div>
+    </div>`;
+  }
+
+  // Confidence per technology name, so chips can be coloured by it.
+  const conf = {};
+  (r.detections || []).forEach(d => { conf[d.name] = d.confidence; });
+
+  let cats = "";
+  for (const [key, label] of CATS) {
+    let v = r[key];
+    if (v == null || (Array.isArray(v) && v.length === 0)) continue;
+    const items = Array.isArray(v) ? v : [v];
+    const chips = items.map(i => {
+      const base = String(i).replace(/\s+[\d.]+$/, "");
+      return chip(i, conf[base] || "plain");
+    }).join("");
+    cats += `<div class="py-2 border-t border-stone-100 dark:border-gray-800 first:border-0">
+      <div class="text-xs uppercase tracking-wide text-slate dark:text-gray-500 mb-1">${esc(label)}</div>
+      <div>${chips}</div></div>`;
+  }
+
+  const ssl = r.ssl || {};
+  const infra = [
+    ["Web hosting", r.web_hosting_provider],
+    ["Email hosting", r.email_hosting_provider],
+    ["CDN (DNS)", (r.cdn_providers || []).join(", ")],
+    ["SSL issuer", ssl.issuer],
+    ["TLS", ssl.protocol],
+    ["Cert expires", ssl.valid_to ? `${esc(ssl.valid_to.slice(0,10))} (${ssl.days_until_expiry}d)` : null],
+  ].filter(([, v]) => v).map(([k, v]) =>
+    `<div class="flex justify-between gap-4 py-1 text-sm">
+       <span class="text-slate dark:text-gray-400">${esc(k)}</span>
+       <span class="text-charcoal dark:text-gray-200 text-right">${esc(v)}</span>
+     </div>`).join("");
+
+  const rejected = (r.rejected_by_judge || []).length
+    ? `<div class="mt-3 text-xs text-amber-700 dark:text-amber-400">
+         Judge removed: ${esc((r.rejected_by_judge || []).map(x => x.name).join(", "))}
+       </div>` : "";
+
+  return `<div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 p-5">
+    <div class="flex items-baseline justify-between">
+      <div class="font-semibold text-charcoal dark:text-gray-100">${esc(r.domain)}</div>
+      <div class="text-sm text-slate dark:text-gray-400">${r.technology_count || 0} technologies</div>
+    </div>
+    ${r.warning ? `<div class="text-xs text-amber-600 dark:text-amber-400 mt-1">${esc(r.warning)}</div>` : ""}
+    <div class="grid md:grid-cols-2 gap-6 mt-4">
+      <div>${cats || '<div class="text-sm text-slate dark:text-gray-400">No page-level technologies detected.</div>'}</div>
+      <div class="md:border-l md:border-stone-100 md:dark:border-gray-800 md:pl-6">
+        <div class="text-xs uppercase tracking-wide text-slate dark:text-gray-500 mb-2">Infrastructure (DNS / TLS)</div>
+        ${infra || '<div class="text-sm text-slate dark:text-gray-400">No infrastructure data.</div>'}
+      </div>
+    </div>
+    ${rejected}
+  </div>`;
+}
+
+document.getElementById("run").addEventListener("click", async () => {
+  const raw = document.getElementById("domains").value.trim();
+  const domains = raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  const status = document.getElementById("status");
+  const results = document.getElementById("results");
+
+  if (!domains.length) {
+    status.textContent = "Enter at least one domain.";
+    status.classList.remove("hidden");
+    return;
+  }
+
+  status.textContent = `Analyzing ${domains.length} domain${domains.length > 1 ? "s" : ""}…`;
+  status.classList.remove("hidden");
+  results.innerHTML = "";
+
+  try {
+    const resp = await fetch("/api/tech/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        domains: domains.slice(0, 50),
+        judge: document.getElementById("judge").checked,
+        include_detections: true,
+      }),
+    });
+    if (!resp.ok) {
+      status.textContent = `Request failed (HTTP ${resp.status}).`;
+      return;
+    }
+    const data = await resp.json();
+    status.textContent = `${data.succeeded}/${data.count} resolved.`;
+    results.innerHTML = (data.results || []).map(renderRow).join("");
+  } catch (e) {
+    status.textContent = "Request failed: " + e.message;
+  }
+});
+</script>
+{% endblock %}

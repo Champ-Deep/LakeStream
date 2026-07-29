@@ -25,13 +25,17 @@ class CrawlerService:
         timeout: int = 30000,
         pool=None,
         job_id: str | None = None,
+        user_id: str | None = None,
     ):
         self.max_concurrent = max_concurrent
         self.max_per_domain = max_per_domain
         self.timeout = timeout
         self.pool = pool
         self.job_id = job_id
+        self.user_id = user_id
         self._domain_semaphores: dict[str, asyncio.Semaphore] = {}
+        # Captured (source_url -> target_url) link-graph edges (v2 knowledge graph)
+        self._edges: list[tuple[str, str]] = []
         self.log = log.bind(service="CrawlerService")
 
     def _get_semaphore(self, domain: str) -> asyncio.Semaphore:
@@ -93,6 +97,7 @@ class CrawlerService:
                         full_url = normalize_url(href, base_url)
                         link_domain = urlparse(full_url).netloc.lower().replace("www.", "")
                         if link_domain == base_domain and is_valid_scrape_url(full_url):
+                            self._edges.append((base_url, full_url))
                             urls.append(full_url)
                             if len(urls) >= limit:
                                 break
@@ -101,6 +106,9 @@ class CrawlerService:
             except Exception as e:
                 self.log.warning("playwright_fallback_failed", error=str(e))
 
+        # Flush any edges captured by the Playwright fallback (crawl edges were
+        # already persisted inside _crawl_recursive).
+        await self._persist_edges(urlparse(base_url).netloc.lower().replace("www.", ""))
         return urls
 
     async def _try_sitemap(self, base_url: str) -> set[str]:
@@ -213,6 +221,8 @@ class CrawlerService:
                     link_domain = parsed_link.netloc.lower().replace("www.", "")
 
                     if link_domain == base_domain and is_valid_scrape_url(full_url):
+                        # Capture the link-graph edge (source page -> target page)
+                        self._edges.append((result.url, full_url))
                         if full_url not in discovered:
                             discovered.add(full_url)
                             if not exclude or full_url not in exclude:
@@ -265,4 +275,26 @@ class CrawlerService:
                 crawled=len(crawled),
             )
 
+        await self._persist_edges(base_domain)
         return new_urls[:limit]
+
+    async def _persist_edges(self, domain: str) -> None:
+        """Flush captured link-graph edges to page_links, then clear the buffer."""
+        if not self._edges or not self.pool:
+            return
+        edges, self._edges = self._edges, []
+        try:
+            from uuid import UUID
+
+            from src.db.queries.page_links import bulk_insert_page_links
+
+            await bulk_insert_page_links(
+                self.pool,
+                job_id=UUID(self.job_id) if self.job_id else None,
+                user_id=UUID(self.user_id) if self.user_id else None,
+                domain=domain,
+                edges=edges,
+            )
+            self.log.info("page_links_persisted", domain=domain, edges=len(edges))
+        except Exception as e:
+            self.log.warning("page_links_persist_failed", domain=domain, error=str(e))

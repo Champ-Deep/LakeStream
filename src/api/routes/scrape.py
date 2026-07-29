@@ -50,6 +50,11 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             tier=input.tier,
             region=input.region,
             llm_mode=input.llm_mode,
+            raw_only=input.raw_only,
+            extraction_schema=input.extraction_schema,
+            extraction_mode=input.extraction_mode,
+            force_refresh=input.force_refresh,
+            capture_screenshot=input.capture_screenshot,
         )
         await redis.aclose()
     except Exception as e:
@@ -389,43 +394,21 @@ async def extract_structured(request: Request):
 
     # Schema-based extraction path (css / ai / auto)
     from src.models.extraction import ExtractionSchema
-    from src.scraping.parser.schema_extractor import SchemaExtractor
 
     try:
         schema = ExtractionSchema(**schema_data)
     except Exception as e:
         return {"success": False, "error": f"Invalid schema: {e}"}
 
-    result = None
-    mode_used = mode
+    from src.services.structured_extract import AIUnavailableError, extract_with_fallback
 
-    # CSS extraction
-    if mode in ("css", "auto"):
-        extractor = SchemaExtractor(fetch_result.html, url)
-        result = extractor.extract(schema)
-        mode_used = "css"
-
-        # Auto mode: fallback to AI if <50% fields found
-        if mode == "auto" and len(schema.fields) > 0:
-            coverage = result.fields_found / len(schema.fields)
-            if coverage < 0.5:
-                mode_used = "ai"
-                result = None
-
-    # AI extraction (mode=ai, or auto fallback)
-    if result is None and mode in ("ai", "auto"):
-        from src.services.llm_extractor import LLMExtractor, get_openrouter_config
-
-        org_id = getattr(request.state, "org_id", None)
-        try:
-            await get_openrouter_config(org_id)
-        except ValueError:
-            return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
-
-        llm = LLMExtractor(org_id=org_id)
-        result = await llm.extract_from_html(fetch_result.html, schema, instructions)
-        result.url = url
-        mode_used = "ai"
+    org_id = getattr(request.state, "org_id", None)
+    try:
+        result = await extract_with_fallback(
+            fetch_result.html, url, schema, mode, org_id=org_id, instructions=instructions
+        )
+    except AIUnavailableError:
+        return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
 
     if result is None:
         return {"success": False, "error": "No extraction result"}
@@ -436,7 +419,7 @@ async def extract_structured(request: Request):
         "schema_name": result.schema_name,
         "fields_found": result.fields_found,
         "fields_missing": result.fields_missing,
-        "mode": mode_used,
+        "mode": result.mode,
         "url": result.url,
     }
 
@@ -546,6 +529,62 @@ async def store_session_cookies(request: Request):
         "domain": domain,
         "cookie_count": len(cookies),
         "message": f"Session stored for {domain} — server-side scraping ready",
+    }
+
+
+@router.post("/url")
+async def scrape_url_sync(request: Request):
+    """Scrape a single URL synchronously and return clean markdown.
+
+    Body: {url: str, tier?: str, only_main_content?: bool, max_chars?: int}
+
+    This is the hosted-API twin of the in-repo ScraperService used by the
+    enrichment pipeline: same tier escalation, same markdown conversion.
+    Use /scrape/execute for multi-page crawls; this is one page, right now.
+    """
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    if not url:
+        return {"success": False, "error": "url is required"}
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+
+    from src.models.scraping import ScrapingTier
+    from src.scraping.parser.markdown import content_hash
+    from src.services.scraper import ScraperService
+
+    tier = None
+    tier_raw = (body.get("tier") or "").strip().lower()
+    if tier_raw:
+        try:
+            tier = ScrapingTier(tier_raw)
+        except ValueError:
+            return {
+                "success": False,
+                "error": f"Unknown tier '{tier_raw}' (valid: {', '.join(t.value for t in ScrapingTier)})",
+            }
+    only_main = bool(body.get("only_main_content", True))
+    max_chars = body.get("max_chars")
+
+    try:
+        result = await ScraperService().scrape(url, tier=tier, only_main_content=only_main)
+    except Exception as e:
+        logger.error("scrape_url_failed", url=url, error=str(e))
+        return {"success": False, "error": f"Scrape failed: {e}"}
+
+    markdown = result.get("markdown", "")
+    if max_chars and markdown:
+        markdown = markdown[: int(max_chars)]
+
+    return {
+        "success": result.get("success", False),
+        "url": url,
+        "markdown": markdown,
+        "metadata": result.get("metadata", {}),
+        "tier_used": result.get("tier_used"),
+        "status_code": result.get("status_code"),
+        "content_hash": content_hash(markdown) if markdown else None,
+        "error": result.get("error"),
     }
 
 

@@ -99,9 +99,20 @@ class LakePlaywrightFetcher:
                             url=url, domain=domain, error=str(e),
                         )
 
+                    # Scripted actions + optional screenshot (v2)
+                    from src.scraping.fetcher.actions import (
+                        apply_pre_capture,
+                        capture_screenshot,
+                        response_headers,
+                    )
+
+                    await apply_pre_capture(page, options, timeout)
+                    screenshot_bytes = await capture_screenshot(page, options.capture_screenshot)
+
                     # Extract content
                     html = await page.content()
                     status_code = response.status if response else 0
+                    resp_headers = await response_headers(response)
 
                     # Save updated session (cookies may have changed)
                     updated_storage_state = await context.storage_state()
@@ -145,6 +156,8 @@ class LakePlaywrightFetcher:
             status_code = 0
             blocked = True
             captcha = False  # no HTML to scan on error
+            screenshot_bytes = None
+            resp_headers = {}
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -152,12 +165,13 @@ class LakePlaywrightFetcher:
             url=url,
             status_code=status_code,
             html=html,
-            headers={},
+            headers=resp_headers,
             tier_used=ScrapingTier.PLAYWRIGHT,
             cost_usd=TIER_COSTS["playwright"],
             duration_ms=duration_ms,
             blocked=blocked,
             captcha_detected=captcha,
+            screenshot_bytes=screenshot_bytes,
         )
 
     async def _fetch_pdf(self, url: str, start: float) -> FetchResult:
