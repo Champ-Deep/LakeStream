@@ -28,6 +28,8 @@ _CSV_FIELDNAMES = [
     "total_articles",
     # Tech stack
     "platform", "frameworks", "js_libraries", "analytics",
+    "marketing_tools", "cdn", "hosting", "backend", "build_tools",
+    "fonts", "payment", "auth", "monitoring", "search", "ecommerce",
     # Resource
     "resource_type", "description", "download_url",
     # Pricing

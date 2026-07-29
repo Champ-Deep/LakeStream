@@ -59,14 +59,26 @@ _TYPE_PROMPTS: dict[str, str] = {
         "Ignore navigation, ads, sidebar, and footer content."
     ),
     "tech_stack": (
-        "Analyze this page to detect the technology stack. "
-        "Identify: CMS/platform (WordPress, Shopify, etc.), JavaScript libraries, "
-        "analytics tools (Google Analytics, Hotjar, etc.), marketing tools (HubSpot, Mailchimp, etc.), "
-        "frameworks (React, Next.js, etc.), CDN (Cloudflare, Fastly, etc. — from script/asset domains), "
-        "widgets (chat: Intercom/Drift/Zendesk; cookie consent: OneTrust/Cookiebot; reviews: Trustpilot/Yotpo), "
-        "and programming languages implied by the code (PHP, Ruby, Java, Python, TypeScript, etc.). "
-        "Look at script references, meta tags, class naming patterns, and generator tags. "
-        "Do not guess web server, OS, hosting, email hosting, or SSL — those come from headers/DNS/TLS, not page content."
+        "Analyze this page's SOURCE CODE to detect the technology stack. "
+        "Look at: (1) <script src> URLs for JS frameworks/libraries (React, Vue, Angular, jQuery, etc.), "
+        "(2) <link href> for CSS frameworks (Tailwind, Bootstrap) and font providers (Google Fonts, Typekit), "
+        "(3) <meta name='generator'> for CMS (WordPress, Drupal, HubSpot), "
+        "(4) inline script patterns for framework globals (__next_data__, __nuxt, __vue__), "
+        "(5) marketing/analytics pixels (GTM, Segment, HubSpot, Marketo), "
+        "(6) class naming patterns (e.g. 'wp-' for WordPress, 'wf-' for Webflow), "
+        "(7) build tool signatures (webpack chunks, vite modulepreload), "
+        "(8) monitoring/error tracking (Sentry, Datadog, New Relic), "
+        "(9) auth providers (Auth0, Clerk, Okta), search (Algolia, Typesense), "
+        "and payment processors (Stripe, Braintree, Adyen), "
+        "(10) widgets — chat (Intercom/Drift/Zendesk), cookie consent "
+        "(OneTrust/Cookiebot), reviews (Trustpilot/Yotpo). "
+        "Report only technologies the page itself is BUILT WITH. Two things are "
+        "not evidence and must not be reported: a technology merely NAMED in the "
+        "page copy (a blog post, case study, or customer-logo strip), and a CDN "
+        "or host inferred from an asset URL — loading a library from a CDN does "
+        "not mean the site is served by it. "
+        "Do not guess web server, OS, hosting, email hosting, or SSL — those come "
+        "from headers/DNS/TLS, not page content."
     ),
     "resource": (
         "Extract downloadable resources from this page. "
@@ -136,13 +148,23 @@ _TYPE_SCHEMAS: dict[str, dict] = {
         "type": "object",
         "properties": {
             "platform": {"type": "string"},
+            "frameworks": {"type": "array", "items": {"type": "string"}},
             "js_libraries": {"type": "array", "items": {"type": "string"}},
             "analytics": {"type": "array", "items": {"type": "string"}},
             "marketing_tools": {"type": "array", "items": {"type": "string"}},
-            "frameworks": {"type": "array", "items": {"type": "string"}},
             "cdn": {"type": "array", "items": {"type": "string"}},
             "widgets": {"type": "array", "items": {"type": "string"}},
             "programming_languages": {"type": "array", "items": {"type": "string"}},
+            "databases": {"type": "array", "items": {"type": "string"}},
+            "seo_tools": {"type": "array", "items": {"type": "string"}},
+            "security": {"type": "array", "items": {"type": "string"}},
+            "ecommerce": {"type": "array", "items": {"type": "string"}},
+            "payment_processors": {"type": "array", "items": {"type": "string"}},
+            "build_tools": {"type": "array", "items": {"type": "string"}},
+            "fonts": {"type": "array", "items": {"type": "string"}},
+            "auth": {"type": "array", "items": {"type": "string"}},
+            "monitoring": {"type": "array", "items": {"type": "string"}},
+            "search": {"type": "array", "items": {"type": "string"}},
         },
     },
     "resource": {

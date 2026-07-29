@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -59,6 +60,24 @@ class ContactMetadata(BaseModel):
     source: str = ""
 
 
+class DetectedTech(BaseModel):
+    """One technology detection, with the evidence that produced it.
+
+    `evidence_type` names the signal the match came from (header, cookie,
+    script URL, meta, dns, cert, body text, or `implies`). `recommended` is
+    the "safe to act on" flag: structural and body-text matches qualify, the
+    weaker fallback tier does not.
+    """
+
+    name: str
+    category: str
+    confidence: Literal["high", "medium", "low"]
+    evidence: str
+    evidence_type: str
+    version: str | None = None
+    recommended: bool = False
+
+
 class TechStackMetadata(BaseModel):
     """Page-level tech signals (from the homepage's HTML/headers/cookies).
 
@@ -68,10 +87,10 @@ class TechStackMetadata(BaseModel):
     """
 
     platform: str | None = None
+    frameworks: list[str] = []
     js_libraries: list[str] = []
     analytics: list[str] = []
     marketing_tools: list[str] = []
-    frameworks: list[str] = []
     cdn: list[str] = []
     widgets: list[str] = []
     web_servers: list[str] = []
@@ -83,11 +102,19 @@ class TechStackMetadata(BaseModel):
     security: list[str] = []
     ecommerce: list[str] = []
     payment_processors: list[str] = []
-    # Anything the catalog detected whose category has no dedicated field.
+    # Categories carried over from the tech-detection-accuracy catalog
+    build_tools: list[str] = []
+    fonts: list[str] = []
+    auth: list[str] = []
+    monitoring: list[str] = []
+    search: list[str] = []
+    # Anything the catalog detected whose category has no dedicated field —
+    # including the domain-level facts (hosting, email hosting, SSL) that are
+    # reported properly on CompanyProfile.
     other_technologies: list[str] = []
     # Per-detection audit trail: name, category, confidence, version,
     # evidence snippet, and which signal produced it.
-    detections: list[dict] = []
+    detections: list[DetectedTech] = []
 
 
 class ResourceMetadata(BaseModel):

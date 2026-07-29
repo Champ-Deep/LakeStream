@@ -19,6 +19,7 @@ from src.models.scraped_data import (
     BlogUrlMetadata,
     ContactMetadata,
     DataType,
+    DetectedTech,
     DocumentMetadata,
     PricingMetadata,
     ResourceMetadata,
@@ -29,7 +30,6 @@ from src.scraping.parser.contact_parser import ContactParser
 from src.scraping.parser.html_parser import HtmlParser, extract_rich_metadata
 from src.scraping.parser.pricing_parser import PricingParser
 from src.scraping.parser.resource_parser import ResourceParser
-from src.scraping.parser.tech_parser import TechParser
 from src.utils.url import extract_domain
 from src.workers.base import BaseWorker
 
@@ -276,15 +276,13 @@ class ContentWorker(BaseWorker):
             if data_type == DataType.PRICING and "pricing" in data_types:
                 records.extend(self._extract_pricing(url, html, rich_meta))
 
-            # Tech stack: homepage only
+            # Tech stack: scan every page, merge signals across the site
             if "tech_stack" in data_types:
-                path = urlparse(url).path.rstrip("/")
-                if path in ("", "/index.html"):
-                    tech_rec = self._extract_tech_stack(
-                        url, html, fetch_result.headers, rich_meta,
-                    )
-                    if tech_rec:
-                        records.append(tech_rec)
+                tech_rec = self._extract_tech_stack(
+                    url, html, fetch_result.headers, rich_meta,
+                )
+                if tech_rec:
+                    records.append(tech_rec)
 
         # --- LLM extraction: runs on every page for every requested type ---
         if run_llm:
@@ -526,7 +524,11 @@ class ContentWorker(BaseWorker):
         headers: dict[str, str],
         rich_meta: dict,
     ) -> dict | None:
-        """Tech stack from the homepage, via the precompiled catalog engine."""
+        """Tech stack from the homepage, via the precompiled catalog engine.
+
+        Returns flat per-category lists plus a `detections` list carrying
+        confidence, version and evidence for each match.
+        """
         from src.scraping.parser.tech_engine import (
             detect,
             detections_to_metadata,

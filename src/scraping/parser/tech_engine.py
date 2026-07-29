@@ -149,6 +149,11 @@ CATEGORY_TO_FIELD: dict[str, str] = {
     "security": "security",
     "ecommerce": "ecommerce",
     "payment_processor": "payment_processors",
+    "build_tool": "build_tools",
+    "font": "fonts",
+    "auth": "auth",
+    "monitoring": "monitoring",
+    "search": "search",
     "hosting": "hosting",
     "email_hosting": "email_hosting",
     "ssl_certificate": "ssl_certificate",
@@ -231,6 +236,12 @@ def _native_target(sig: dict) -> tuple[str, str | None]:
         return TARGET_COOKIE, None
     if scope == "header":
         return TARGET_HEADER, sig.get("header_name")
+    if scope == "meta":
+        # A <meta name="generator"> banner is the single most reliable CMS
+        # signal there is, so it must be matched against the meta tag's own
+        # content (a structural, high-confidence target) rather than being
+        # diluted into the whole-document scan.
+        return TARGET_META, sig.get("meta_name", "generator")
     return TARGET_HTML, None
 
 
@@ -677,6 +688,11 @@ def detections_to_metadata(detections: list[Detection]) -> dict:
         "security": [],
         "ecommerce": [],
         "payment_processors": [],
+        "build_tools": [],
+        "fonts": [],
+        "auth": [],
+        "monitoring": [],
+        "search": [],
         "other_technologies": [],
         "detections": [],
     }
@@ -704,7 +720,12 @@ def detections_to_metadata(detections: list[Detection]) -> dict:
             "confidence": det.confidence,
             "version": det.version,
             "evidence": det.evidence,
+            # `evidence_type` is the DetectedTech field name for the signal
+            # that produced the match; `source` is kept as an alias so
+            # existing consumers of the raw dict keep working.
+            "evidence_type": det.source,
             "source": det.source,
+            "recommended": det.confidence in ("high", "medium"),
         })
 
     return out

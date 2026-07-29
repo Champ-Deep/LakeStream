@@ -31,12 +31,19 @@ _TIER_MIGRATION_MAP = {
 def _build_tier_order(proxy_available: bool = True) -> list[ScrapingTier]:
     """Build dynamic tier chain based on configuration.
 
-    - If lightpanda_ws_url is set: [LIGHTPANDA, PLAYWRIGHT, PLAYWRIGHT_PROXY]
-    - If no proxy configured: drops PLAYWRIGHT_PROXY
-    - If no LightPanda configured: starts at PLAYWRIGHT
+    Tier order (cheapest/fastest first):
+    1. GO_HTTP — fast, raw HTML (best for tech detection + most pages)
+    2. GO_BROWSER — headless Chrome via Go sidecar (JS rendering)
+    3. LIGHTPANDA — if configured
+    4. PLAYWRIGHT — full browser (JS rendering, slowest)
+    5. PLAYWRIGHT_PROXY — proxy + browser (for blocked sites)
     """
     settings = get_settings()
     order: list[ScrapingTier] = []
+    if settings.enable_go_fetchers and settings.go_http_fetcher_url:
+        order.append(ScrapingTier.GO_HTTP)
+    if settings.enable_go_fetchers and settings.go_browser_fetcher_url:
+        order.append(ScrapingTier.GO_BROWSER)
     if settings.lightpanda_ws_url:
         order.append(ScrapingTier.LIGHTPANDA)
     order.append(ScrapingTier.PLAYWRIGHT)

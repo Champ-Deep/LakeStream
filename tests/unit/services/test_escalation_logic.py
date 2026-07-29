@@ -44,10 +44,31 @@ def _result(
 # ---------------------------------------------------------------------------
 
 
+def _configure(
+    mock_settings,
+    *,
+    lightpanda: str = "",
+    go_fetchers: bool = False,
+    go_http: str = "",
+    go_browser: str = "",
+):
+    """Set every attribute _build_tier_order reads.
+
+    A bare MagicMock returns a truthy child for any attribute, which would
+    silently switch the Go tiers on, so each flag is set explicitly here.
+    """
+    s = mock_settings.return_value
+    s.lightpanda_ws_url = lightpanda
+    s.enable_go_fetchers = go_fetchers
+    s.go_http_fetcher_url = go_http
+    s.go_browser_fetcher_url = go_browser
+    return s
+
+
 class TestTierOrder:
     def test_full_chain_when_lightpanda_and_proxy_available(self):
         with patch("src.services.escalation.get_settings") as mock_settings:
-            mock_settings.return_value.lightpanda_ws_url = "ws://lp:9222"
+            _configure(mock_settings, lightpanda="ws://lp:9222")
             order = _build_tier_order(proxy_available=True)
             assert order == [
                 ScrapingTier.LIGHTPANDA,
@@ -57,15 +78,55 @@ class TestTierOrder:
 
     def test_chain_drops_proxy_when_unavailable(self):
         with patch("src.services.escalation.get_settings") as mock_settings:
-            mock_settings.return_value.lightpanda_ws_url = "ws://lp:9222"
+            _configure(mock_settings, lightpanda="ws://lp:9222")
             order = _build_tier_order(proxy_available=False)
             assert order == [ScrapingTier.LIGHTPANDA, ScrapingTier.PLAYWRIGHT]
 
     def test_chain_starts_at_playwright_when_no_lightpanda(self):
         with patch("src.services.escalation.get_settings") as mock_settings:
-            mock_settings.return_value.lightpanda_ws_url = ""
+            _configure(mock_settings)
             order = _build_tier_order(proxy_available=True)
             assert order == [ScrapingTier.PLAYWRIGHT, ScrapingTier.PLAYWRIGHT_PROXY]
+
+    def test_go_http_is_the_cheapest_tier_when_enabled(self):
+        """The Go sidecar fetches raw HTML fastest, so it leads the chain."""
+        with patch("src.services.escalation.get_settings") as mock_settings:
+            _configure(
+                mock_settings,
+                lightpanda="ws://lp:9222",
+                go_fetchers=True,
+                go_http="http://go-http:8080",
+                go_browser="http://go-browser:8081",
+            )
+            order = _build_tier_order(proxy_available=True)
+            assert order == [
+                ScrapingTier.GO_HTTP,
+                ScrapingTier.GO_BROWSER,
+                ScrapingTier.LIGHTPANDA,
+                ScrapingTier.PLAYWRIGHT,
+                ScrapingTier.PLAYWRIGHT_PROXY,
+            ]
+
+    def test_go_tiers_skipped_when_flag_off_even_if_urls_set(self):
+        with patch("src.services.escalation.get_settings") as mock_settings:
+            _configure(
+                mock_settings,
+                go_fetchers=False,
+                go_http="http://go-http:8080",
+                go_browser="http://go-browser:8081",
+            )
+            order = _build_tier_order(proxy_available=False)
+            assert order == [ScrapingTier.PLAYWRIGHT]
+
+    def test_go_browser_alone_when_only_it_is_configured(self):
+        with patch("src.services.escalation.get_settings") as mock_settings:
+            _configure(
+                mock_settings,
+                go_fetchers=True,
+                go_browser="http://go-browser:8081",
+            )
+            order = _build_tier_order(proxy_available=False)
+            assert order == [ScrapingTier.GO_BROWSER, ScrapingTier.PLAYWRIGHT]
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +141,7 @@ class TestGetNextTier:
 
     def test_lightpanda_escalates_to_playwright(self, svc):
         with patch("src.services.escalation.get_settings") as s:
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             assert (
                 svc.get_next_tier(ScrapingTier.LIGHTPANDA)
                 == ScrapingTier.PLAYWRIGHT
@@ -88,7 +149,7 @@ class TestGetNextTier:
 
     def test_playwright_escalates_to_proxy(self, svc):
         with patch("src.services.escalation.get_settings") as s:
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             assert (
                 svc.get_next_tier(ScrapingTier.PLAYWRIGHT)
                 == ScrapingTier.PLAYWRIGHT_PROXY
@@ -96,12 +157,12 @@ class TestGetNextTier:
 
     def test_proxy_is_terminal(self, svc):
         with patch("src.services.escalation.get_settings") as s:
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             assert svc.get_next_tier(ScrapingTier.PLAYWRIGHT_PROXY) is None
 
     def test_no_proxy_means_playwright_is_terminal(self, svc):
         with patch("src.services.escalation.get_settings") as s:
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             assert (
                 svc.get_next_tier(ScrapingTier.PLAYWRIGHT, proxy_available=False)
                 is None
@@ -112,7 +173,7 @@ class TestGetNextTier:
         # called after the chain shrunk), we should not crash — return None.
         # Using LIGHTPANDA against a chain that no longer contains it.
         with patch("src.services.escalation.get_settings") as s:
-            s.return_value.lightpanda_ws_url = ""  # chain has no LIGHTPANDA
+            _configure(s)  # chain has no LIGHTPANDA
             assert svc.get_next_tier(ScrapingTier.LIGHTPANDA) is None
 
 
@@ -238,7 +299,7 @@ class TestDecideInitialTier:
             ),
             patch("src.services.escalation.get_settings") as s,
         ):
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             tier = await svc.decide_initial_tier("fresh.example.com")
             assert tier == ScrapingTier.LIGHTPANDA
 
@@ -254,7 +315,7 @@ class TestDecideInitialTier:
             ),
             patch("src.services.escalation.get_settings") as s,
         ):
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             tier = await svc.decide_initial_tier("hard.example.com")
             assert tier == ScrapingTier.PLAYWRIGHT_PROXY
 
@@ -275,7 +336,7 @@ class TestDecideInitialTier:
             ),
             patch("src.services.escalation.get_settings") as s,
         ):
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             tier = await svc.decide_initial_tier("legacy.example.com")
             assert tier == ScrapingTier.PLAYWRIGHT
 
@@ -291,6 +352,6 @@ class TestDecideInitialTier:
             ),
             patch("src.services.escalation.get_settings") as s,
         ):
-            s.return_value.lightpanda_ws_url = "ws://lp"
+            _configure(s, lightpanda="ws://lp")
             tier = await svc.decide_initial_tier("weird.example.com")
             assert tier == ScrapingTier.LIGHTPANDA  # cheapest of the chain
