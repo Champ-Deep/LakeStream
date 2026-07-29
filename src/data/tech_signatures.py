@@ -159,7 +159,8 @@ TECH_SIGNATURES: list[dict] = [
 
     {"name": "Java/Spring", "category": "backend", "signals": [".jsp", "jsessionid"], "header_signals": ["x-powered-by: servlet", "server: apache-coyote"]},
     {"name": "Ruby on Rails", "category": "backend", "signals": ["data-turbo-track", "turbo-frame"], "header_signals": ["x-powered-by: phusion passenger"]},
-    {"name": "Django", "category": "backend", "signals": ["csrfmiddlewaretoken", "django"], "header_signals": ["x-frame-options: deny"]},
+    # ponytail: no header_signals — csrftoken cookie name collides with PHP csrfToken; csrfmiddlewaretoken HTML signal is the reliable one
+    {"name": "Django", "category": "backend", "signals": ["csrfmiddlewaretoken", "django"], "header_signals": []},
     {"name": "Laravel", "category": "backend", "signals": ["laravel", "csrf_token"], "header_signals": ["x-powered-by: laravel", "set-cookie: laravel_session"]},
     {"name": "Nginx", "category": "backend", "signals": [], "header_signals": ["server: nginx"]},
     {"name": "Apache", "category": "backend", "signals": [], "header_signals": ["server: apache"]},

@@ -19,8 +19,14 @@ trace.zip
 *.har
 
 .venv/
+.venv-*/
 venv/
 env/
+
+# Private data (csv/xlsx) + local caches
+*.csv
+*.xlsx
+*.sqlite
 
 .mypy_cache/
 .ruff_cache/

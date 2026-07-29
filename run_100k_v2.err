@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "C:\Users\harsh\OneDrive\Desktop\Downloads\PS-2\Champion\Tech_detect_2\scripts\run_tech_detection_100k.py", line 27, in <module>
+    from src.scraping.parser.tech_parser import TechParser
+ModuleNotFoundError: No module named 'src'
