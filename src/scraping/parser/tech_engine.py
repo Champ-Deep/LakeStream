@@ -697,13 +697,25 @@ def detections_to_metadata(detections: list[Detection]) -> dict:
         "detections": [],
     }
 
+    # `platform` and `server_os` are single-valued, so when a page yields more
+    # than one candidate the strongest evidence has to win. Detections arrive
+    # sorted by (category, name), so taking the first match would pick
+    # alphabetically: a site declaring itself WordPress via <meta generator>
+    # (high) while loading images from Contentful's CDN (medium) would be
+    # reported as Contentful. Track confidence per scalar field instead.
+    scalar_confidence: dict[str, str] = {}
+
     for det in detections:
         label = f"{det.name} {det.version}".strip() if det.version else det.name
         field_name = CATEGORY_TO_FIELD.get(det.category)
 
         if field_name in ("platform", "server_os"):
-            if out[field_name] is None:
+            current = scalar_confidence.get(field_name)
+            if out[field_name] is None or (
+                current == "medium" and det.confidence == "high"
+            ):
                 out[field_name] = label
+                scalar_confidence[field_name] = det.confidence
         elif field_name in ("hosting", "email_hosting", "ssl_certificate"):
             # Domain-level categories live on CompanyProfile, not here.
             out["other_technologies"].append(label)

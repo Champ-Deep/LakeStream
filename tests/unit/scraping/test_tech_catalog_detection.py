@@ -221,6 +221,33 @@ class TestFalsePositiveDiscipline:
         assert "AWS CloudFront" not in found
 
 
+class TestScalarFieldsPreferStrongestEvidence:
+    """`platform` and `server_os` hold one value, so confidence must decide it.
+
+    Detections arrive sorted by (category, name), so picking the first match
+    would pick alphabetically. Found live against github.com, which loads
+    images from Contentful's CDN.
+    """
+
+    def test_high_confidence_cms_beats_alphabetically_earlier_medium(self):
+        html = (
+            '<html><head><meta name="generator" content="WordPress 6.4"/></head>'
+            '<body><img src="https://images.ctfassets.net/x/y.png"></body></html>'
+        )
+        meta = detections_to_metadata(run(html))
+        found = {d.name for d in run(html)}
+        # Both are detected — Contentful is genuinely in use as an asset host …
+        assert {"WordPress", "Contentful"} <= found
+        # … but the self-declared platform is the one reported.
+        assert meta["platform"].startswith("WordPress")
+
+    def test_medium_confidence_cms_is_still_reported_when_alone(self):
+        meta = detections_to_metadata(
+            run('<html><body><img src="https://images.ctfassets.net/x/y.png"></body></html>')
+        )
+        assert meta["platform"] == "Contentful"
+
+
 class TestStructuralBeatsBodyOnConflict:
     def test_same_vendor_from_two_layers_yields_one_detection_at_high(self):
         html = (

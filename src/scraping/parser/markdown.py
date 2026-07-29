@@ -36,6 +36,18 @@ DEFAULT_NOISE_SELECTORS = (
 _MARKDOWN_STRIP_TAGS = ["script", "style", "nav", "footer", "header", "aside"]
 
 
+# A main-content candidate holding less than this share of the page's text is
+# rejected in favour of <body>. Selector priority alone is not enough: on a blog
+# *listing* page the first <article> is one post teaser, and on a JS-rendered
+# page <main> is often an empty shell — in both cases the highest-priority
+# selector matches a container that is missing most of the page's content.
+MAIN_CONTENT_MIN_TEXT_SHARE = 0.5
+
+
+def _text_len(node) -> int:
+    return len(node.text(deep=True, strip=True) or "") if node is not None else 0
+
+
 def find_main_html(
     html: str,
     selectors: list[str] | None = None,
@@ -43,25 +55,38 @@ def find_main_html(
 ) -> str:
     """Return the HTML of the main-content container, noise removed.
 
-    Falls back to <body> (then the whole document) when no selector matches.
+    Candidates are scored by how much of the page's text they actually hold,
+    rather than taking the first selector that matches anything. Falls back to
+    <body> (then the whole document) when nothing matches, or when the best
+    candidate is missing most of the text.
     """
     tree = HTMLParser(html)
 
-    node = None
-    for selector in selectors or DEFAULT_MAIN_SELECTORS:
-        node = tree.css_first(selector)
-        if node:
-            break
-
-    target = node or tree.body
-    if target is None:
-        return html
-
+    # Strip noise up front so every candidate — including <body> — is scored on
+    # its real content. Previously only the winning container was cleaned.
     if strip_noise:
-        for noise in target.css(DEFAULT_NOISE_SELECTORS):
+        for noise in tree.css(DEFAULT_NOISE_SELECTORS):
             noise.decompose()
 
-    return target.html or ""
+    body = tree.body
+
+    candidates = []
+    for selector in selectors or DEFAULT_MAIN_SELECTORS:
+        node = tree.css_first(selector)
+        if node is not None:
+            candidates.append(node)
+
+    if not candidates:
+        return (body.html if body is not None else None) or html
+
+    # Highest text volume wins; selector order breaks ties, since max() keeps
+    # the first of equal scores.
+    best = max(candidates, key=_text_len)
+    body_len = _text_len(body)
+    if body_len and _text_len(best) < body_len * MAIN_CONTENT_MIN_TEXT_SHARE:
+        return (body.html or html) if body is not None else html
+
+    return best.html or html
 
 
 def html_to_markdown(
