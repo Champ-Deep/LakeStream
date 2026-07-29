@@ -26,28 +26,15 @@ class ScraperService:
         only_main_content: bool = True,
     ) -> dict[str, Any]:
         """Scrape a page and return Markdown + Metadata."""
-        # 1. Decide tier if not provided
-        if tier is None and self.escalation:
-            domain = re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
-            tier = await self.escalation.decide_initial_tier(domain)
+        domain = re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
+
+        if self.escalation:
+            # Use the single authoritative escalation loop
+            result = await self.escalation.fetch_with_escalation(url, domain)
         else:
-            tier = tier or ScrapingTier.PLAYWRIGHT
-
-        # 2. Fetch content
-        fetcher = create_fetcher(tier)
-        result = await fetcher.fetch(url, FetchOptions())
-
-        # 3. Handle Escalation if blocked
-        if self.escalation and self.escalation.should_escalate(result):
-            next_tier = self.escalation.get_next_tier(tier)
-            if next_tier:
-                self.log.info(
-                    "escalating_scrape",
-                    url=url,
-                    from_tier=tier.value,
-                    to_tier=next_tier.value,
-                )
-                return await self.scrape(url, tier=next_tier, only_main_content=only_main_content)
+            # No escalation service — fetch directly at the requested or default tier
+            fetcher = create_fetcher(tier or ScrapingTier.PLAYWRIGHT)
+            result = await fetcher.fetch(url, FetchOptions())
 
         if not result.html:
             return {"markdown": "", "metadata": {}, "success": False, "error": "No content found"}

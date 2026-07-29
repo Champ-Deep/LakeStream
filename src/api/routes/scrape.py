@@ -7,6 +7,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from src.api.middleware.auth import authorize_resource, require_org
 from src.config.settings import get_settings
 from src.db.pool import get_pool
 from src.db.queries import jobs as job_queries
@@ -21,12 +22,10 @@ router = APIRouter(prefix="/scrape")
 
 @router.post("/execute", status_code=202, response_model=ExecuteScrapeResponse)
 async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScrapeResponse:
+    org_id_str, user_id_str, _ = require_org(request)
     pool = await get_pool()
 
-    # Get org_id and user_id from authenticated user (set by auth middleware)
-    org_id_str = getattr(request.state, "org_id", None)
-    org_id = UUID(org_id_str) if org_id_str else None
-    user_id_str = getattr(request.state, "user_id", None)
+    org_id = UUID(org_id_str)
     user_id = UUID(user_id_str) if user_id_str else None
 
     # Create job record
@@ -66,12 +65,22 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
 @router.post("/cancel/{job_id}")
 async def cancel_scrape_job(job_id: UUID, request: Request):
     """Cancel a pending or running scrape job."""
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
+
+    job = await job_queries.get_job(pool, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=getattr(job, "org_id", None),
+        resource_user_id=getattr(job, "user_id", None),
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
+
     cancelled = await job_queries.cancel_job(pool, job_id)
     if not cancelled:
-        job = await job_queries.get_job(pool, job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel job in '{job.status}' state",
@@ -80,12 +89,20 @@ async def cancel_scrape_job(job_id: UUID, request: Request):
 
 
 @router.get("/status/{job_id}", response_model=ScrapeStatusResponse)
-async def get_status(job_id: UUID) -> ScrapeStatusResponse:
+async def get_status(job_id: UUID, request: Request) -> ScrapeStatusResponse:
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
     job = await job_queries.get_job(pool, job_id)
 
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=getattr(job, "org_id", None),
+        resource_user_id=getattr(job, "user_id", None),
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
 
     data_count = await data_queries.count_scraped_data_by_job(pool, job_id)
 
@@ -106,7 +123,7 @@ async def get_status(job_id: UUID) -> ScrapeStatusResponse:
 
 
 @router.get("/stream/{job_id}")
-async def stream_job_status(job_id: UUID) -> StreamingResponse:
+async def stream_job_status(job_id: UUID, request: Request) -> StreamingResponse:
     """Server-Sent Events stream for real-time job status updates.
 
     Listens to the Postgres 'job_status_changed' channel (fired by a DB trigger
@@ -121,13 +138,21 @@ async def stream_job_status(job_id: UUID) -> StreamingResponse:
         - 'heartbeat': keep-alive ping every 20 s
         - 'done': terminal state reached — caller should close the EventSource
     """
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
     settings = get_settings()
 
-    # Confirm the job exists before opening the stream
+    # Confirm the job exists and the caller can see it before opening the stream
     job = await job_queries.get_job(pool, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=getattr(job, "org_id", None),
+        resource_user_id=getattr(job, "user_id", None),
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
 
     async def event_generator():
         # Send the current state immediately so the client isn't waiting blind
@@ -208,9 +233,8 @@ async def scrape_linkedin(request: Request) -> ExecuteScrapeResponse:
     if not search_url:
         raise HTTPException(status_code=400, detail="search_url is required")
 
-    org_id_str = getattr(request.state, "org_id", None)
-    org_id = UUID(org_id_str) if org_id_str else None
-    user_id_str = getattr(request.state, "user_id", None)
+    org_id_str, user_id_str, _ = require_org(request)
+    org_id = UUID(org_id_str)
     user_id = UUID(user_id_str) if user_id_str else None
 
     from src.models.job import ScrapeJobInput
@@ -263,9 +287,8 @@ async def scrape_apollo(request: Request) -> ExecuteScrapeResponse:
     if not search_url:
         raise HTTPException(status_code=400, detail="search_url is required")
 
-    org_id_str = getattr(request.state, "org_id", None)
-    org_id = UUID(org_id_str) if org_id_str else None
-    user_id_str = getattr(request.state, "user_id", None)
+    org_id_str, user_id_str, _ = require_org(request)
+    org_id = UUID(org_id_str)
     user_id = UUID(user_id_str) if user_id_str else None
 
     from src.models.job import ScrapeJobInput
@@ -322,6 +345,7 @@ async def extract_structured(request: Request):
     - ai: LLM-powered via OpenRouter (requires schema)
     - auto: try CSS first, fallback to AI if <50% fields found (requires schema)
     """
+    require_org(request)
     body = await request.json()
     url = body.get("url", "").strip()
     schema_data = body.get("schema")
@@ -427,6 +451,7 @@ async def browse_with_agent(request: Request):
     The agent can navigate, click buttons, fill forms, paginate, and extract data
     across multiple pages. Requires OPENROUTER_API_KEY to be set.
     """
+    require_org(request)
     from src.services.llm_extractor import get_openrouter_config
 
     body = await request.json()
@@ -455,6 +480,7 @@ async def browse_with_agent(request: Request):
 @router.post("/pdf")
 async def extract_pdf(request: Request):
     """Extract text, tables, and metadata from a PDF URL. Returns immediately (no job queue)."""
+    require_org(request)
     body = await request.json()
     url = body.get("url", "").strip()
 
@@ -502,6 +528,7 @@ async def store_session_cookies(request: Request):
 
     Body: {domain: str, cookies: list[dict]}
     """
+    require_org(request)
     body = await request.json()
     domain = body.get("domain", "").strip()
     cookies = body.get("cookies", [])
@@ -525,6 +552,7 @@ async def store_session_cookies(request: Request):
 @router.post("/youtube-transcript")
 async def youtube_transcript(request: Request):
     """Extract transcript from a YouTube video URL. Returns immediately (no job queue)."""
+    require_org(request)
     from src.db.pool import get_pool
     from src.services.youtube import (
         NoTranscriptFound,

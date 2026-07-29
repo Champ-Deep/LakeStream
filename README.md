@@ -70,11 +70,11 @@ make worker       # Background job processor
 
 | Tier | What It Does | Best For |
 |------|--------------|----------|
-| 🌐 **Basic HTTP** | Lightning fast requests | Simple pages, APIs |
-| 🕵️ **Headless Browser** | Renders JavaScript | SPAs, dynamic content |
-| 🛡️ **Stealth + Proxy** | Bypasses protection | Cloudflare, protected sites |
+| ⚡ **Lightpanda (CDP)** | Lightweight Chromium-DevTools fetcher | Most sites — cheapest first attempt |
+| 🕵️ **Playwright** | Full Chromium with stealth defaults | SPAs, dynamic content, JS-heavy pages |
+| 🛡️ **Playwright + Residential Proxy** | Routes Playwright through a residential IP pool | Cloudflare, DataDome, PerimeterX, geo-walls |
 
-LakeStream **automatically escalates** between tiers when it detects blocks, CAPTCHAs, or empty responses. No manual intervention needed! 
+LakeStream **automatically escalates** between tiers when it detects blocks, CAPTCHAs, or empty responses. No manual intervention needed!
 
 ---
 

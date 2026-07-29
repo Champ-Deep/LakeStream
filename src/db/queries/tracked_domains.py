@@ -2,6 +2,7 @@
 
 import random
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import asyncpg
 
@@ -81,12 +82,31 @@ async def get_tracked_domain(pool: asyncpg.Pool, domain: str) -> TrackedDomain |
     return TrackedDomain(**dict(row)) if row else None
 
 
-async def remove_tracked_domain(pool: asyncpg.Pool, domain: str) -> None:
-    """Soft-delete a tracked domain."""
-    await pool.execute(
-        "UPDATE tracked_domains SET is_active = false, updated_at = NOW() WHERE domain = $1",
-        domain,
-    )
+async def remove_tracked_domain(
+    pool: asyncpg.Pool,
+    domain: str,
+    *,
+    org_id: UUID | None = None,
+) -> bool:
+    """Soft-delete a tracked domain. Returns True if a row was actually updated.
+
+    When org_id is provided, only the row owned by that org is affected.
+    Pass org_id=None to remove without org scoping (admin/internal callers).
+    """
+    if org_id is not None:
+        result = await pool.execute(
+            "UPDATE tracked_domains SET is_active = false, updated_at = NOW() "
+            "WHERE domain = $1 AND org_id = $2 AND is_active = true",
+            domain,
+            org_id,
+        )
+    else:
+        result = await pool.execute(
+            "UPDATE tracked_domains SET is_active = false, updated_at = NOW() "
+            "WHERE domain = $1 AND is_active = true",
+            domain,
+        )
+    return not result.endswith(" 0")
 
 
 async def get_due_domains(pool: asyncpg.Pool) -> list[TrackedDomain]:

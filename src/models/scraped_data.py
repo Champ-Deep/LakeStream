@@ -15,6 +15,7 @@ class DataType(StrEnum):
     PAGE = "page"  # Uncategorized pages — not sent to content workers
     DOCUMENT = "document"  # PDF/DOCX documents
     EXTRACTED = "extracted"  # Schema-based extraction results
+    WEBHOOK_CALLBACK = "webhook_callback"  # Inbound n8n / external callback payloads
 
 
 

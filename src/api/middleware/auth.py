@@ -85,6 +85,66 @@ async def get_current_user(request: Request):
     )
 
 
+def require_org(request: Request) -> tuple[str, str | None, bool]:
+    """Assert the request is authenticated and return (org_id, user_id, is_admin).
+
+    Use this in routes that read request.state directly (instead of
+    Depends(get_current_user)) to avoid the silent-None code paths where
+    org_id ends up as Python None and queries fall through to the default org.
+
+    Returns:
+        Tuple of (org_id, user_id, is_admin). org_id is always a string;
+        user_id may be None for API-key auth that lacks a user binding,
+        though current api_keys queries always set both.
+
+    Raises:
+        HTTPException 401: If org_id is not set on request.state.
+    """
+    org_id = getattr(request.state, "org_id", None)
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user_id = getattr(request.state, "user_id", None)
+    is_admin = bool(getattr(request.state, "is_admin", False))
+    return str(org_id), str(user_id) if user_id else None, is_admin
+
+
+def authorize_resource(
+    *,
+    resource_org_id,
+    resource_user_id,
+    caller_org_id: str,
+    caller_user_id: str | None,
+    caller_is_admin: bool,
+) -> None:
+    """Raise 404 if the caller cannot access this resource.
+
+    Authorization rules:
+      - Admins can access anything.
+      - Non-admins must match the resource's org_id.
+      - When the resource has a user_id, non-admins must also match it
+        (so users in the same org can't read each other's jobs).
+
+    We deliberately raise 404 rather than 403 so cross-tenant probing
+    can't enumerate which UUIDs exist.
+    """
+    if caller_is_admin:
+        return
+
+    if resource_org_id is not None and str(resource_org_id) != caller_org_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if (
+        resource_user_id is not None
+        and caller_user_id is not None
+        and str(resource_user_id) != caller_user_id
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
+
+
 class TenantContextMiddleware(BaseHTTPMiddleware):
     """Middleware to set request.state from JWT or session.
 

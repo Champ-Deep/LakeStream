@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://scraper:scraper_dev@localhost:5433/lakeb2b_scraper"
     redis_url: str = "redis://localhost:6379"
 
-    brightdata_proxy_url: str = ""
+    brightdata_proxy_url: str = ""       # Residential proxy (general sites)
+    brightdata_isp_proxy_url: str = ""   # ISP proxy (LinkedIn)
     smartproxy_url: str = ""
     custom_proxy_url: str = ""
     custom_proxy_username: str = ""

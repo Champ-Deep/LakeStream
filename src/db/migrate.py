@@ -20,6 +20,43 @@ def get_db_url() -> str:
     return database_url
 
 
+# Mapping from old (deprecated) migration filenames to their new canonical
+# names. When _migrations contains an old-name row, we copy the bookkeeping
+# under the new name so the renamed file isn't re-applied on existing DBs.
+# Safe to keep around indefinitely — it's a no-op when the DB has no old rows.
+_RENAMED_MIGRATIONS = {
+    # Was a duplicate "016" alongside 016_add_user_id_and_admin.sql; renamed
+    # to 024 to keep numeric ordering deterministic. See plan.md S1.5.
+    "016_add_proxy_url_to_organizations.sql": "024_add_proxy_url_to_organizations.sql",
+    # Was a duplicate "017" alongside 017_disable_rls.sql, which was a strict
+    # subset of this file. The subset was deleted; this file now occupies the
+    # canonical "017_disable_rls.sql" slot.
+    "017_disable_rls_for_workers.sql": "017_disable_rls.sql",
+}
+# Old filenames whose effects are entirely subsumed by another migration the
+# DB has already applied (or will apply). We never re-run these.
+_RETIRED_MIGRATIONS = frozenset()
+
+
+async def _backfill_renamed_migration_bookkeeping(pool: asyncpg.Pool) -> None:
+    """Ensure renamed migrations aren't re-applied on existing databases."""
+    for old_name, new_name in _RENAMED_MIGRATIONS.items():
+        old_applied = await pool.fetchval(
+            "SELECT 1 FROM _migrations WHERE name = $1", old_name
+        )
+        if not old_applied:
+            continue
+        new_applied = await pool.fetchval(
+            "SELECT 1 FROM _migrations WHERE name = $1", new_name
+        )
+        if not new_applied:
+            await pool.execute(
+                "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT DO NOTHING",
+                new_name,
+            )
+            print(f"Backfilled: {new_name} (from prior {old_name})")
+
+
 async def run_migrations() -> None:
     database_url = get_db_url()
     pool = await asyncpg.create_pool(database_url, min_size=1, max_size=3, command_timeout=30)
@@ -32,9 +69,16 @@ async def run_migrations() -> None:
         )
     """)
 
+    # Reconcile prior renames before scanning the directory so existing DBs
+    # don't try to re-apply a renamed file under its new name.
+    await _backfill_renamed_migration_bookkeeping(pool)
+
     migration_dir = os.path.join(os.path.dirname(__file__), "migrations")
     for path in sorted(glob.glob(f"{migration_dir}/*.sql")):
         name = os.path.basename(path)
+        if name in _RETIRED_MIGRATIONS:
+            print(f"Skipped (retired): {name}")
+            continue
         exists = await pool.fetchval("SELECT 1 FROM _migrations WHERE name = $1", name)
         if not exists:
             with open(path) as f:
