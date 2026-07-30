@@ -8,6 +8,7 @@ from src.api.routes import (
     exports,
     health,
     ingest,
+    jobs_boards,
     scrape,
     settings,
     signals,
@@ -23,6 +24,7 @@ api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(api_keys.router, tags=["auth"])
 api_router.include_router(scrape.router, tags=["scrape"])
 api_router.include_router(ingest.router, tags=["ingest"])
+api_router.include_router(jobs_boards.router, tags=["jobs"])
 api_router.include_router(discover.router)
 api_router.include_router(domains.router, tags=["domains"])
 api_router.include_router(templates.router, tags=["templates"])

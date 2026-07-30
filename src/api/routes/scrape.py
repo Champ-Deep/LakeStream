@@ -334,16 +334,52 @@ async def extract_structured(request: Request):
     if not schema_data and not prompt:
         return {"success": False, "error": "Either 'schema' or 'prompt' is required"}
 
-    # Fetch the page
+    # Fetch the page.
+    # * Previously hard-wired to ScrapingTier.PLAYWRIGHT with no escalation, so
+    # * /extract could never use the residential-proxy tier no matter how the
+    # * proxies were configured — any anti-bot site just returned "blocked".
+    # * Now: honour an explicit `tier`, else start on PLAYWRIGHT and escalate to
+    # * PLAYWRIGHT_PROXY once if the page comes back blocked or captcha'd.
     from src.models.scraping import FetchOptions, ScrapingTier
     from src.scraping.fetcher.factory import create_fetcher
 
     options = FetchOptions(region=region)
-    fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
-    fetch_result = await fetcher.fetch(url, options)
+    requested_tier = (body.get("tier") or "").strip().lower()
+
+    if requested_tier:
+        try:
+            start_tier = ScrapingTier(requested_tier)
+        except ValueError:
+            return {
+                "success": False,
+                "error": f"Invalid tier '{requested_tier}'. "
+                f"Valid: {', '.join(t.value for t in ScrapingTier)}",
+            }
+        tier_chain = [start_tier]
+    else:
+        tier_chain = [ScrapingTier.PLAYWRIGHT, ScrapingTier.PLAYWRIGHT_PROXY]
+
+    fetch_result = None
+    tier_used = None
+    for tier in tier_chain:
+        fetch_result = await create_fetcher(tier).fetch(url, options)
+        tier_used = tier
+        if not fetch_result.blocked and not fetch_result.captcha_detected:
+            break
 
     if fetch_result.blocked:
-        return {"success": False, "error": f"Page blocked (HTTP {fetch_result.status_code})"}
+        return {
+            "success": False,
+            "error": f"Page blocked (HTTP {fetch_result.status_code})",
+            "tier_used": tier_used.value if tier_used else None,
+            "captcha_detected": fetch_result.captcha_detected,
+            "hint": (
+                "Blocked even on the residential-proxy tier — check BRIGHTDATA/CUSTOM "
+                "proxy credentials, or the target may require login."
+                if tier_used == ScrapingTier.PLAYWRIGHT_PROXY
+                else "Retry with tier='playwright_proxy' once a residential proxy is configured."
+            ),
+        }
     if not fetch_result.html or len(fetch_result.html) < 100:
         return {"success": False, "error": "No content retrieved"}
 
@@ -360,7 +396,14 @@ async def extract_structured(request: Request):
         text = _strip_html_to_text(fetch_result.html)
         llm = LLMExtractor(org_id=org_id)
         data = await llm.extract_freeform(text, prompt or instructions)
-        return {"success": True, "data": data, "mode": "prompt", "url": url}
+        return {
+            "success": True,
+            "data": data,
+            "mode": "prompt",
+            "url": url,
+            "tier_used": tier_used.value if tier_used else None,
+            "cost_usd": fetch_result.cost_usd,
+        }
 
     # Schema-based extraction path (css / ai / auto)
     from src.models.extraction import ExtractionSchema
@@ -413,6 +456,8 @@ async def extract_structured(request: Request):
         "fields_missing": result.fields_missing,
         "mode": mode_used,
         "url": result.url,
+        "tier_used": tier_used.value if tier_used else None,
+        "cost_usd": fetch_result.cost_usd,
     }
 
 
