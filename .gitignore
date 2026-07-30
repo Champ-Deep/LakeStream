@@ -51,3 +51,6 @@ LakeB2B_Scraper_PRD_v2_Mobile_WebApp.docx
 
 # === Benchmark Results ===
 benchmarks/results.json
+
+# Local test virtualenv (created 2026-07-30 — the repo had none)
+.venv/

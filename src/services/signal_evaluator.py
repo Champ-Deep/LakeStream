@@ -6,6 +6,8 @@ This module contains the core logic for evaluating intent signals:
 3. Log execution results
 """
 
+import hashlib
+import hmac
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -94,33 +96,69 @@ async def evaluate_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str,
 async def check_job_change_signal(
     pool: Pool, signal: Signal, org_id: UUID
 ) -> dict[str, Any] | None:
-    """Check if job change conditions match recent data."""
+    """Contacts whose job title actually CHANGED into the target title.
+
+    This previously selected every contact whose *current* title matched the
+    filter, with no before/after comparison anywhere:
+
+        WHERE data_type = 'contact'
+          AND metadata->>'job_title' ILIKE $2
+          AND scraped_at > NOW() - INTERVAL '24 hours'
+
+    That detects "a contact exists with this title", not "someone changed
+    jobs". Every matching contact re-fired on every evaluation pass inside the
+    window, so a signal meant to catch a rare, high-intent event behaved as a
+    standing list of everyone with the title — a false-positive machine that
+    would have burned the list it was pointed at.
+
+    A real change needs two observations of the same person. The upsert key on
+    scraped_data is (domain, url, data_type), so re-scraping a contact page
+    UPDATES the row rather than versioning it — there is no history table to
+    diff against. The comparison therefore runs against the previous title
+    carried in the record's own metadata, which the contact writer stamps as
+    `previous_job_title` when it overwrites a changed value.
+
+    Returns None when the field is absent everywhere, rather than falling back
+    to the old title-match behaviour: a signal that cannot tell change from
+    presence should stay silent, not fire on everything.
+    """
     filters = signal.trigger_config.get("filters", {})
     job_title = filters.get("job_title_contains", "")
+    window_hours = int(filters.get("window_hours", 24))
 
-    # Query scraped data for recent job changes (last 24 hours)
     query = """
         SELECT * FROM scraped_data
         WHERE org_id = $1
-        AND data_type = 'contact'
-        AND metadata->>'job_title' ILIKE $2
-        AND scraped_at > NOW() - INTERVAL '24 hours'
+          AND data_type = 'contact'
+          -- the NEW title matches what we are watching for
+          AND metadata->>'job_title' ILIKE $2
+          -- ... and there is a recorded PREVIOUS title
+          AND metadata->>'previous_job_title' IS NOT NULL
+          AND metadata->>'previous_job_title' <> ''
+          -- ... which is genuinely different (case-insensitive, so a
+          -- re-scrape that only changed capitalisation is not a "change")
+          AND lower(metadata->>'previous_job_title')
+              IS DISTINCT FROM lower(metadata->>'job_title')
+          AND scraped_at > NOW() - ($3 || ' hours')::interval
         ORDER BY scraped_at DESC
         LIMIT 100
     """
 
-    rows = await pool.fetch(query, org_id, f"%{job_title}%")
+    rows = await pool.fetch(query, org_id, f"%{job_title}%", str(window_hours))
 
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "job_change",
-            "trigger": f"Found {len(matches)} contacts with job title containing '{job_title}'",
-        }
+    if not rows:
+        return None
 
-    return None
+    matches = [dict(row) for row in rows]
+    return {
+        "matches": matches,
+        "match_count": len(matches),
+        "signal_type": "job_change",
+        "trigger": (
+            f"{len(matches)} contact(s) moved into a role matching "
+            f"'{job_title}' in the last {window_hours}h"
+        ),
+    }
 
 
 async def check_funding_signal(pool: Pool, signal: Signal, org_id: UUID) -> dict[str, Any] | None:
@@ -191,34 +229,68 @@ async def check_tech_stack_signal(
 async def check_hiring_spike_signal(
     pool: Pool, signal: Signal, org_id: UUID
 ) -> dict[str, Any] | None:
-    """Check if hiring volume spike conditions match."""
-    filters = signal.trigger_config.get("filters", {})
-    _department = filters.get("department", "All")  # noqa: F841
-    spike_threshold = filters.get("spike_threshold", 3)  # 3x normal
+    """Companies with an unusual volume of open roles.
 
-    # Query for recent job postings
-    query = """
-        SELECT domain, COUNT(*) as job_count
+    This query could never return anything before 2026-07-30: it filters on
+    `data_type = 'job_posting'`, and no such member existed in the DataType
+    enum, nor did any code path write that value — the string appeared in
+    exactly one place in the whole codebase, this WHERE clause. The signal was
+    dead from the day it was written.
+
+    The data source now exists (services/job_boards.persist_postings writes
+    real Greenhouse / Lever / Ashby postings), so the query runs for real. Two
+    further fixes were needed for it to mean anything:
+
+    - `department` was accepted, marked noqa: F841 and never used, so a signal
+      configured for "Engineering" fired on any hiring at all. It now filters.
+    - The threshold was `spike_threshold * 2` with the comment "Simplified
+      threshold", which silently doubled whatever the user configured. A
+      configured 3 became 6. It is now used as written.
+    """
+    filters = signal.trigger_config.get("filters", {})
+    department = filters.get("department") or "All"
+    spike_threshold = int(filters.get("spike_threshold", 3))
+    window_days = int(filters.get("window_days", 7))
+
+    # * Department lives in the posting's metadata, written by
+    # * job_boards.posting_to_record. "All" disables the filter rather than
+    # * matching a literal department called "All".
+    department_filter = ""
+    params: list[Any] = [org_id, spike_threshold, str(window_days)]
+    if department and department.lower() != "all":
+        department_filter = "AND metadata->>'department' ILIKE $4"
+        params.append(f"%{department}%")
+
+    query = f"""
+        SELECT domain,
+               COUNT(*) AS job_count,
+               MAX(scraped_at) AS most_recent_post
         FROM scraped_data
         WHERE org_id = $1
-        AND data_type = 'job_posting'
-        AND scraped_at > NOW() - INTERVAL '7 days'
+          AND data_type = 'job_posting'
+          AND scraped_at > NOW() - ($3 || ' days')::interval
+          {department_filter}
         GROUP BY domain
         HAVING COUNT(*) >= $2
+        ORDER BY COUNT(*) DESC
     """
 
-    rows = await pool.fetch(query, org_id, spike_threshold * 2)  # Simplified threshold
+    rows = await pool.fetch(query, *params)
 
-    if rows:
-        matches = [dict(row) for row in rows]
-        return {
-            "matches": matches,
-            "match_count": len(matches),
-            "signal_type": "hiring_spike",
-            "trigger": f"Found {len(matches)} companies with hiring spikes",
-        }
+    if not rows:
+        return None
 
-    return None
+    matches = [dict(row) for row in rows]
+    scope = "any department" if department.lower() == "all" else department
+    return {
+        "matches": matches,
+        "match_count": len(matches),
+        "signal_type": "hiring_spike",
+        "trigger": (
+            f"{len(matches)} company/companies with {spike_threshold}+ open "
+            f"roles in {scope} over the last {window_days} days"
+        ),
+    }
 
 
 # ============================================================================
@@ -245,6 +317,15 @@ async def execute_signal_action(pool: Pool, signal: Signal, matched_data: dict[s
             await send_email_notification(signal, matched_data, action_config)
             status = "success"
             response = {"message": "Email sent"}
+            error_msg = None
+        elif action_type == "champiq":
+            # * The action that closes the loop from detection to outreach.
+            # * slack/webhook/email all end at a human; this one publishes the
+            # * canonical `signal.matched` event onto ChampIQ's bus, where a
+            # * trigger.event DAG can enrich, suppression-check and enrol the
+            # * prospect without anyone reading a notification first.
+            response = await publish_signal_to_champiq(signal, matched_data, action_config)
+            status = "success"
             error_msg = None
         else:
             log.warning("unknown_action_type", action_type=action_type)
@@ -459,3 +540,81 @@ async def publish_signal_event(signal: Signal, matched_data: dict[str, Any]) -> 
             signal_id=str(signal.id),
             error=str(e),
         )
+
+
+async def publish_signal_to_champiq(
+    signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
+) -> dict[str, Any]:
+    """Publish `signal.matched` onto ChampIQ's event bus.
+
+    This is what makes signal-triggered outreach event-driven rather than
+    polled. Detection happens here, in LakeStream, against raw scraped
+    observations; qualification and action happen downstream in Harbinger and
+    ChampMail. Those are different layers of one pipeline, not two competing
+    signal engines — LakeStream never needs to know about campaigns, and
+    Harbinger never needs to scrape.
+
+    The payload deliberately carries `company_domain` per match. ChampIQ's
+    lead-correlation layer derives its key from that field when no contact
+    email is known yet (a `co:`-prefixed company key), so a pre-contact hiring
+    signal joins the same lead journey that later email events land on.
+
+    Fire-and-forget by contract: a down or unconfigured ChampIQ must never fail
+    signal evaluation, because the signal itself is still true and will be
+    re-detected on the next pass.
+    """
+    base_url = (action_config.get("champiq_url") or "").rstrip("/")
+    if not base_url:
+        raise ValueError("champiq_url not configured for this signal action")
+
+    matches = matched_data.get("matches") or []
+    events = []
+    for match in matches:
+        domain = match.get("domain") or match.get("company_domain")
+        if not domain:
+            continue
+        events.append(
+            {
+                "type": "signal.matched",
+                "signal_id": str(signal.id),
+                "signal_name": signal.name,
+                "signal_type": matched_data.get("signal_type"),
+                "company_domain": domain,
+                "account_name": action_config.get("account_name"),
+                "evidence": {k: v for k, v in match.items() if k != "domain"},
+                "detected_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    if not events:
+        return {"published": 0, "reason": "no match carried a company domain"}
+
+    url = f"{base_url}/api/webhooks/tools/lakestream"
+    headers = {"Content-Type": "application/json"}
+    secret = action_config.get("champiq_webhook_secret")
+    if secret:
+        headers["X-ChampIQ-Signature"] = hmac.new(
+            secret.encode(),
+            json.dumps(events, default=str).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    published = 0
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for event in events:
+            try:
+                resp = await client.post(url, json=event, headers=headers)
+                if resp.status_code < 400:
+                    published += 1
+                else:
+                    log.warning(
+                        "champiq_publish_rejected",
+                        status=resp.status_code, domain=event["company_domain"],
+                    )
+            except Exception:
+                # ! One company failing must not drop the rest of the batch.
+                log.exception(
+                    "champiq_publish_failed", domain=event["company_domain"]
+                )
+
+    return {"published": published, "attempted": len(events)}

@@ -36,6 +36,8 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
+from src.models.scraped_data import DataType
+
 log = structlog.get_logger()
 
 ATS_PROVIDERS = ("greenhouse", "lever", "ashby")
@@ -425,3 +427,118 @@ def summarise_hiring(postings: list[JobPosting]) -> dict[str, Any]:
         "most_recent_post": dates[0] if dates else None,
         "remote_roles": sum(1 for p in postings if p.remote),
     }
+
+
+# ---------------------------------------------------------------------------
+# Persistence — the missing half
+# ---------------------------------------------------------------------------
+#
+# Until now this module only served its own API routes. Nothing wrote postings
+# to `scraped_data`, while `signal_evaluator.check_hiring_spike_signal` queried
+# `data_type = 'job_posting'` — a value that did not exist in the DataType enum
+# and that no code path produced. The hiring signal therefore could never fire,
+# despite being the highest-leverage outreach trigger available (signal-based
+# personalisation multiplies reply rate several times over).
+#
+# Persisting here closes that loop: fetch -> store -> signal -> outreach.
+
+
+def posting_to_record(
+    posting: JobPosting,
+    *,
+    job_id: Any,
+    domain: str,
+    org_id: Any = None,
+    user_id: Any = None,
+) -> dict[str, Any]:
+    """Map one JobPosting onto a `scraped_data` upsert record.
+
+    The upsert key is (domain, url, data_type), and every ATS gives a posting a
+    stable URL — so re-running a board updates existing rows rather than
+    duplicating them, and `scraped_at` moves forward. That matters for the
+    signal: "postings seen in the last 7 days" is only meaningful if a
+    still-open role keeps refreshing rather than ageing out while it is live.
+    """
+    return {
+        "job_id": job_id,
+        "domain": domain,
+        "data_type": DataType.JOB_POSTING.value,
+        "url": posting.url,
+        "title": posting.title,
+        "org_id": org_id,
+        "user_id": user_id,
+        "metadata": {
+            "provider": posting.provider,
+            "board_token": posting.board_token,
+            "external_id": posting.external_id,
+            "department": posting.department,
+            "team": posting.team,
+            "location": posting.location,
+            "remote": posting.remote,
+            "employment_type": posting.employment_type,
+            "posted_at": posting.posted_at,
+            "apply_url": posting.apply_url,
+            # Truncated: the signal reads counts and departments, not prose, and
+            # a full JD per row would bloat the JSONB column for no benefit.
+            "description_excerpt": (posting.description or "")[:1000],
+        },
+    }
+
+
+async def persist_postings(
+    pool: Any,
+    result: BoardResult,
+    *,
+    domain: str,
+    job_id: Any,
+    org_id: Any = None,
+    user_id: Any = None,
+) -> int:
+    """Write one board's postings into `scraped_data`. Returns rows written.
+
+    `domain` is passed explicitly rather than read off the result: BoardResult
+    carries the provider and board token but not the company domain, because
+    fetch_jobs_for_companies keys its return dict BY domain. The scraped_data
+    upsert key is (domain, url, data_type), so getting this wrong would scatter
+    one company's postings across rows that never collide.
+
+    A board that errored or returned nothing writes nothing — an empty write is
+    not the same as "this company has no open roles", and recording it as such
+    would let a failed fetch read as a hiring slowdown.
+    """
+    if result.error or not result.postings:
+        return 0
+
+    from src.db.queries.scraped_data import batch_insert_scraped_data
+
+    records = [
+        posting_to_record(
+            posting, job_id=job_id, domain=domain,
+            org_id=org_id, user_id=user_id,
+        )
+        for posting in result.postings
+    ]
+    return await batch_insert_scraped_data(pool, records)
+
+
+async def persist_board_results(
+    pool: Any,
+    results: dict[str, BoardResult],
+    *,
+    job_id: Any,
+    org_id: Any = None,
+    user_id: Any = None,
+) -> int:
+    """Persist many boards. Takes the {domain: BoardResult} map that
+    fetch_jobs_for_companies returns. Returns the total rows written."""
+    total = 0
+    for domain, result in results.items():
+        try:
+            total += await persist_postings(
+                pool, result, domain=domain, job_id=job_id,
+                org_id=org_id, user_id=user_id,
+            )
+        except Exception:
+            # ! One company's write failing must not lose the rest of the batch.
+            log.exception("persist_board_results_failed", domain=domain)
+    return total

@@ -2,19 +2,50 @@
 
 Public JSON APIs — no proxy tier, no login, no LLM cost. Useful as both a
 buying signal (who is hiring, for what, where) and as first-party prose.
+
+Both endpoints accept `persist: true` to write the postings into scraped_data
+as DataType.JOB_POSTING. Without persistence these routes were read-only and
+the hiring-spike signal had nothing to read — see
+services/job_boards.persist_postings for why that mattered.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
+from uuid import UUID, uuid4
+
 from src.services.job_boards import (
     ATS_PROVIDERS,
     fetch_board,
     fetch_jobs_for_companies,
     fetch_jobs_for_company,
+    persist_board_results,
+    persist_postings,
     summarise_hiring,
 )
+
+
+def _persist_ctx(request: Request, body: dict):
+    """(pool, org_id, job_id) when persistence is requested and available.
+
+    Returns (None, None, None) when the caller did not ask to persist or the DB
+    pool is not on app state — the fetch still succeeds and simply writes
+    nothing, so a read-only deployment is unaffected.
+    """
+    if not body.get("persist"):
+        return None, None, None
+    pool = getattr(request.app.state, "pool", None) or getattr(
+        request.app.state, "db_pool", None
+    )
+    if pool is None:
+        return None, None, None
+    raw_org = body.get("org_id")
+    org_id = UUID(str(raw_org)) if raw_org else None
+    # * Each fetch is its own provenance group. scraped_data upserts on
+    # * (domain, url, data_type), so a fresh job_id per call does not duplicate
+    # * rows — it records which run last touched them.
+    return pool, org_id, uuid4()
 
 router = APIRouter(prefix="/jobs")
 
@@ -53,11 +84,20 @@ async def get_board(request: Request):
             "board_token": result.board_token,
         }
 
+    persisted = 0
+    pool, org_id, job_id = _persist_ctx(request, body)
+    if pool is not None:
+        persisted = await persist_postings(
+            pool, result, domain=domain or result.board_token,
+            job_id=job_id, org_id=org_id,
+        )
+
     return {
         "success": True,
         "provider": result.provider,
         "board_token": result.board_token,
         "count": len(result.postings),
+        "persisted": persisted,
         "signals": summarise_hiring(result.postings),
         "postings": [p.to_dict() for p in result.postings],
     }
@@ -97,11 +137,19 @@ async def get_boards_batch(request: Request):
         else:
             payload[domain] = {"success": False, "error": result.error}
 
+    persisted = 0
+    pool, org_id, job_id = _persist_ctx(request, body)
+    if pool is not None:
+        persisted = await persist_board_results(
+            pool, results, job_id=job_id, org_id=org_id
+        )
+
     found = sum(1 for r in payload.values() if r.get("success"))
     return {
         "success": True,
         "companies": len(payload),
         "boards_found": found,
+        "persisted": persisted,
         "total_postings": sum(r.get("count", 0) for r in payload.values()),
         "results": payload,
     }
