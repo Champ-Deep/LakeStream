@@ -8,6 +8,20 @@ from uuid import UUID
 import asyncpg
 
 
+def _pg_safe_text(value: str | None) -> str | None:
+    """Strip NUL bytes, which PostgreSQL rejects in text columns.
+
+    Scraped HTML genuinely contains 0x00 in the wild (observed on wordpress.org,
+    where it silently failed the upsert for 3 of 4 pages with `invalid byte
+    sequence for encoding "UTF8": 0x00`). NUL carries no meaning in page text,
+    so dropping it is lossless for our purposes and strictly better than losing
+    the whole row.
+    """
+    if value is None:
+        return None
+    return value.replace("\x00", "") if "\x00" in value else value
+
+
 async def upsert_page_content(
     pool: asyncpg.Pool,
     *,
@@ -42,9 +56,9 @@ async def upsert_page_content(
         domain,
         url,
         content_hash,
-        markdown,
-        raw_html,
-        title,
+        _pg_safe_text(markdown),
+        _pg_safe_text(raw_html),
+        _pg_safe_text(title),
         screenshot_path,
         org_id,
         user_id,

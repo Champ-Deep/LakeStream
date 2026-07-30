@@ -25,9 +25,18 @@ def get_db_url() -> str:
 # under the new name so the renamed file isn't re-applied on existing DBs.
 # Safe to keep around indefinitely — it's a no-op when the DB has no old rows.
 _RENAMED_MIGRATIONS = {
-    # Was a duplicate "016" alongside 016_add_user_id_and_admin.sql; renamed
-    # to 024 to keep numeric ordering deterministic. See plan.md S1.5.
-    "016_add_proxy_url_to_organizations.sql": "024_add_proxy_url_to_organizations.sql",
+    # Originally a duplicate "016" alongside 016_add_user_id_and_admin.sql, so it
+    # was renamed to 024 (see plan.md S1.5). That then collided with
+    # 024_create_page_content.sql, which arrived on a different branch — the
+    # branch merge reintroduced exactly the duplicate-numbering the 016 rename
+    # existed to remove. Moved again into the free 026 slot. Both prior names map
+    # forward so databases carrying either one don't re-apply it.
+    #
+    # The migration itself is a standalone, idempotent
+    # `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS proxy_url`, so its
+    # position in the order carries no dependencies.
+    "016_add_proxy_url_to_organizations.sql": "026_add_proxy_url_to_organizations.sql",
+    "024_add_proxy_url_to_organizations.sql": "026_add_proxy_url_to_organizations.sql",
     # Was a duplicate "017" alongside 017_disable_rls.sql, which was a strict
     # subset of this file. The subset was deleted; this file now occupies the
     # canonical "017_disable_rls.sql" slot.

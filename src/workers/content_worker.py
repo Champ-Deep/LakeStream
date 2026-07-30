@@ -278,13 +278,17 @@ class ContentWorker(BaseWorker):
             # --- Specialized CSS extraction based on URL classification ---
 
             if data_type == DataType.BLOG_URL and "blog_url" in data_types:
-                blog_rec, _ = self._extract_blog_landing(url, html, parser, rich_meta)
+                blog_rec, _ = self._extract_blog_landing(
+                    url, html, parser, rich_meta, template,
+                )
                 if blog_rec:
                     records.append(blog_rec)
 
             # Article extraction for any page with substantial content
             if "article" in data_types and parser.count_words() >= MIN_ARTICLE_WORDS:
-                article_rec = self._extract_article_record(url, parser, rich_meta)
+                article_rec = self._extract_article_record(
+                    url, html, parser, rich_meta, template,
+                )
                 if article_rec:
                     records.append(article_rec)
 
