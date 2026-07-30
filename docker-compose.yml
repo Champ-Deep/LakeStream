@@ -57,6 +57,16 @@ services:
   worker:
     build: .
     env_file: .env
+    # * Chromium writes its shared-memory segments to /dev/shm. Docker defaults
+    # * that to 64MB, which is far too small once more than a page or two is
+    # * open — Chrome then dies with an opaque renderer crash, which surfaces
+    # * here as `playwright._impl._api_types.Error` and looks exactly like an
+    # * out-of-memory problem (see DEPLOYMENT.md "Issue: Playwright crashes",
+    # * which blames RAM). Raising it is the actual fix.
+    # * The commonly-suggested --disable-dev-shm-usage flag is NOT used
+    # * deliberately: it redirects those writes to disk-backed /tmp and trades
+    # * the crash for slow page loads.
+    shm_size: "2gb"
     environment:
       DATABASE_URL: postgresql://scraper:scraper_dev@postgres:5432/lakeb2b_scraper
       REDIS_URL: redis://redis:6379

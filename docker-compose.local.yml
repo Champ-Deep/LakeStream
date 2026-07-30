@@ -54,6 +54,9 @@ services:
 
   worker:
     build: .
+    # Chromium's shared memory. Docker's 64MB default crashes the renderer
+    # under load — see the note in docker-compose.yml.
+    shm_size: "2gb"
     environment:
       DATABASE_URL: "postgresql://scraper:scraper_dev@postgres:5432/lakeb2b_scraper"
       REDIS_URL: "redis://redis:6379"
