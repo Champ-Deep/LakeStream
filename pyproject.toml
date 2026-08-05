@@ -24,7 +24,12 @@ dependencies = [
     "pyjwt>=2.10.0",
     "itsdangerous>=2.1.0",
     "python-multipart>=0.0.9",
-    "scrapling>=0.2.0",
+    # [fetchers]: src/scraping/fetcher/lake_lightpanda_fetcher.py imports
+    # scrapling.fetchers unconditionally, which needs curl_cffi — that's an
+    # optional extra on scrapling, not a base dependency, so a bare
+    # "scrapling>=0.2.0" resolves without it (only caught in a clean install,
+    # e.g. CI, since a local venv can carry curl_cffi from something else).
+    "scrapling[fetchers]>=0.2.0",
     "typer[all]>=0.12.0",
     "mcp[cli]>=1.0.0,<2.0.0",
     "youtube-transcript-api>=1.2.4",
