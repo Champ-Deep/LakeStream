@@ -50,7 +50,11 @@ tech_engine.py; anything unmapped lands in `other_technologies`.
 TECH_SIGNATURES: list[dict] = [
 
     # ---- CMS / site builders ----
-    {"name": "WordPress", "category": "cms", "signals": ["wp-content", "wp-includes", "wordpress", "wp-json"]},
+    # Bare "wordpress" dropped: matches "Ghost vs WordPress" / "Netlify for
+    # WordPress" comparison-page nav links on sites that don't run it —
+    # reproduced live on ghost.org and netlify.com. wp-content/wp-includes/
+    # wp-json are asset-path signals unique to an actual install.
+    {"name": "WordPress", "category": "cms", "signals": ["wp-content", "wp-includes", "wp-json"]},
     {"name": "HubSpot", "category": "cms", "signals": ["js.hs-scripts.com", "hubspot", r"\.hs-", "hbspt"]},
     {"name": "Webflow", "category": "cms", "signals": ["webflow.com", "wf-page", "wf-section"]},
     {"name": "Drupal", "category": "cms", "signals": ["/sites/default/", "drupal.settings"]},
@@ -92,7 +96,12 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "HubSpot", "category": "cms", "signals": ["hubspot"], "scope": "meta", "meta_name": "generator"},
 
     # ---- E-commerce ----
-    {"name": "WooCommerce", "category": "ecommerce", "signals": ["woocommerce", "wc-cart-fragments", "wc-ajax=", "wp-content/plugins/woocommerce"]},
+    # Bare "woocommerce" dropped: matches a customer-logo link
+    # (stripe.com/customers/woo, data-analytics-label="...woocommerce") on a
+    # page that merely lists WooCommerce as a customer, reproduced live on
+    # stripe.com. The other three signals are asset/query markers a real
+    # WooCommerce install actually emits.
+    {"name": "WooCommerce", "category": "ecommerce", "signals": ["wc-cart-fragments", "wc-ajax=", "wp-content/plugins/woocommerce"]},
     {"name": "PrestaShop", "category": "ecommerce", "signals": ["prestashop", "/modules/ps_"]},
     {"name": "OpenCart", "category": "ecommerce", "signals": ["opencart", "route=common/"]},
     {"name": "Salesforce Commerce Cloud", "category": "ecommerce", "signals": [r"demandware\.net", "sfcc", r"demandware\.static"]},
