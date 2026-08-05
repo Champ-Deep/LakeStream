@@ -1,4 +1,12 @@
 import os
+
+# jwt_secret has no default (production requires an explicit secret) — set a
+# fixed test-only value before anything imports src.config.settings, since
+# get_settings() is called at *module* import time by src/services/auth.py
+# and would otherwise crash test collection wherever no local .env exists
+# (e.g. CI, which correctly never commits one).
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-use")
+
 from collections.abc import AsyncGenerator
 
 import asyncpg
