@@ -45,11 +45,34 @@ services:
       JWT_SECRET: "local-dev-secret-do-not-use-in-production"
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
+      SCREENSHOT_DIR: "/app/data/screenshots"
+      SESSION_SECRET: "local-session-secret-change-me"
+      # Auth: default "legacy" (password login). Flip to "clerk" and fill the
+      # CLERK_* vars below (from your Clerk dev instance) to test Clerk.
+      AUTH_PROVIDER: "legacy"
+      # CLERK_PUBLISHABLE_KEY: "pk_test_..."
+      # CLERK_SECRET_KEY: "sk_test_..."
+      # CLERK_JWKS_URL: "https://<subdomain>.clerk.accounts.dev/.well-known/jwks.json"
+      # CLERK_ISSUER: "https://<subdomain>.clerk.accounts.dev"
+      # CLERK_DOMAIN: "<subdomain>.clerk.accounts.dev"
+      # Experimental Go fetcher sidecars (Python fetchers stay default)
+      ENABLE_GO_FETCHERS: "true"
+      GO_HTTP_FETCHER_URL: "http://go-http-fetcher:8080"
+      GO_BROWSER_FETCHER_URL: "http://go-browser-fetcher:8080"
+      # v2.1 Enrichment Edition (parse/search/enrich + inbound protection)
+      ENABLE_DOCUMENT_PARSING: "true"
+      ENABLE_SEARCH_API: "true"
+      ENABLE_ENRICHMENT: "true"
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_PER_MINUTE: "60"
+      ENABLE_CREDIT_ENFORCEMENT: "false"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - screenshots_local:/app/data/screenshots
     command: ./start.sh
 
   worker:
@@ -60,6 +83,10 @@ services:
       JWT_SECRET: "local-dev-secret-do-not-use-in-production"
       LAKECURRENT_ENABLED: "false"
       LOG_LEVEL: "debug"
+      SCREENSHOT_DIR: "/app/data/screenshots"
+      ENABLE_GO_FETCHERS: "true"
+      GO_HTTP_FETCHER_URL: "http://go-http-fetcher:8080"
+      GO_BROWSER_FETCHER_URL: "http://go-browser-fetcher:8080"
       # Tier 3 proxy — uncomment and set for headless + residential proxy:
       # BRIGHTDATA_PROXY_URL: "http://user:pass@brd.superproxy.io:22225"
       # SMARTPROXY_URL: "http://user:pass@gate.smartproxy.com:10000"
@@ -68,7 +95,33 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - screenshots_local:/app/data/screenshots
     command: arq src.queue.worker.WorkerSettings
+
+  # Named public URL for the local app (opt-in): expose http://localhost:7100 as
+  # https://${TUNNEL_SUBDOMAIN}.loca.lt so you can test from a link/phone.
+  #   docker compose -f docker-compose.local.yml --profile tunnel up
+  # Change the name with TUNNEL_SUBDOMAIN=lenovo-test docker compose ... up
+  tunnel:
+    image: node:20-alpine
+    profiles: ["tunnel"]
+    command: >
+      sh -c "npx --yes localtunnel --port 7100 --local-host api
+             --subdomain ${TUNNEL_SUBDOMAIN:-lakestream-dev}"
+    depends_on:
+      - api
+
+  go-http-fetcher:
+    build: ./go-fetchers/http
+    environment:
+      PORT: "8080"
+
+  go-browser-fetcher:
+    build: ./go-fetchers/browser
+    environment:
+      PORT: "8080"
 
 volumes:
   pgdata_local:
+  screenshots_local:

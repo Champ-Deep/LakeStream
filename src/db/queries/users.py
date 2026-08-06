@@ -165,6 +165,73 @@ async def update_user(
     return User(**row) if row else None
 
 
+async def list_users_with_counts(pool: Pool) -> list[dict]:
+    """List all users with org name, job count, and scraped-data count (admin dashboard).
+
+    Returns a list of plain dicts (rather than the User model) since this view
+    joins in aggregate counts that aren't part of the users table itself.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT u.*,
+               o.name as org_name,
+               COALESCE(j.job_count, 0) as job_count,
+               COALESCE(d.data_count, 0) as data_count
+        FROM users u
+        JOIN organizations o ON u.org_id = o.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as job_count FROM scrape_jobs GROUP BY user_id
+        ) j ON j.user_id = u.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as data_count FROM scraped_data GROUP BY user_id
+        ) d ON d.user_id = u.id
+        ORDER BY u.created_at DESC
+        """
+    )
+    return [
+        {
+            "id": row["id"],
+            "email": row["email"],
+            "full_name": row["full_name"],
+            "role": row["role"],
+            "is_admin": row["is_admin"],
+            "is_active": row["is_active"],
+            "org_name": row["org_name"],
+            "job_count": row["job_count"],
+            "data_count": row["data_count"],
+            "last_login_at": row["last_login_at"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+async def set_user_admin(pool: Pool, user_id: UUID, is_admin: bool) -> None:
+    """Set a user's is_admin flag explicitly (used after admin-created signup)."""
+    await pool.execute("UPDATE users SET is_admin = $2 WHERE id = $1", user_id, is_admin)
+
+
+async def toggle_user_active(pool: Pool, user_id: UUID) -> None:
+    """Flip a user's is_active flag (admin enable/disable action)."""
+    await pool.execute(
+        "UPDATE users SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+
+
+async def toggle_user_admin(pool: Pool, user_id: UUID) -> None:
+    """Flip a user's is_admin flag (admin action)."""
+    await pool.execute(
+        "UPDATE users SET is_admin = NOT is_admin, updated_at = NOW() WHERE id = $1",
+        user_id,
+    )
+
+
+async def delete_user(pool: Pool, user_id: UUID) -> None:
+    """Delete a user (admin action)."""
+    await pool.execute("DELETE FROM users WHERE id = $1", user_id)
+
+
 async def update_last_login(pool: Pool, user_id: UUID) -> None:
     """Update user's last login timestamp.
 
@@ -256,3 +323,165 @@ async def list_organization_teams(pool: Pool, org_id: UUID) -> list[Team]:
     query = "SELECT * FROM teams WHERE org_id = $1 ORDER BY name"
     rows = await pool.fetch(query, org_id)
     return [Team(**row) for row in rows]
+
+
+async def get_org_by_clerk_id(pool: Pool, clerk_org_id: str) -> Organization | None:
+    """Get the local organization linked to a Clerk Organization, if any."""
+    row = await pool.fetchrow(
+        "SELECT * FROM organizations WHERE clerk_org_id = $1", clerk_org_id
+    )
+    return Organization(**row) if row else None
+
+
+async def get_or_create_org_by_clerk_id(
+    pool: Pool, clerk_org_id: str, name: str = ""
+) -> Organization:
+    """Resolve a Clerk Organization to a local org row, provisioning on first sight.
+
+    Lazy creation covers the window where a session token carries an org the
+    webhook hasn't delivered yet (or webhooks are down entirely).
+    """
+    org = await get_org_by_clerk_id(pool, clerk_org_id)
+    if org:
+        return org
+    created = await create_organization(pool, name or f"Clerk org {clerk_org_id[-8:]}")
+    await pool.execute(
+        "UPDATE organizations SET clerk_org_id = $1, updated_at = NOW() WHERE id = $2",
+        clerk_org_id, created.id,
+    )
+    return await get_organization(pool, created.id)  # re-read with the link set
+
+
+async def _resolve_clerk_org_id(
+    pool: Pool,
+    clerk_org_id: str,
+    clerk_org_name: str,
+    meta_org_id: str,
+) -> UUID | None:
+    """Resolve token org context to a local org UUID (None = caller decides).
+
+    Order: active Clerk Organization (lazy-created) → publicMetadata.org_id
+    (must be an existing local org) → None.
+    """
+    if clerk_org_id:
+        org = await get_or_create_org_by_clerk_id(pool, clerk_org_id, clerk_org_name)
+        return org.id
+    if meta_org_id:
+        try:
+            candidate = UUID(meta_org_id)
+        except ValueError:
+            return None
+        exists = await pool.fetchval("SELECT 1 FROM organizations WHERE id = $1", candidate)
+        return candidate if exists else None
+    return None
+
+
+def _clerk_org_role_to_local(clerk_org_role: str) -> str | None:
+    """Map a Clerk org role to the local users.role CHECK values."""
+    if not clerk_org_role:
+        return None
+    return "org_owner" if clerk_org_role in ("admin", "org_owner") else "member"
+
+
+async def get_or_create_by_clerk_id(
+    pool: Pool,
+    clerk_user_id: str,
+    email: str,
+    is_admin: bool = False,
+    role: str = "member",
+    link_by_email: bool = False,
+    clerk_org_id: str = "",
+    clerk_org_name: str = "",
+    clerk_org_role: str = "",
+    meta_org_id: str = "",
+) -> User:
+    """Resolve a Clerk identity to a local users row, provisioning on first sight.
+
+    - Existing Clerk-linked user: returned (is_admin and active-org membership
+      kept in sync with the Clerk session token).
+    - Existing legacy user with the same email: linked to this Clerk id so their
+      data survives the migration.
+    - Otherwise: a new user is created in the org resolved from the token
+      (active Clerk Organization → publicMetadata.org_id → default org).
+
+    Per-user data scoping (user_id) is preserved; role is stored as a value the
+    users CHECK constraint allows (is_admin is the real privilege gate).
+    """
+    resolved_org_id = await _resolve_clerk_org_id(
+        pool, clerk_org_id, clerk_org_name, meta_org_id
+    )
+    org_role = _clerk_org_role_to_local(clerk_org_role)
+    local_role = org_role or ("org_owner" if is_admin else "member")
+
+    row = await pool.fetchrow("SELECT * FROM users WHERE clerk_user_id = $1", clerk_user_id)
+    if row:
+        updates: list[str] = []
+        vals: list[object] = []
+        if row["is_admin"] != is_admin:
+            updates.append("is_admin")
+            vals.append(is_admin)
+        # Follow the ACTIVE Clerk org only — meta_org_id is a static import-time
+        # pin, not a membership signal, so it never moves an existing user.
+        if clerk_org_id and resolved_org_id and row["org_id"] != resolved_org_id:
+            updates.append("org_id")
+            vals.append(resolved_org_id)
+            if org_role:
+                updates.append("role")
+                vals.append(org_role)
+        elif org_role and row["role"] != org_role and clerk_org_id:
+            updates.append("role")
+            vals.append(org_role)
+        if updates:
+            sets = ", ".join(f"{col} = ${i + 1}" for i, col in enumerate(updates))
+            vals.append(row["id"])
+            await pool.execute(
+                f"UPDATE users SET {sets}, updated_at = NOW() WHERE id = ${len(vals)}",
+                *vals,
+            )
+            row = await pool.fetchrow("SELECT * FROM users WHERE id = $1", row["id"])
+        return User(**row)
+
+    if email and link_by_email:
+        existing = await pool.fetchrow("SELECT * FROM users WHERE email = $1", email)
+        if existing:
+            await pool.execute(
+                "UPDATE users SET clerk_user_id = $1, is_admin = $2, updated_at = NOW() "
+                "WHERE id = $3",
+                clerk_user_id, is_admin, existing["id"],
+            )
+            row = await pool.fetchrow("SELECT * FROM users WHERE id = $1", existing["id"])
+            return User(**row)
+
+    org_id = resolved_org_id
+    if not org_id:
+        org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+    if not org_id:
+        org_id = await pool.fetchval(
+            "INSERT INTO organizations (name, slug, plan) "
+            "VALUES ('Default Organization', 'default', 'free') RETURNING id"
+        )
+
+    # Choose an email that won't collide with an existing (unlinked) user. When
+    # link_by_email is off and the email is already taken, isolate the new Clerk
+    # user under a synthetic address rather than taking over the existing row.
+    insert_email = email or f"{clerk_user_id}@clerk.local"
+    if email:
+        clash = await pool.fetchval("SELECT 1 FROM users WHERE email = $1", email)
+        if clash:
+            insert_email = f"{clerk_user_id}@clerk.local"
+
+    row = await pool.fetchrow(
+        """
+        INSERT INTO users (org_id, email, password_hash, full_name, role,
+                           is_active, is_admin, clerk_user_id)
+        VALUES ($1, $2, '', $3, $4, TRUE, $5, $6)
+        RETURNING *
+        """,
+        org_id,
+        insert_email,
+        None,
+        local_role,
+        is_admin,
+        clerk_user_id,
+    )
+    return User(**row)

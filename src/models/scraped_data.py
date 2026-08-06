@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ class DataType(StrEnum):
     PAGE = "page"  # Uncategorized pages — not sent to content workers
     DOCUMENT = "document"  # PDF/DOCX documents
     EXTRACTED = "extracted"  # Schema-based extraction results
+    WEBHOOK_CALLBACK = "webhook_callback"  # Inbound n8n / external callback payloads
 
 
 
@@ -58,12 +60,69 @@ class ContactMetadata(BaseModel):
     source: str = ""
 
 
+class DetectedTech(BaseModel):
+    """One technology detection, with the evidence that produced it.
+
+    `evidence_type` names the signal the match came from (header, cookie,
+    script URL, meta, dns, cert, body text, or `implies`). `recommended` is
+    the "safe to act on" flag: structural and body-text matches qualify, the
+    weaker fallback tier does not.
+    """
+
+    name: str
+    category: str
+    confidence: Literal["high", "medium", "low"]
+    evidence: str
+    evidence_type: str
+    version: str | None = None
+    recommended: bool = False
+
+
 class TechStackMetadata(BaseModel):
+    """Page-level tech signals (from the homepage's HTML/headers/cookies).
+
+    Domain-level facts — web hosting, email hosting, SSL certificate — are
+    NOT here: they don't vary per page and are resolved via DNS/TLS once per
+    domain, cached on CompanyProfile (see src/models/company.py, /api/enrich).
+    """
+
     platform: str | None = None
+    frameworks: list[str] = []
     js_libraries: list[str] = []
     analytics: list[str] = []
     marketing_tools: list[str] = []
-    frameworks: list[str] = []
+    cdn: list[str] = []
+    widgets: list[str] = []
+    web_servers: list[str] = []
+    programming_languages: list[str] = []
+    server_os: str | None = None
+    # v2.2 — additional BuiltWith-comparable categories
+    databases: list[str] = []
+    seo_tools: list[str] = []
+    security: list[str] = []
+    ecommerce: list[str] = []
+    payment_processors: list[str] = []
+    # Categories carried over from the tech-detection-accuracy catalog
+    build_tools: list[str] = []
+    fonts: list[str] = []
+    auth: list[str] = []
+    monitoring: list[str] = []
+    search: list[str] = []
+    # v2.3 — depth-program categories
+    advertising: list[str] = []
+    ab_testing: list[str] = []
+    crm: list[str] = []
+    video: list[str] = []
+    maps: list[str] = []
+    translation: list[str] = []
+    accessibility: list[str] = []
+    # Anything the catalog detected whose category has no dedicated field —
+    # including the domain-level facts (hosting, email hosting, SSL) that are
+    # reported properly on CompanyProfile.
+    other_technologies: list[str] = []
+    # Per-detection audit trail: name, category, confidence, version,
+    # evidence snippet, and which signal produced it.
+    detections: list[DetectedTech] = []
 
 
 class ResourceMetadata(BaseModel):

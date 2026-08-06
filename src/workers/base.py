@@ -1,5 +1,4 @@
 import asyncio
-import time
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse
 from uuid import UUID
@@ -7,20 +6,19 @@ from uuid import UUID
 import httpx
 import structlog
 
+from src.config.settings import get_settings
 from src.models.scraped_data import ScrapedData
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
 from src.models.template import TemplateConfig
 from src.scraping.fetcher.factory import create_fetcher
 from src.services.rate_limiter import RateLimiter
 from src.utils.retry import retry_async
+from src.workers.job_lifecycle import JobLifecycle
 
 _RETRY_ON = (
     ConnectionError, TimeoutError, OSError,
     httpx.TimeoutException, asyncio.TimeoutError,
 )
-
-# Minimum seconds between heartbeat DB writes to avoid excessive queries
-_HEARTBEAT_INTERVAL = 30
 
 
 class BaseWorker(ABC):
@@ -37,6 +35,10 @@ class BaseWorker(ABC):
         region: str | None = None,
         raw_only: bool = False,
         llm_mode: str = "off",
+        extraction_schema: dict | None = None,
+        extraction_mode: str = "css",
+        force_refresh: bool = False,
+        capture_screenshot: bool = False,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -49,11 +51,15 @@ class BaseWorker(ABC):
         self.region = region
         self.raw_only = raw_only
         self.llm_mode = llm_mode  # "off" | "fallback" | "only"
+        self.extraction_schema = extraction_schema  # custom CSS/AI schema (dict) or None
+        self.extraction_mode = extraction_mode  # "css" | "ai" | "auto"
+        self.force_refresh = force_refresh  # bypass content cache (Phase 2)
+        self.capture_screenshot = capture_screenshot  # per-page screenshot (Phase 3)
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )
         self._rate_limiter = RateLimiter()
-        self._last_heartbeat: float = 0.0
+        self._lifecycle = JobLifecycle(pool, job_id, logger=self.log)
 
         if pool is not None:
             from src.services.escalation import EscalationService
@@ -65,22 +71,13 @@ class BaseWorker(ABC):
     async def heartbeat(self) -> None:
         """Update heartbeat timestamp to signal the job is still active.
 
-        Throttled to at most once per _HEARTBEAT_INTERVAL seconds to avoid
-        excessive DB writes.
+        Throttled to at most once per 30 seconds (see
+        ``JobLifecycle.heartbeat`` / ``DEFAULT_HEARTBEAT_MIN_INTERVAL_SECONDS``)
+        to avoid excessive DB writes. Delegates to ``JobLifecycle`` so this
+        time-based throttling behavior is shared, byte-for-byte, with
+        non-``BaseWorker`` workers like ``DomainMapperWorker``.
         """
-        now = time.time()
-        if now - self._last_heartbeat < _HEARTBEAT_INTERVAL:
-            return
-        self._last_heartbeat = now
-
-        if self._pool is None:
-            return
-        try:
-            from src.db.queries.jobs import update_heartbeat
-
-            await update_heartbeat(self._pool, UUID(self.job_id))
-        except Exception as e:
-            self.log.warning("heartbeat_failed", error=str(e))
+        await self._lifecycle.heartbeat()
 
     @abstractmethod
     async def execute(self, urls: list[str]) -> list[ScrapedData]: ...
@@ -99,6 +96,8 @@ class BaseWorker(ABC):
             options.proxy_url = self.proxy_url
         if self.region:
             options.region = self.region
+        if self.capture_screenshot:
+            options.capture_screenshot = True
 
         domain = urlparse(url).netloc or self.domain
 
@@ -125,7 +124,13 @@ class BaseWorker(ABC):
 
         if self._escalation is None:
             await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
+            settings = get_settings()
+            fallback_tier = (
+                ScrapingTier.GO_HTTP
+                if settings.enable_go_fetchers and settings.go_http_fetcher_url
+                else ScrapingTier.PLAYWRIGHT
+            )
+            fetcher = create_fetcher(fallback_tier)
             result = await retry_async(
                 fetcher.fetch,
                 url,
@@ -138,60 +143,12 @@ class BaseWorker(ABC):
             return result
 
         proxy_available = bool(self.proxy_url)
-        current_tier = await self._escalation.decide_initial_tier(self.domain)
-
-        while True:
-            await self._rate_limiter.wait(domain)
-            fetcher = create_fetcher(current_tier)
-            result = await retry_async(
-                fetcher.fetch,
-                url,
-                options,
-                max_retries=2,
-                base_delay=2.0,
-                retry_on=_RETRY_ON,
-            )
-            self._rate_limiter.report_result(domain, result.status_code)
-
-            if not self._escalation.should_escalate(result):
-                await self._escalation.record_result(self.domain, result, success=True)
-                return result
-
-            next_tier = self._escalation.get_next_tier(
-                current_tier, proxy_available=proxy_available,
-            )
-
-            wait_seconds = self._escalation.get_escalation_wait(
-                current_tier, next_tier, result=result, proxy_available=proxy_available
-            )
-            reason = self._escalation.get_escalation_reason(result)
-
-            if next_tier is None:
-                self.log.info(
-                    "fetch_terminating",
-                    url=url,
-                    last_tier=current_tier.value,
-                    reason=reason,
-                    wait_seconds=wait_seconds,
-                )
-                if wait_seconds:
-                    await asyncio.sleep(wait_seconds)
-                await self._escalation.record_result(self.domain, result, success=False)
-                return result
-
-            self.log.info(
-                "fetch_escalating",
-                url=url,
-                from_tier=current_tier.value,
-                to_tier=next_tier.value,
-                reason=reason,
-                status=result.status_code,
-                html_size=len(result.html),
-                wait_seconds=wait_seconds,
-            )
-            if wait_seconds:
-                await asyncio.sleep(wait_seconds)
-            current_tier = next_tier
+        await self._rate_limiter.wait(domain)
+        result = await self._escalation.fetch_with_escalation(
+            url, domain, options=options, proxy_available=proxy_available,
+        )
+        self._rate_limiter.report_result(domain, result.status_code)
+        return result
 
     async def export_results(self, data: list[dict]) -> int:
         from src.db.pool import get_pool

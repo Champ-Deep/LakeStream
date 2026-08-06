@@ -1,11 +1,16 @@
-"""Authentication middleware for JWT validation and RLS context injection.
+"""Authentication middleware for JWT validation and request-state population.
 
 This middleware:
 1. Extracts JWT tokens from Authorization header OR access_token cookie
 2. Validates token and extracts claims (user_id, org_id, role)
-3. Sets PostgreSQL session variable for Row-Level Security: app.current_org_id
-4. Stores user context in request.state for route access
-5. Redirects unauthenticated users to /login for protected web routes
+3. Stores user context (user_id, org_id, role, is_admin) in request.state for route access
+4. Redirects unauthenticated users to /login for protected web routes
+
+Note: Row-Level Security is disabled at the database level (see
+src/db/migrations/017_disable_rls.sql). Org/user data isolation is enforced
+entirely in application code via explicit `WHERE org_id = $1` filtering in
+each query (see e.g. src/api/routes/web.py's _get_user_filter helper), not
+via a PostgreSQL session variable.
 """
 
 import asyncio
@@ -18,6 +23,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from src.config.settings import get_settings
 from src.db.pool import get_pool
 from src.services.auth import decode_access_token
 
@@ -27,6 +33,58 @@ log = structlog.get_logger()
 # Web routes that don't require authentication
 PUBLIC_PATHS = {"/login", "/ping"}
 PUBLIC_PREFIXES = ("/api/", "/static/")
+
+
+async def resolve_token_context(token: str) -> dict | None:
+    """Resolve a session token to {user_id, org_id, role, is_admin} or None.
+
+    Verifies Clerk session JWTs when auth_provider="clerk" (lazy-provisioning the
+    local user), falling back to the legacy HS256 token when enable_legacy_jwt is
+    set. This is the single verification path shared by the middleware and
+    get_current_user.
+    """
+    settings = get_settings()
+
+    if settings.auth_provider == "clerk":
+        try:
+            from src.db.queries.users import get_or_create_by_clerk_id
+            from src.services.clerk import claims_to_context, verify_clerk_token
+
+            ctx = claims_to_context(verify_clerk_token(token))
+            pool = await get_pool()
+            user = await get_or_create_by_clerk_id(
+                pool, ctx["clerk_user_id"], ctx["email"], ctx["is_admin"], ctx["role"],
+                link_by_email=settings.clerk_link_by_email,
+                clerk_org_id=ctx.get("clerk_org_id", ""),
+                clerk_org_name=ctx.get("clerk_org_slug", ""),
+                clerk_org_role=ctx.get("clerk_org_role", ""),
+                meta_org_id=ctx.get("meta_org_id", ""),
+            )
+            return {
+                "user_id": str(user.id),
+                "org_id": str(user.org_id),
+                "role": user.role,
+                "is_admin": user.is_admin,
+            }
+        except Exception as e:
+            log.debug("clerk_verify_failed", error=str(e))
+            if not settings.enable_legacy_jwt:
+                return None
+
+    # Legacy HS256 path
+    try:
+        payload = decode_access_token(token)
+        return {
+            "user_id": payload["user_id"],
+            "org_id": payload["org_id"],
+            "role": payload.get("role", "member"),
+            "is_admin": payload.get("is_admin", False),
+        }
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
+        return None
+    except Exception as e:
+        log.warning("legacy_token_error", error=str(e))
+        return None
 
 
 async def get_current_user(request: Request):
@@ -59,24 +117,20 @@ async def get_current_user(request: Request):
             "is_admin": getattr(request.state, "is_admin", False),
         }
 
-    # 2. Fallback: direct JWT bearer token check (for endpoints bypassing middleware)
+    # 2. Fallback: direct token check (Clerk or legacy) for endpoints bypassing middleware
     auth_header = request.headers.get("Authorization", "")
+    token = None
     if auth_header.startswith("Bearer "):
-        try:
-            payload = decode_access_token(auth_header.replace("Bearer ", ""))
-            return payload
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token expired",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        except jwt.InvalidTokenError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        token = auth_header.replace("Bearer ", "")
+    elif "__session" in request.cookies:
+        token = request.cookies["__session"]
+    elif "access_token" in request.cookies:
+        token = request.cookies["access_token"]
+
+    if token:
+        ctx = await resolve_token_context(token)
+        if ctx:
+            return ctx
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -85,12 +139,74 @@ async def get_current_user(request: Request):
     )
 
 
+def require_org(request: Request) -> tuple[str, str | None, bool]:
+    """Assert the request is authenticated and return (org_id, user_id, is_admin).
+
+    Use this in routes that read request.state directly (instead of
+    Depends(get_current_user)) to avoid the silent-None code paths where
+    org_id ends up as Python None and queries fall through to the default org.
+
+    Returns:
+        Tuple of (org_id, user_id, is_admin). org_id is always a string;
+        user_id may be None for API-key auth that lacks a user binding,
+        though current api_keys queries always set both.
+
+    Raises:
+        HTTPException 401: If org_id is not set on request.state.
+    """
+    org_id = getattr(request.state, "org_id", None)
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user_id = getattr(request.state, "user_id", None)
+    is_admin = bool(getattr(request.state, "is_admin", False))
+    return str(org_id), str(user_id) if user_id else None, is_admin
+
+
+def authorize_resource(
+    *,
+    resource_org_id,
+    resource_user_id,
+    caller_org_id: str,
+    caller_user_id: str | None,
+    caller_is_admin: bool,
+) -> None:
+    """Raise 404 if the caller cannot access this resource.
+
+    Authorization rules:
+      - Admins can access anything.
+      - Non-admins must match the resource's org_id.
+      - When the resource has a user_id, non-admins must also match it
+        (so users in the same org can't read each other's jobs).
+
+    We deliberately raise 404 rather than 403 so cross-tenant probing
+    can't enumerate which UUIDs exist.
+    """
+    if caller_is_admin:
+        return
+
+    if resource_org_id is not None and str(resource_org_id) != caller_org_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if (
+        resource_user_id is not None
+        and caller_user_id is not None
+        and str(resource_user_id) != caller_user_id
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
+
+
 class TenantContextMiddleware(BaseHTTPMiddleware):
     """Middleware to set request.state from JWT or session.
 
     Registered AFTER SessionMiddleware so request.session is available.
     Extracts JWT from Authorization header or access_token cookie,
-    sets PostgreSQL RLS context, and redirects unauthenticated users.
+    populates request.state with user/org context, and redirects
+    unauthenticated users. Org/user scoping is enforced by each query's
+    own WHERE clause, not by PostgreSQL RLS (which is disabled).
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -117,44 +233,33 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             except Exception as exc:
                 log.warning("api_key_auth_error", error=str(exc))
 
-        # 2. Extract token from Authorization header OR access_token cookie
+        # 2. Extract token: Authorization Bearer, Clerk __session cookie, or legacy cookie
         token = None
         if not authenticated:
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header.replace("Bearer ", "")
+            elif "__session" in request.cookies:
+                token = request.cookies["__session"]
             elif "access_token" in request.cookies:
                 token = request.cookies["access_token"]
 
         if not authenticated and token:
-            try:
-                payload = decode_access_token(token)
-                org_id = payload["org_id"]
-
-                # Set PostgreSQL RLS context
-                pool = await get_pool()
-                async with pool.acquire() as conn:
-                    await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
-
-                request.state.user_id = payload["user_id"]
-                request.state.org_id = org_id
-                request.state.role = payload["role"]
-                request.state.is_admin = payload.get("is_admin", False)
+            ctx = await resolve_token_context(token)
+            if ctx:
+                request.state.user_id = ctx["user_id"]
+                request.state.org_id = ctx["org_id"]
+                request.state.role = ctx["role"]
+                request.state.is_admin = ctx["is_admin"]
                 authenticated = True
-
-            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
+            else:
                 # Invalid/expired token — clear the bad cookie and redirect (web routes only)
                 is_web = not any(path.startswith(p) for p in PUBLIC_PREFIXES)
-                if "access_token" in request.cookies and is_web:
+                has_auth_cookie = "access_token" in request.cookies or "__session" in request.cookies
+                if is_web and has_auth_cookie:
                     response = RedirectResponse(url="/login", status_code=302)
                     response.delete_cookie("access_token", path="/")
                     return response
-            except Exception as exc:
-                log.warning(
-                    "tenant_context_error",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
         else:
             # Fall back to session-based auth (web UI + server-side login)
             try:

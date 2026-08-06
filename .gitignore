@@ -51,3 +51,7 @@ LakeB2B_Scraper_PRD_v2_Mobile_WebApp.docx
 
 # === Benchmark Results ===
 benchmarks/results.json
+
+# Third-party fingerprint reference data (GPL-3.0 — never committed; see
+# docs/TECH_CATALOG.md and scripts/tech_gap_analysis.py)
+.tech-reference/

@@ -8,6 +8,7 @@ import structlog
 from src.db.queries import jobs as job_queries
 from src.models.job import JobStatus
 from src.models.scraped_data import DataType
+from src.templates.registry import get_template
 
 # Emit a heartbeat every N seconds of active processing so the stale-job
 # cron (10-minute threshold) never kills a legitimately busy job.
@@ -33,6 +34,10 @@ async def process_scrape_job(
     raw_only: bool = False,
     region: str | None = None,
     llm_mode: str = "off",
+    extraction_schema: dict | None = None,
+    extraction_mode: str = "css",
+    force_refresh: bool = False,
+    capture_screenshot: bool = False,
 ) -> dict:
     """Main scrape job processor. Orchestrates all workers for a domain.
 
@@ -88,19 +93,31 @@ async def process_scrape_job(
             # 2. Domain mapping — discover and classify URLs
             from src.workers.domain_mapper import DomainMapperWorker
 
+            # Resolve template_id ("auto" / None / unknown id -> None, meaning
+            # "let ContentWorker auto-detect per-page from the fetched HTML").
+            resolved_template = (
+                get_template(template_id) if template_id and template_id != "auto" else None
+            )
+
             # Common kwargs for BaseWorker subclasses
             worker_kwargs = dict(
                 domain=domain, job_id=job_id, pool=pool,
                 org_id=org_id, user_id=user_id, tier_override=tier,
-                proxy_url=proxy_url, region=region,
+                proxy_url=proxy_url, region=region, template=resolved_template,
             )
 
-            # DomainMapperWorker only accepts subset of parameters (not a BaseWorker)
+            # DomainMapperWorker is intentionally not a BaseWorker subclass: it's a
+            # URL-discovery/classification worker (delegates fetching to
+            # CrawlerService, returns plain dicts, never persists) rather than a
+            # content-extraction worker, so it only takes the subset of
+            # worker_kwargs that are actually meaningful to it. See the class
+            # docstring in src/workers/domain_mapper.py for the full rationale.
             mapper = DomainMapperWorker(
                 domain=domain,
                 job_id=job_id,
                 org_id=org_id,
                 pool=pool,
+                user_id=user_id,
             )
             classified_urls = await mapper.execute(max_pages=max_pages)
 
@@ -131,7 +148,15 @@ async def process_scrape_job(
                             0, {"url": homepage, "data_type": "page", "confidence": 1.0},
                         )
 
-                content_worker = ContentWorker(**worker_kwargs, raw_only=raw_only, llm_mode=llm_mode)
+                content_worker = ContentWorker(
+                    **worker_kwargs,
+                    raw_only=raw_only,
+                    llm_mode=llm_mode,
+                    extraction_schema=extraction_schema,
+                    extraction_mode=extraction_mode,
+                    force_refresh=force_refresh,
+                    capture_screenshot=capture_screenshot,
+                )
                 results = await content_worker.execute(classified_urls, data_types)
                 total_data = len(results)
             except Exception as e:

@@ -2,11 +2,11 @@ import re
 from typing import Any
 
 import structlog
-from markdownify import markdownify as md
 from selectolax.parser import HTMLParser
 
 from src.models.scraping import FetchOptions, ScrapingTier
 from src.scraping.fetcher.factory import create_fetcher
+from src.scraping.parser.markdown import html_to_markdown
 from src.services.escalation import EscalationService
 
 log = structlog.get_logger()
@@ -26,28 +26,15 @@ class ScraperService:
         only_main_content: bool = True,
     ) -> dict[str, Any]:
         """Scrape a page and return Markdown + Metadata."""
-        # 1. Decide tier if not provided
-        if tier is None and self.escalation:
-            domain = re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
-            tier = await self.escalation.decide_initial_tier(domain)
+        domain = re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
+
+        if self.escalation:
+            # Use the single authoritative escalation loop
+            result = await self.escalation.fetch_with_escalation(url, domain)
         else:
-            tier = tier or ScrapingTier.PLAYWRIGHT
-
-        # 2. Fetch content
-        fetcher = create_fetcher(tier)
-        result = await fetcher.fetch(url, FetchOptions())
-
-        # 3. Handle Escalation if blocked
-        if self.escalation and self.escalation.should_escalate(result):
-            next_tier = self.escalation.get_next_tier(tier)
-            if next_tier:
-                self.log.info(
-                    "escalating_scrape",
-                    url=url,
-                    from_tier=tier.value,
-                    to_tier=next_tier.value,
-                )
-                return await self.scrape(url, tier=next_tier, only_main_content=only_main_content)
+            # No escalation service — fetch directly at the requested or default tier
+            fetcher = create_fetcher(tier or ScrapingTier.PLAYWRIGHT)
+            result = await fetcher.fetch(url, FetchOptions())
 
         if not result.html:
             return {"markdown": "", "metadata": {}, "success": False, "error": "No content found"}
@@ -100,16 +87,8 @@ class ScraperService:
         return body
 
     def _html_to_markdown(self, html: str) -> str:
-        """Convert HTML to clean Markdown."""
-        content = md(
-            html,
-            heading_style="ATX",
-            bullets="-",
-            strip=["script", "style", "nav", "footer", "header", "aside"],
-        )
-        # Clean up excessive newlines
-        content = re.sub(r"\n{3,}", "\n\n", content)
-        return content.strip()
+        """Convert HTML to clean Markdown (main content already isolated)."""
+        return html_to_markdown(html, find_main=False)
 
     def _extract_metadata(self, parser: HTMLParser, url: str) -> dict[str, Any]:
         """Extract OG, Schema, and meta tags."""

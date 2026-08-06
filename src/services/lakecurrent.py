@@ -46,6 +46,7 @@ class LakeCurrentClient:
         """Execute a single search query against LakeCurrent."""
         params: dict[str, str | int] = {
             "q": query,
+            "format": "json",
             "mode": mode,
             "pageno": pageno,
             "limit": limit,

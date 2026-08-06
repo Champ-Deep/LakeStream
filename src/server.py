@@ -62,8 +62,14 @@ async def root_ping() -> dict:
 #   Request → SessionMiddleware (decode cookie) → set_tenant_context (read session) → Route
 # So register set_tenant_context first, then SessionMiddleware on top.
 from src.api.middleware.auth import TenantContextMiddleware  # noqa: E402
+from src.api.middleware.rate_limit import (  # noqa: E402
+    RateLimitMiddleware,
+    UsageMeteringMiddleware,
+)
 from src.config.settings import get_settings as _get_settings  # noqa: E402
 
+# Innermost: runs after auth, sees request.state.user_id (credit check + metering)
+app.add_middleware(UsageMeteringMiddleware)
 app.add_middleware(TenantContextMiddleware)
 _settings = _get_settings()
 _is_production = bool(
@@ -71,17 +77,24 @@ _is_production = bool(
 )
 app.add_middleware(
     SessionMiddleware,
-    secret_key=_settings.jwt_secret,
+    # Distinct session secret when set; falls back to jwt_secret for compatibility.
+    secret_key=_settings.session_secret or _settings.jwt_secret,
     session_cookie="ls_session",
     https_only=_is_production,
     same_site="lax",
     max_age=86400,  # 24 hours
 )
+# Rate limiting: outside session/auth so 429s are served cheaply, inside CORS.
+app.add_middleware(RateLimitMiddleware)
 # CORS: outermost middleware (added last in Starlette LIFO) — handles preflight
-# before auth. Allows Chrome extensions + local dev + Railway domains.
+# before auth. Allows Chrome extensions + local dev + Railway domains + Clerk.
+_cors_regex = r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app"
+if _settings.clerk_domain:
+    _cors_regex += r"|https://" + _settings.clerk_domain.replace(".", r"\.")
+_cors_regex += r")"
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app)",
+    allow_origin_regex=_cors_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],

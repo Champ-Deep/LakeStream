@@ -20,6 +20,7 @@ def _mock_settings(**overrides):
         "custom_proxy_username": "",
         "custom_proxy_password": "",
         "brightdata_proxy_url": "",
+        "brightdata_isp_proxy_url": "",
         "smartproxy_url": "",
         "redis_url": "redis://localhost:6379",
     }
@@ -164,6 +165,49 @@ class TestGetProxyChain:
         }
         assert chain[2] == {"server": "http://bright:1234"}
         assert chain[3] == {"server": "http://smart:5678"}
+
+    async def test_linkedin_prefers_isp_proxy_then_residential(self):
+        """LinkedIn targets go out via the ISP zone, residential as fallback."""
+        settings = _mock_settings(
+            brightdata_proxy_url="http://residential:1234",
+            brightdata_isp_proxy_url="http://isp:4321",
+        )
+        with patch.object(mod, "get_settings", return_value=settings):
+            fetcher = mod.LakePlaywrightProxyFetcher()
+            chain = await fetcher._get_proxy_chain(
+                target_url="https://www.linkedin.com/in/someone",
+            )
+
+        assert chain == [
+            {"server": "http://isp:4321"},
+            {"server": "http://residential:1234"},
+        ]
+
+    async def test_non_linkedin_prefers_residential_then_isp(self):
+        """Everything else goes residential first, with ISP behind it."""
+        settings = _mock_settings(
+            brightdata_proxy_url="http://residential:1234",
+            brightdata_isp_proxy_url="http://isp:4321",
+        )
+        with patch.object(mod, "get_settings", return_value=settings):
+            fetcher = mod.LakePlaywrightProxyFetcher()
+            chain = await fetcher._get_proxy_chain(target_url="https://example.com/")
+
+        assert chain == [
+            {"server": "http://residential:1234"},
+            {"server": "http://isp:4321"},
+        ]
+
+    async def test_linkedin_without_isp_zone_falls_back_to_residential(self):
+        """No ISP zone configured — LinkedIn still gets the residential proxy."""
+        settings = _mock_settings(brightdata_proxy_url="http://residential:1234")
+        with patch.object(mod, "get_settings", return_value=settings):
+            fetcher = mod.LakePlaywrightProxyFetcher()
+            chain = await fetcher._get_proxy_chain(
+                target_url="https://linkedin.com/company/acme",
+            )
+
+        assert chain == [{"server": "http://residential:1234"}]
 
     async def test_region_passed_to_health_tracker(self):
         settings = _mock_settings(
