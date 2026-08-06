@@ -73,7 +73,7 @@ Enable with `ENABLE_TECH_JUDGE=true`, or per request with `{"judge": true}`.
 
 ### What ships in this repo
 
-`src/data/tech_signatures.py` — an original, hand-curated set (~130
+`src/data/tech_signatures.py` — an original, hand-curated set (268
 signatures) written for this project. It is ours, with no third-party
 provenance, and is always active.
 

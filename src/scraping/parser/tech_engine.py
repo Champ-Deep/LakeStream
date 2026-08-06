@@ -55,13 +55,20 @@ TARGET_URL = "url"
 TARGET_DNS = "dns"
 TARGET_CERT = "cert_issuer"
 TARGET_HTML = "html"
+TARGET_DOM = "dom"
 
 # A body match is weaker evidence than a structural one: the string may just be
 # prose (a customer logo, a blog post naming the tech) rather than the site
-# actually running it.
+# actually running it. A DOM selector hit is structural — an element with a
+# vendor-specific class/id exists in the document, not merely a mention in
+# prose.
 _HIGH_CONFIDENCE_TARGETS = {
     TARGET_SCRIPT, TARGET_HEADER, TARGET_COOKIE, TARGET_META, TARGET_DNS, TARGET_CERT,
+    TARGET_DOM,
 }
+
+# Confidence tier ordering for merge decisions (higher wins).
+_TIER_RANK = {"high": 2, "medium": 1, "low": 0}
 
 # Wappalyzer numeric category id -> our category name, per the upstream
 # category list. If the catalog ships its own `categories.json`, that file is
@@ -152,11 +159,55 @@ CATEGORY_TO_FIELD: dict[str, str] = {
     "build_tool": "build_tools",
     "font": "fonts",
     "auth": "auth",
+    "social_login": "auth",
     "monitoring": "monitoring",
+    "rum": "monitoring",
+    "performance": "monitoring",
+    "website_monitoring": "monitoring",
     "search": "search",
+    "search_engine": "search",
     "hosting": "hosting",
+    "paas": "hosting",
+    "iaas": "hosting",
     "email_hosting": "email_hosting",
+    "email": "email_hosting",
     "ssl_certificate": "ssl_certificate",
+    # v2.3 depth-program categories (first-class fields)
+    "advertising": "advertising",
+    "retargeting": "advertising",
+    "affiliate": "advertising",
+    "ab_testing": "ab_testing",
+    "feature_management": "ab_testing",
+    "crm": "crm",
+    "cdp": "crm",
+    "video_player": "video",
+    "media_server": "video",
+    "maps": "maps",
+    "translation": "translation",
+    "accessibility": "accessibility",
+    "static_site_generator": "frameworks",
+    "personalisation": "marketing_tools",
+    "segmentation": "marketing_tools",
+    "surveys": "widgets",
+    "font_script": "fonts",
+    "cache": "web_servers",
+}
+
+# Categories that deliberately have NO dedicated TechStackMetadata field and
+# land in `other_technologies`. The category guard test asserts every category
+# in the compiled catalog is either mapped above or listed here — so a new
+# category can never silently disappear into `other_technologies` by accident.
+INTENTIONALLY_OTHER: set[str] = {
+    "other", "misc", "saas", "documentation", "wiki", "blog", "message_board",
+    "photo_gallery", "comment_system", "editor", "rich_text_editor", "lms",
+    "issue_tracker", "database_manager", "hosting_panel", "webmail",
+    "web_server_extension", "network_device", "webcam", "printer", "paywall",
+    "build_ci", "control_system", "remote_access", "dev_tool",
+    "network_storage", "feed_reader", "document_management",
+    "landing_page_builder", "user_onboarding", "container", "reverse_proxy",
+    "load_balancer", "ui_framework", "cryptominer", "blockchain", "loyalty",
+    "buy_now_pay_later", "digital_asset_management", "content_curation",
+    "shipping", "recruitment", "reservations", "accounting",
 }
 
 _VERSION_MARKER = r"\;version:"
@@ -183,13 +234,18 @@ class Signature:
     key: str | None = None       # header name / cookie name / meta name
     implies: list[str] = field(default_factory=list)
     website: str | None = None
+    selectors: list[str] = field(default_factory=list)  # TARGET_DOM: CSS selectors
+    # Per-entry tier override ("high"|"medium"|"low"). "low" is the demotion
+    # tier for weak signals (bare vendor words): kept in the audit trail but
+    # excluded from the headline metadata fields.
+    confidence_override: str | None = None
 
 
 @dataclass
 class Detection:
     name: str
     category: str
-    confidence: str              # "high" | "medium"
+    confidence: str              # "high" | "medium" | "low"
     version: str | None = None
     evidence: str = ""
     source: str = ""             # which target produced the hit
@@ -242,6 +298,8 @@ def _native_target(sig: dict) -> tuple[str, str | None]:
         # content (a structural, high-confidence target) rather than being
         # diluted into the whole-document scan.
         return TARGET_META, sig.get("meta_name", "generator")
+    if scope == "dom":
+        return TARGET_DOM, None
     return TARGET_HTML, None
 
 
@@ -249,12 +307,27 @@ def _load_native() -> list[Signature]:
     out: list[Signature] = []
     for sig in TECH_SIGNATURES:
         target, key = _native_target(sig)
+        implies = sig.get("implies") or []
+        if isinstance(implies, str):
+            implies = [implies]
+        confidence_override = sig.get("confidence")
+        if target == TARGET_DOM:
+            # For a dom signature the signals ARE CSS selectors, not regexes.
+            out.append(Signature(
+                name=sig["name"], category=sig["category"], target=target,
+                patterns=[], selectors=list(sig["signals"]), implies=implies,
+                website=sig.get("website"), confidence_override=confidence_override,
+            ))
+            continue
         out.append(Signature(
             name=sig["name"],
             category=sig["category"],
             target=target,
             key=key,
             patterns=[_parse_pattern(p) for p in sig["signals"]],
+            implies=implies,
+            website=sig.get("website"),
+            confidence_override=confidence_override,
         ))
     return out
 
@@ -373,6 +446,25 @@ def _load_wappalyzer_catalog(
             _add(TARGET_HTML, spec.get("html"))
             _add(TARGET_CERT, spec.get("certIssuer"))
 
+            # `dom` in Wappalyzer format: a selector string, a list of them, or
+            # {selector: {exists/attributes/text/properties}}. Only the
+            # selector-exists subset is supported (text/properties need a live
+            # JS runtime); import_tech_catalog.py counts what that skips.
+            dom_spec = spec.get("dom")
+            selectors: list[str] = []
+            if isinstance(dom_spec, str):
+                selectors = [dom_spec]
+            elif isinstance(dom_spec, list):
+                selectors = [d for d in dom_spec if isinstance(d, str)]
+            elif isinstance(dom_spec, dict):
+                selectors = [k for k in dom_spec.keys() if isinstance(k, str)]
+            if selectors:
+                sigs.append(Signature(
+                    name=name, category=category, target=TARGET_DOM,
+                    patterns=[], selectors=selectors, implies=implies,
+                    website=website,
+                ))
+
             for hname, hval in (spec.get("headers") or {}).items():
                 _add(TARGET_HEADER, hval if hval else "", key=hname.lower())
             for cname, cval in (spec.get("cookies") or {}).items():
@@ -461,11 +553,30 @@ class PageSignals:
     metas: dict[str, str] = field(default_factory=dict)
     dns: dict[str, str] = field(default_factory=dict)
     cert_issuer: str = ""
+    # Whether the HTML is a rendered DOM (browser fetcher) or raw server HTML.
+    # DOM-selector matching runs either way (a selector hit on server HTML is
+    # still a true positive); the flag exists so corpus scoring can tell when
+    # JS-injected evidence was never observable for a fixture.
+    rendered: bool = True
     # Lowercased haystacks for the literal prefilter, computed ONCE per page.
     # Lowercasing a 200KB document allocates a full copy, so doing it per
     # pattern (thousands of times) dominates the entire run.
     _small_blob: str = ""
     _html_lower: str = ""
+    # Lazily-built selectolax tree for TARGET_DOM, parsed at most once per page
+    # (and only when the catalog actually contains dom signatures).
+    _dom_tree: object = field(default=None, repr=False, compare=False)
+    _dom_parse_failed: bool = False
+
+    def dom_tree(self):
+        if self._dom_tree is None and not self._dom_parse_failed and self.html:
+            try:
+                from selectolax.parser import HTMLParser
+
+                self._dom_tree = HTMLParser(self.html)
+            except Exception:
+                self._dom_parse_failed = True
+        return self._dom_tree
 
 
 _SCRIPT_SRC_RE = re.compile(r"<script[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
@@ -482,6 +593,7 @@ def extract_page_signals(
     headers: dict[str, str] | None = None,
     dns: dict[str, str] | None = None,
     cert_issuer: str = "",
+    rendered: bool = True,
 ) -> PageSignals:
     """Extract the small targeted fields from a page, once."""
     headers = {k.lower(): v for k, v in (headers or {}).items()}
@@ -505,6 +617,7 @@ def extract_page_signals(
         metas=metas,
         dns={k.lower(): v for k, v in (dns or {}).items()},
         cert_issuer=cert_issuer,
+        rendered=rendered,
     )
     signals._html_lower = (html or "").lower()
     signals._small_blob = "\n".join([
@@ -578,15 +691,15 @@ def _merge(found: dict[str, Detection], det: Detection) -> None:
     """Insert a detection, deduping case-insensitively by name.
 
     The built-in catalog and an external one both describe e.g. nginx, so keys
-    are normalised. On collision the stronger record wins: high confidence
-    beats medium, and a version beats no version.
+    are normalised. On collision the stronger record wins: high beats medium
+    beats low, and a version beats no version.
     """
     key = det.name.strip().lower()
     prev = found.get(key)
     if prev is None:
         found[key] = det
         return
-    if prev.confidence == "medium" and det.confidence == "high":
+    if _TIER_RANK.get(det.confidence, 0) > _TIER_RANK.get(prev.confidence, 0):
         det.version = det.version or prev.version
         found[key] = det
         return
@@ -604,6 +717,24 @@ def detect(signals: PageSignals) -> list[Detection]:
     found: dict[str, Detection] = {}
 
     for sig in catalog.signatures:
+        if sig.target == TARGET_DOM:
+            tree = signals.dom_tree()
+            if tree is None:
+                continue
+            for sel in sig.selectors:
+                try:
+                    node = tree.css_first(sel)
+                except Exception:
+                    continue  # malformed selector must never break the run
+                if node is not None:
+                    _merge(found, Detection(
+                        name=sig.name, category=sig.category,
+                        confidence=sig.confidence_override or "high",
+                        evidence=f"dom: {sel}"[:160], source=TARGET_DOM,
+                    ))
+                    break
+            continue
+
         hays = _haystacks(sig, signals)
         if not hays:
             continue
@@ -629,7 +760,7 @@ def detect(signals: PageSignals) -> list[Detection]:
             if hit is None:
                 continue
 
-            confidence = (
+            confidence = sig.confidence_override or (
                 "high" if sig.target in _HIGH_CONFIDENCE_TARGETS and pat.confidence >= 75
                 else "medium"
             )
@@ -693,6 +824,13 @@ def detections_to_metadata(detections: list[Detection]) -> dict:
         "auth": [],
         "monitoring": [],
         "search": [],
+        "advertising": [],
+        "ab_testing": [],
+        "crm": [],
+        "video": [],
+        "maps": [],
+        "translation": [],
+        "accessibility": [],
         "other_technologies": [],
         "detections": [],
     }
@@ -709,7 +847,12 @@ def detections_to_metadata(detections: list[Detection]) -> dict:
         label = f"{det.name} {det.version}".strip() if det.version else det.name
         field_name = CATEGORY_TO_FIELD.get(det.category)
 
-        if field_name in ("platform", "server_os"):
+        if det.confidence == "low":
+            # The demotion tier: weak evidence (e.g. a bare vendor word in
+            # body text) is preserved in the audit trail below but never
+            # asserted in the headline fields.
+            pass
+        elif field_name in ("platform", "server_os"):
             current = scalar_confidence.get(field_name)
             if out[field_name] is None or (
                 current == "medium" and det.confidence == "high"

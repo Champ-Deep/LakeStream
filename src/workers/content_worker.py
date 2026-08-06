@@ -301,10 +301,14 @@ class ContentWorker(BaseWorker):
             if data_type == DataType.PRICING and "pricing" in data_types:
                 records.extend(self._extract_pricing(url, html, rich_meta))
 
-            # Tech stack: scan every page, merge signals across the site
+            # Tech stack: scan every page, merge signals across the site.
+            # DNS/TLS evidence is domain-level, resolved once per job and
+            # reused for every page (see _get_domain_intel).
             if "tech_stack" in data_types:
+                dns_records, cert_issuer = await self._get_domain_intel()
                 tech_rec = self._extract_tech_stack(
                     url, html, fetch_result.headers, rich_meta,
+                    dns=dns_records, cert_issuer=cert_issuer,
                 )
                 if tech_rec:
                     records.append(tech_rec)
@@ -483,10 +487,52 @@ class ContentWorker(BaseWorker):
         html: str,
         headers: dict[str, str],
         rich_meta: dict,
+        dns: dict[str, str] | None = None,
+        cert_issuer: str = "",
     ) -> dict | None:
         return extractors.extract_tech_stack(
             self.job_id, self.domain, url, html, headers, rich_meta,
+            dns=dns, cert_issuer=cert_issuer,
         )
+
+    async def _get_domain_intel(self) -> tuple[dict[str, str], str]:
+        """DNS records + TLS cert issuer for this job's domain, resolved once.
+
+        Cached on the worker instance so a 500-page job pays for exactly one
+        DNS+TLS round trip. Timeout-bounded and failure-tolerant: scraping
+        must never block on a slow resolver — worst case tech detection just
+        loses its DNS/cert evidence for this job.
+        """
+        cached = getattr(self, "_domain_intel", None)
+        if cached is not None:
+            return cached
+
+        dns_records: dict[str, str] = {}
+        cert_issuer = ""
+        try:
+            import asyncio
+
+            from src.services.dns_intel import lookup_domain_intel
+            from src.services.ssl_intel import inspect_certificate
+
+            dns_intel, ssl_intel = await asyncio.wait_for(
+                asyncio.gather(
+                    lookup_domain_intel(self.domain),
+                    inspect_certificate(self.domain),
+                ),
+                timeout=10.0,
+            )
+            dns_records = {
+                "ns": " ".join(dns_intel.nameservers),
+                "mx": " ".join(dns_intel.mx_hosts),
+                "a": " ".join(dns_intel.a_records),
+            }
+            cert_issuer = ssl_intel.issuer or ""
+        except Exception as e:
+            log.debug("domain_intel_failed", domain=self.domain, error=str(e))
+
+        self._domain_intel = (dns_records, cert_issuer)
+        return self._domain_intel
 
     def _extract_resources(
         self, url: str, html: str, rich_meta: dict,

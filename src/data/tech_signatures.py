@@ -9,13 +9,33 @@ precompiles it once per process. Each entry:
         "category": "web_server",
         "signals": [r"nginx"],       # regex patterns, case-insensitive
         "scope": "header",          # "html" (default) | "header" | "cookie"
+                                    #   | "meta" | "dom"
         "header_name": "server",    # optional: restrict to one header key
+        "meta_name": "generator",   # optional: restrict to one meta tag
+        # --- optional depth-program keys (v2.3) ---
+        "implies": ["PHP"],         # technologies this one implies (inferred,
+                                    # reported at medium confidence)
+        "website": "https://nginx.org",
+        "confidence": "low",        # per-entry tier override; "low" keeps the
+                                    # signal in the detections audit trail but
+                                    # OUT of the headline metadata fields —
+                                    # the demotion tier for weak bare-word
+                                    # signals that are too useful to delete
     }
 
 `signals` are matched with `re.search` (case-insensitive), so a plain word
 like "wordpress" still matches as a literal substring. A `scope` of "header"
 without a `header_name` matches header names as well as values, which is how
 presence-only signals (`cf-ray`, `x-amz-cf-id`) are expressed.
+
+With `scope: "dom"` the signals are CSS selectors, not regexes: the entry
+matches when `selectolax` finds the selector in the document (existence
+semantics, reported as structural/high confidence). Use it for markup
+fingerprints that substring matching gets wrong — e.g. a vendor-specific
+class that collides with unrelated prefixes.
+
+Version capture uses the Wappalyzer suffix syntax inside a signal:
+r"jquery[.-]([\\d.]+)\\.min\\.js\\;version:\\1".
 
 Several vendors appear more than once, with a different scope per entry — a
 structural match (header/cookie) is reported at high confidence and a body

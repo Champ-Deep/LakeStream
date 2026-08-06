@@ -108,6 +108,14 @@ class TechStackMetadata(BaseModel):
     auth: list[str] = []
     monitoring: list[str] = []
     search: list[str] = []
+    # v2.3 — depth-program categories
+    advertising: list[str] = []
+    ab_testing: list[str] = []
+    crm: list[str] = []
+    video: list[str] = []
+    maps: list[str] = []
+    translation: list[str] = []
+    accessibility: list[str] = []
     # Anything the catalog detected whose category has no dedicated field —
     # including the domain-level facts (hosting, email hosting, SSL) that are
     # reported properly on CompanyProfile.

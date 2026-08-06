@@ -237,6 +237,8 @@ def extract_tech_stack(
     html: str,
     headers: dict[str, str],
     rich_meta: dict,
+    dns: dict[str, str] | None = None,
+    cert_issuer: str = "",
 ) -> dict | None:
     """Tech stack for a page, via the precompiled catalog engine.
 
@@ -244,8 +246,13 @@ def extract_tech_stack(
     confidence, version and evidence for each match. Every field the engine
     folds into is copied across, so adding a category to the catalog does not
     require touching this function.
+
+    dns / cert_issuer are optional domain-level evidence (resolved once per
+    domain by the worker); without them DNS/cert signatures simply can't fire.
     """
-    signals = extract_page_signals(html, url=url, headers=headers)
+    signals = extract_page_signals(
+        html, url=url, headers=headers, dns=dns, cert_issuer=cert_issuer
+    )
     detected = detections_to_metadata(detect_tech(signals))
     metadata = TechStackMetadata(**{
         k: v for k, v in detected.items() if k in TechStackMetadata.model_fields

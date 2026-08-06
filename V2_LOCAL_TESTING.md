@@ -175,7 +175,7 @@ only medium-confidence body matches and can *remove* a false positive — it can
 never add a technology, never overrule a high-confidence structural match, and
 never fail the pipeline.
 
-**Bring your own catalog.** The built-in curated set (~130 signatures) always
+**Bring your own catalog.** The built-in curated set (268 entries, 220 technologies) always
 loads. Point `TECH_CATALOG_PATH` at a Wappalyzer-format catalog to add
 thousands more — it is loaded at runtime and deliberately not vendored into
 this repo, because the maintained community forks are **GPL-3.0** and
@@ -209,7 +209,7 @@ certificate, and CDN.
   `ssl_san_domains` — on `CompanyProfile`, via `/api/enrich`.
 
 **Detection method:** an original, hand-curated regex fingerprint database
-(`src/data/tech_signatures.py`, ~130 signatures) matched against HTML body,
+(`src/data/tech_signatures.py`, 268 entries) matched against HTML body,
 response headers (by name AND value — e.g. the bare presence of a `CF-RAY`
 header signals Cloudflare even though its value is just a request ID), and
 `Set-Cookie` cookie names (e.g. `PHPSESSID` → PHP, `ASP.NET_SessionId` →
@@ -219,7 +219,7 @@ certificate comes from a real TLS handshake (`src/services/ssl_intel.py` —
 stdlib `ssl`/`socket` + `cryptography` for the unverified-cert fallback).
 
 **Known limitations, stated honestly:**
-- The fingerprint set is hand-curated (~130 signatures across CMS, analytics,
+- The fingerprint set is hand-curated (268 entries across CMS, analytics,
   marketing, frameworks, CDN, JS libraries, widgets, web servers, programming
   languages) — not the thousands of entries a mature commercial database like
   BuiltWith's has built up over years. Long-tail/niche technologies will miss.

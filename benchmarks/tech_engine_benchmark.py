@@ -7,6 +7,11 @@ companies take in the *detection* stage (excluding network fetch)?
     TECH_CATALOG_PATH=/path/to/catalog \
         python -m benchmarks.tech_engine_benchmark 200000
 
+As a CI/wave gate, --max-ms-per-page makes the run fail (exit 1) when the
+per-page detection cost exceeds the budget:
+
+    python -m benchmarks.tech_engine_benchmark --max-ms-per-page 300
+
 The engine matches each signature only against the small field it targets
 (script URLs, a named header, a cookie, a meta tag), with a literal prefilter
 in front of the regex. That is what keeps a multi-thousand-signature catalog
@@ -52,7 +57,13 @@ def build_page(size_kb: int = 200) -> str:
 
 
 def main() -> None:
-    target_n = int(sys.argv[1]) if len(sys.argv) > 1 else 100_000
+    args = sys.argv[1:]
+    max_ms: float | None = None
+    if "--max-ms-per-page" in args:
+        idx = args.index("--max-ms-per-page")
+        max_ms = float(args[idx + 1])
+        args = args[:idx] + args[idx + 2:]
+    target_n = int(args[0]) if args else 100_000
     iterations = 300
 
     catalog = get_catalog()
@@ -86,6 +97,10 @@ def main() -> None:
     print()
     print("Note: excludes network fetch, which dominates a real run and is")
     print("bounded by concurrency + politeness, not by this stage.")
+
+    if max_ms is not None and per_page_ms > max_ms:
+        print(f"\nFAIL: {per_page_ms:.2f} ms/page exceeds the {max_ms:.0f} ms budget.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
