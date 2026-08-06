@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from src.api.middleware.auth import require_org
 from src.db.pool import get_pool
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -28,19 +29,13 @@ class SettingsResponse(BaseModel):
     llm_model: str
 
 
-async def _get_org_id(request: Request, pool) -> str | None:
-    """Get org_id from request or fall back to default org."""
-    org_id = getattr(request.state, "org_id", None)
-    if not org_id:
-        org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
-    return org_id
-
-
 @router.get("/", response_model=SettingsResponse)
 async def get_settings(request: Request):
     """Get org settings (proxy + webhook configuration)."""
+    # Strictly caller-scoped: an unauthenticated request must 401, never fall
+    # back to the default org (PATCH writes secrets like openrouter_api_key).
+    org_id, _, _ = require_org(request)
     pool = await get_pool()
-    org_id = await _get_org_id(request, pool)
 
     row = await pool.fetchrow(
         "SELECT proxy_url, webhook_url, webhook_auto_send, webhook_include_metadata, "
@@ -72,8 +67,8 @@ async def get_settings(request: Request):
 @router.patch("/", response_model=SettingsResponse)
 async def update_settings(request: Request, body: SettingsUpdate):
     """Update org settings (proxy URL, webhook config)."""
+    org_id, _, _ = require_org(request)
     pool = await get_pool()
-    org_id = await _get_org_id(request, pool)
 
     # Build dynamic SET clause for only provided fields
     sets = ["updated_at = NOW()"]

@@ -797,14 +797,68 @@ def main():
     if transport == "http":
         import uvicorn
 
+        from src.config.settings import get_settings
+
         port = 8001
         if "--port" in sys.argv:
             idx = sys.argv.index("--port")
             if idx + 1 < len(sys.argv):
                 port = int(sys.argv[idx + 1])
-        uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=port)
+
+        settings = get_settings()
+        app = mcp.streamable_http_app()
+        if settings.mcp_require_api_key:
+            app = _ApiKeyGate(app)
+        else:
+            print("WARNING: MCP_REQUIRE_API_KEY=false — the MCP HTTP endpoint is unauthenticated.")
+        uvicorn.run(app, host=settings.mcp_http_host, port=port)
     else:
         mcp.run(transport="stdio")
+
+
+class _ApiKeyGate:
+    """ASGI wrapper requiring a valid LakeStream API key on the HTTP transport.
+
+    stdio transport (Claude Desktop) never passes through here. Uses the same
+    SHA-256 `ls_` key lookup as TenantContextMiddleware so keys are managed in
+    one place.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        api_key = headers.get("x-api-key", "")
+        if api_key and await self._key_valid(api_key):
+            await self.app(scope, receive, send)
+            return
+
+        body = json.dumps({"error": "A valid X-API-Key header is required."}).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [(b"content-type", b"application/json")],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+    @staticmethod
+    async def _key_valid(api_key: str) -> bool:
+        import hashlib
+
+        from src.db.pool import get_pool
+        from src.db.queries.api_keys import get_api_key_by_hash
+
+        try:
+            pool = await get_pool()
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+            return await get_api_key_by_hash(pool, key_hash) is not None
+        except Exception:
+            return False
 
 
 if __name__ == "__main__":

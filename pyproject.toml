@@ -23,6 +23,7 @@ dependencies = [
     "bcrypt>=4.2.0",
     "pyjwt>=2.10.0",
     "itsdangerous>=2.1.0",
+    "svix>=1.45.0",
     "python-multipart>=0.0.9",
     # [fetchers]: src/scraping/fetcher/lake_lightpanda_fetcher.py imports
     # scrapling.fetchers unconditionally, which needs curl_cffi — that's an

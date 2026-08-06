@@ -7,8 +7,9 @@ scraped markdown/data in one hop once the job completes.
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from src.api.middleware.auth import authorize_resource, require_org
 from src.db.pool import get_pool
 from src.db.queries import jobs as job_queries
 from src.db.queries import scraped_data as data_queries
@@ -17,11 +18,19 @@ router = APIRouter(prefix="/jobs")
 
 
 @router.get("/{job_id}")
-async def get_job_status(job_id: UUID) -> dict:
+async def get_job_status(request: Request, job_id: UUID) -> dict:
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
     job = await job_queries.get_job(pool, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    authorize_resource(
+        resource_org_id=job.org_id,
+        resource_user_id=job.user_id,
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
 
     data_count = await data_queries.count_scraped_data_by_job(pool, job_id)
     return {

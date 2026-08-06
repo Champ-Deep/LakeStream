@@ -2,7 +2,7 @@
 
 
 import structlog
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.api.routes.web._shared import (
@@ -43,6 +43,15 @@ async def login_submit(
     password: str = Form(...),
 ):
     """Handle login form submission."""
+    from src.config.settings import get_settings
+
+    if get_settings().auth_provider == "clerk":
+        # The Clerk login page never renders this form; a direct POST is a
+        # stale client or a probe for the retired password path.
+        raise HTTPException(
+            status_code=410, detail="Password login is disabled; sign in with Clerk."
+        )
+
     from src.db.pool import get_pool
     from src.db.queries.users import get_user_by_email
     from src.services.auth import verify_password
@@ -89,7 +98,11 @@ async def login_submit(
 
 @router.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request):
-    """Signup page."""
+    """Signup page. Under Clerk, sign-up lives in the Clerk widget on /login."""
+    from src.config.settings import get_settings
+
+    if get_settings().auth_provider == "clerk":
+        return RedirectResponse(url="/login", status_code=302)
     if request.session.get("user_id"):
         return RedirectResponse(url="/", status_code=302)
     return get_templates().TemplateResponse(
@@ -107,6 +120,11 @@ async def signup_submit(
     org_name: str = Form(...),
 ):
     """Handle signup form submission."""
+    from src.config.settings import get_settings
+
+    if get_settings().auth_provider == "clerk":
+        raise HTTPException(status_code=410, detail="Signup is handled by Clerk; use /login.")
+
     from src.db.pool import get_pool
     from src.db.queries.users import create_organization, create_user, get_user_by_email
     from src.services.auth import hash_password

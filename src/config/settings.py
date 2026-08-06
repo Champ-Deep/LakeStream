@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     # OFF by default: only enable for a one-time migration of existing users,
     # and only if Clerk email verification is enforced (else it risks takeover).
     clerk_link_by_email: bool = False
+    # Svix signing secret for the Clerk webhook endpoint (/api/webhooks/clerk).
+    # Empty = webhook endpoint refuses all deliveries (503).
+    clerk_webhook_signing_secret: str = ""
+
+    # MCP server over HTTP transport requires an X-API-Key by default; stdio
+    # transport (Claude Desktop) is unaffected. Only disable on a loopback-only
+    # deployment you fully trust.
+    mcp_require_api_key: bool = True
+    mcp_http_host: str = "127.0.0.1"
 
     # Email notifications (ChampMail engine)
     mail_engine_url: str = "http://localhost:8025"

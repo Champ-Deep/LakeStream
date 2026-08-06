@@ -66,6 +66,10 @@ async def settings_page(request: Request):
     except Exception:
         pass  # Settings page works without proxy info
 
+    from src.api.routes.web._shared import _clerk_frontend_api
+    from src.config.settings import get_settings
+
+    cfg = get_settings()
     return get_templates().TemplateResponse(
         "pages/settings/index.html",
         {
@@ -73,6 +77,9 @@ async def settings_page(request: Request):
             "active_page": "settings",
             "webhook_trigger_url": webhook_trigger_url,
             "proxy_url": proxy_url,
+            "auth_provider": cfg.auth_provider,
+            "clerk_publishable_key": cfg.clerk_publishable_key,
+            "clerk_frontend_api": _clerk_frontend_api(cfg.clerk_publishable_key),
         },
     )
 

@@ -108,6 +108,13 @@ async def run_migrations() -> None:
 
 async def _ensure_admin_password(pool: asyncpg.Pool) -> None:
     """Set/fix admin password from ADMIN_PASSWORD env var on every boot."""
+    # Under Clerk there is no local password auth and admin status is granted
+    # only via Clerk publicMetadata — rehashing ADMIN_PASSWORD or forcing
+    # is_admin here would silently resurrect the legacy backdoor on every boot.
+    if os.environ.get("AUTH_PROVIDER", "legacy").lower() == "clerk":
+        print("AUTH_PROVIDER=clerk — skipping admin password seed.")
+        return
+
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lakeb2b.internal")
     admin_password = os.environ.get("ADMIN_PASSWORD", "LakeB2B_admin!")
 
