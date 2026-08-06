@@ -256,3 +256,45 @@ class TestStructuralBeatsBodyOnConflict:
         )
         det = one(html, "WordPress")
         assert det.confidence == "high"
+
+
+class TestDepthProgramRegressions:
+    """Corpus-driven fixes (v2.3). Each test names the live site that produced
+    the original false positive or coverage gap."""
+
+    def test_webflow_not_detected_from_wf_page_prefix_collision(self):
+        # hubspot.com: an unrelated web-font loader defines .wf-page-header —
+        # the old bare "wf-page" signal claimed Webflow from it.
+        html = """<html><head><style>
+        .wf-page-header{--wf-page-header-height: calc(100dvh - 10px);width:100%}
+        </style></head><body></body></html>"""
+        assert "Webflow" not in names(html)
+
+    def test_webflow_detected_from_real_install_markers(self):
+        html = '<html data-wf-page="abc123" data-wf-site="def456"><body></body></html>'
+        det = one(html, "Webflow")
+        assert det.confidence == "high"  # dom selector = structural evidence
+
+    def test_svelte_not_detected_from_docs_link(self):
+        # vercel.com: a footer nav link to Vercel's own SvelteKit docs page.
+        html = ('<html><body><a href="/docs/frameworks/full-stack/sveltekit">'
+                "SvelteKit</a> and svelte guides</body></html>")
+        found = names(html)
+        assert "Svelte" not in found
+        assert "SvelteKit" not in found
+
+    def test_svelte_detected_from_scoped_class_hashes(self):
+        html = '<html><body><div class="card svelte-1x8fj2p">hi</div></body></html>'
+        assert "Svelte" in names(html)
+
+    def test_sveltekit_build_path_implies_svelte(self):
+        html = '<script src="/_app/immutable/entry/start.abc123.js"></script>'
+        found = names(html)
+        assert "SvelteKit" in found
+        assert "Svelte" in found  # via implies
+
+    def test_hugo_detected_from_generator(self):
+        # ghost.org: the marketing site is Hugo-built and announces it; the
+        # catalog previously had no Hugo entry at all.
+        det = one('<meta name="generator" content="Hugo 0.119.0">', "Hugo")
+        assert det.confidence == "high"

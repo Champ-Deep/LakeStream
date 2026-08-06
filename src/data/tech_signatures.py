@@ -76,7 +76,12 @@ TECH_SIGNATURES: list[dict] = [
     # wp-json are asset-path signals unique to an actual install.
     {"name": "WordPress", "category": "cms", "signals": ["wp-content", "wp-includes", "wp-json"]},
     {"name": "HubSpot", "category": "cms", "signals": ["js.hs-scripts.com", "hubspot", r"\.hs-", "hbspt"]},
-    {"name": "Webflow", "category": "cms", "signals": ["webflow.com", "wf-page", "wf-section"]},
+    # wf-page/wf-section prefixes dropped: they collided with an unrelated
+    # .wf-page-header web-font class, reproduced live on hubspot.com. Real
+    # Webflow installs mark the <html> tag (data-wf-page/data-wf-site) and
+    # serve assets from website-files.com.
+    {"name": "Webflow", "category": "cms", "signals": ["website-files.com", "data-wf-page", "data-wf-site", "w-webflow-badge"]},
+    {"name": "Webflow", "category": "cms", "signals": ["html[data-wf-site]", "html[data-wf-page]"], "scope": "dom"},
     {"name": "Drupal", "category": "cms", "signals": ["/sites/default/", "drupal.settings"]},
     {"name": "Squarespace", "category": "cms", "signals": ["squarespace.com", "sqsp", "static.squarespace"]},
     {"name": "Wix", "category": "cms", "signals": ["wix.com", "wixsite.com", "parastorage.com"]},
@@ -208,8 +213,12 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "Next.js", "category": "framework", "signals": ["__next_data__", "_next/static", "next/dist"]},
     {"name": "Nuxt", "category": "framework", "signals": ["__nuxt", r"nuxt\.js"]},
     {"name": "Gatsby", "category": "framework", "signals": ["gatsby", "/page-data/"]},
-    {"name": "Svelte", "category": "framework", "signals": ["svelte", "__svelte"]},
-    {"name": "SvelteKit", "category": "framework", "signals": ["sveltekit", "_app/immutable/"]},
+    # Bare "svelte"/"sveltekit" dropped: matched a footer nav link to Vercel's
+    # own SvelteKit docs page, reproduced live on vercel.com. Real Svelte
+    # output carries scoped class hashes; real SvelteKit output carries its
+    # build path and data-sveltekit-* attributes.
+    {"name": "Svelte", "category": "framework", "signals": [r"class=\"[^\"]*\bsvelte-[a-z0-9]{4,}", "__svelte"]},
+    {"name": "SvelteKit", "category": "framework", "signals": ["_app/immutable/", "data-sveltekit-"], "implies": ["Svelte"]},
     {"name": "Ember.js", "category": "framework", "signals": ["ember.js", "data-ember-", "ember-cli"]},
     {"name": "Backbone.js", "category": "framework", "signals": ["backbone.js", "backbone.min"]},
     {"name": "Alpine.js", "category": "framework", "signals": ["alpine.js", "x-data="]},
@@ -235,6 +244,11 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "GraphQL", "category": "framework", "signals": ["graphql", "/graphql", "__graphql"]},
     {"name": "Next.js", "category": "framework", "signals": [r"next\.js"], "scope": "meta", "meta_name": "generator"},
     {"name": "Gatsby", "category": "framework", "signals": ["gatsby"], "scope": "meta", "meta_name": "generator"},
+    # Corpus find: ghost.org's marketing site announces itself as Hugo via
+    # <meta generator> and the catalog had no Hugo entry at all.
+    {"name": "Hugo", "category": "static_site_generator", "signals": ["hugo"], "scope": "meta", "meta_name": "generator"},
+    {"name": "Jekyll", "category": "static_site_generator", "signals": ["jekyll"], "scope": "meta", "meta_name": "generator"},
+    {"name": "Eleventy", "category": "static_site_generator", "signals": ["eleventy"], "scope": "meta", "meta_name": "generator"},
 
     # ---- JS libraries ----
     {"name": "jQuery", "category": "js_library", "signals": ["jquery", "jquery.min.js"]},

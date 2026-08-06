@@ -711,9 +711,14 @@ def _merge(found: dict[str, Detection], det: Detection) -> None:
         prev.category = det.category
 
 
-def detect(signals: PageSignals) -> list[Detection]:
-    """Run the full catalog against one page's extracted signals."""
-    catalog = get_catalog()
+def detect(signals: PageSignals, catalog: _Catalog | None = None) -> list[Detection]:
+    """Run the full catalog against one page's extracted signals.
+
+    `catalog` overrides the process-wide compiled catalog — used by offline
+    tooling (gap analysis, corpus scoring) to run an alternative signature set
+    without mutating global state. Production callers never pass it.
+    """
+    catalog = catalog or get_catalog()
     found: dict[str, Detection] = {}
 
     for sig in catalog.signatures:
