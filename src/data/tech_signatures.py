@@ -169,7 +169,7 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "ZoomInfo", "category": "marketing", "signals": ["zoominfo.com", "ws.zoominfo.com"]},
     {"name": "6sense", "category": "marketing", "signals": ["6sense.com", "j.6sc.co"]},
     {"name": "Clearbit", "category": "marketing", "signals": ["clearbit.com", "x.clearbitjs.com"]},
-    {"name": "Optimizely", "category": "marketing", "signals": [r"optimizely\.com", r"cdn\.optimizely\.com", "optimizelyEndUserId"]},
+    {"name": "Optimizely", "category": "ab_testing", "signals": [r"optimizely\.com", r"cdn\.optimizely\.com", "optimizelyEndUserId"]},
     {"name": "VWO", "category": "marketing", "signals": [r"visualwebsiteoptimizer\.com", "vwo_", r"dev\.visualwebsiteoptimizer"]},
     {"name": "Braze", "category": "marketing", "signals": [r"braze\.com", r"sdk\.iad-03\.braze\.com"]},
     {"name": "Iterable", "category": "marketing", "signals": [r"iterable\.com", r"js\.iterable\.com"]},
@@ -267,8 +267,8 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "Socket.io", "category": "js_library", "signals": [r"socket\.io", r"socket\.io\.min"]},
     {"name": "Lottie", "category": "js_library", "signals": ["lottie", "lottie-player", r"lottie\.min"]},
     {"name": "Framer Motion", "category": "js_library", "signals": ["framer-motion", r"framer\.com"]},
-    {"name": "Mapbox", "category": "js_library", "signals": ["mapbox-gl", r"api\.mapbox\.com"]},
-    {"name": "Leaflet", "category": "js_library", "signals": [r"leaflet\.js", r"leaflet\.css"]},
+    {"name": "Mapbox", "category": "maps", "signals": ["mapbox-gl", r"api\.mapbox\.com"]},
+    {"name": "Leaflet", "category": "maps", "signals": [r"leaflet\.js", r"leaflet\.css"]},
     {"name": "Highcharts", "category": "js_library", "signals": [r"highcharts\.com", r"highcharts\.js"]},
 
     # ---- Build tools ----
@@ -399,4 +399,107 @@ TECH_SIGNATURES: list[dict] = [
     {"name": "Braintree", "category": "payment_processor", "signals": [r"braintreegateway\.com", "braintree-api"]},
     {"name": "Square", "category": "payment_processor", "signals": [r"squareup\.com", r"square\.js"]},
     {"name": "Adyen", "category": "payment_processor", "signals": [r"adyen\.com", "checkoutshopper-"]},
+
+    # ========================================================================
+    # Wave 1 (v2.3 depth program): high-prevalence technologies, authored from
+    # vendor docs / live inspection. Evidence is vendor-unique scriptSrc, a
+    # cookie name, or a DOM selector — structural signals with a low false-
+    # positive risk. See docs/adding-tech-signatures.md.
+    # ========================================================================
+
+    # ---- Advertising / retargeting pixels (scriptSrc = vendor-unique) ----
+    {"name": "Google Ads", "category": "advertising", "signals": [r"googleadservices\.com/pagead", r"googlesyndication\.com", "google_conversion"]},
+    {"name": "Meta Pixel", "category": "advertising", "signals": [r"connect\.facebook\.net/[^/]+/fbevents\.js", "fbq\\(", r"facebook\.com/tr\?"]},
+    {"name": "LinkedIn Insight Tag", "category": "advertising", "signals": [r"snap\.licdn\.com/li\.lms-analytics", "_linkedin_partner_id"]},
+    {"name": "Twitter Pixel", "category": "advertising", "signals": [r"static\.ads-twitter\.com/uwt\.js", "twq\\("]},
+    {"name": "TikTok Pixel", "category": "advertising", "signals": [r"analytics\.tiktok\.com", "ttq\\."]},
+    {"name": "Pinterest Tag", "category": "advertising", "signals": [r"s\.pinimg\.com/ct", "pintrk\\("]},
+    {"name": "Reddit Pixel", "category": "advertising", "signals": [r"redditstatic\.com/ads", "rdt\\("]},
+    {"name": "Criteo", "category": "advertising", "signals": [r"static\.criteo\.net", "criteo_q"]},
+    {"name": "The Trade Desk", "category": "advertising", "signals": [r"js\.adsrvr\.org"]},
+    {"name": "Taboola", "category": "advertising", "signals": [r"cdn\.taboola\.com", "_taboola"]},
+    {"name": "Outbrain", "category": "advertising", "signals": [r"outbrain\.com/outbrain\.js", "obApi"]},
+    {"name": "Google AdSense", "category": "advertising", "signals": [r"pagead2\.googlesyndication\.com/pagead/js/adsbygoogle", "adsbygoogle"]},
+    {"name": "Bing Ads", "category": "advertising", "signals": [r"bat\.bing\.com/bat\.js", r"clarity\.ms/tag"]},
+    {"name": "Quantcast", "category": "advertising", "signals": [r"quantserve\.com/quant\.js", "quantcast"]},
+
+    # ---- Tag managers ----
+    {"name": "Google Tag Manager", "category": "tag_manager", "signals": [r"googletagmanager\.com/gtm\.js", r"googletagmanager\.com/gtag/js"]},
+    {"name": "Adobe Launch", "category": "tag_manager", "signals": [r"assets\.adobedtm\.com", r"launch-[a-z0-9]+\.min\.js"]},
+    {"name": "Segment", "category": "tag_manager", "signals": [r"cdn\.segment\.com/analytics\.js"]},
+    {"name": "Piwik PRO", "category": "tag_manager", "signals": [r"\.piwik\.pro/", "ppms.php"]},
+
+    # ---- A/B testing / feature flags ----
+    # (Optimizely is recategorized to ab_testing above, not duplicated here.)
+    {"name": "VWO", "category": "ab_testing", "signals": [r"dev\.visualwebsiteoptimizer\.com", "_vwo_"]},
+    {"name": "Google Optimize", "category": "ab_testing", "signals": [r"optimize\.google\.com", r"googleoptimize\.com"]},
+    {"name": "AB Tasty", "category": "ab_testing", "signals": [r"try\.abtasty\.com", "ABTasty"]},
+    {"name": "LaunchDarkly", "category": "ab_testing", "signals": [r"app\.launchdarkly\.com", r"clientstream\.launchdarkly\.com", r"events\.launchdarkly\.com"]},
+    {"name": "Split.io", "category": "ab_testing", "signals": [r"sdk\.split\.io"]},
+    {"name": "Statsig", "category": "ab_testing", "signals": [r"featuregates\.org", r"api\.statsig\.com"]},
+    {"name": "Kameleoon", "category": "ab_testing", "signals": [r"\.kameleoon\.(?:com|eu)", "kameleoon"]},
+
+    # ---- CRM / marketing automation (scriptSrc / cookie) ----
+    # (HubSpot stays cms — a multi-product vendor; its marketing/CRM footprint
+    # is covered by the existing "HubSpot" + "HubSpot Marketing" entries.)
+    {"name": "Salesforce Pardot", "category": "crm", "signals": [r"pi\.pardot\.com", r"pardot\.com/pd\.js", "visitor_id"]},
+    {"name": "Marketo", "category": "crm", "signals": [r"munchkin\.marketo(?:static)?\.(?:com|net)", "Munchkin.init"]},
+    {"name": "Salesforce", "category": "crm", "signals": [r"salesforceliveagent", r"force\.com", r"\.salesforce\.com/embeddedservice"]},
+    {"name": "Intercom", "category": "crm", "signals": [r"widget\.intercom\.io", r"js\.intercomcdn\.com", "intercomSettings"]},
+    {"name": "Drift", "category": "crm", "signals": [r"js\.driftt\.com", "drift.load"]},
+    {"name": "ActiveCampaign", "category": "crm", "signals": [r"trackcmp\.net", r"\.activehosted\.com"]},
+    {"name": "Klaviyo", "category": "crm", "signals": [r"static\.klaviyo\.com", r"a\.klaviyo\.com", "klaviyo"]},
+
+    # ---- Chat / support widgets ----
+    {"name": "Zendesk Widget", "category": "widget", "signals": [r"static\.zdassets\.com/ekr", r"widget\.zendesk\.com", "zESettings"]},
+    {"name": "Freshchat", "category": "widget", "signals": [r"wchat\.freshchat\.com", "fcWidget"]},
+    {"name": "LivePerson", "category": "widget", "signals": [r"lpcdn\.lpsnmedia\.net", "liveperson"]},
+    {"name": "HelpScout Beacon", "category": "widget", "signals": [r"beacon-v2\.helpscout\.net", "Beacon("]},
+    {"name": "Gorgias", "category": "widget", "signals": [r"config\.gorgias\.chat", r"assets\.gorgias\.chat"]},
+    {"name": "Kustomer", "category": "widget", "signals": [r"cdn\.kustomerapp\.com"]},
+
+    # ---- Consent / cookie compliance ----
+    {"name": "Usercentrics", "category": "cookie_compliance", "signals": [r"app\.usercentrics\.eu", "usercentrics"]},
+    {"name": "Didomi", "category": "cookie_compliance", "signals": [r"sdk\.privacy-center\.org", "didomi"]},
+    {"name": "Quantcast Choice", "category": "cookie_compliance", "signals": [r"quantcast\.mgr\.consensu\.org", "__cmp"]},
+    {"name": "TrustArc", "category": "cookie_compliance", "signals": [r"consent\.trustarc\.com", r"consent\.truste\.com"]},
+    {"name": "Osano", "category": "cookie_compliance", "signals": [r"cmp\.osano\.com", "osano"]},
+    {"name": "Iubenda", "category": "cookie_compliance", "signals": [r"cdn\.iubenda\.com"]},
+
+    # ---- Analytics (additions) ----
+    {"name": "Cloudflare Web Analytics", "category": "analytics", "signals": [r"static\.cloudflareinsights\.com/beacon"]},
+    {"name": "Piwik PRO Analytics", "category": "analytics", "signals": [r"\.piwik\.pro/ppms\.js"]},
+    {"name": "LogRocket", "category": "analytics", "signals": [r"cdn\.logrocket\.(?:io|com)", "LogRocket.init"]},
+    {"name": "Contentsquare", "category": "analytics", "signals": [r"t\.contentsquare\.net", "_uxa"]},
+    {"name": "June", "category": "analytics", "signals": [r"unpkg\.com/@june-so", r"analytics\.june\.so"]},
+
+    # ---- Ecommerce (additions) ----
+    {"name": "BigCommerce", "category": "ecommerce", "signals": [r"cdn11\.bigcommerce\.com", r"\.mybigcommerce\.com"]},
+    {"name": "Magento", "category": "ecommerce", "signals": ["/static/version", "Magento_", "mage/cookies"]},
+    {"name": "WooCommerce", "category": "ecommerce", "signals": [r"wp-content/plugins/woocommerce", "wc-ajax=", "wc-cart-fragments"]},
+    {"name": "Snipcart", "category": "ecommerce", "signals": [r"cdn\.snipcart\.com", "snipcart"]},
+    {"name": "Ecwid", "category": "ecommerce", "signals": [r"app\.ecwid\.com", "ecwid_script"]},
+    {"name": "Shopify Plus", "category": "ecommerce", "signals": [r"cdn\.shopify\.com/shopifycloud"], "implies": ["Shopify"]},
+
+    # ---- Video / media ----
+    {"name": "Brightcove", "category": "video_player", "signals": [r"players\.brightcove\.net"]},
+    {"name": "JW Player", "category": "video_player", "signals": [r"cdn\.jwplayer\.com", r"content\.jwplatform\.com"]},
+    {"name": "Cloudflare Stream", "category": "video_player", "signals": [r"videodelivery\.net", r"cloudflarestream\.com"]},
+    {"name": "Mux", "category": "video_player", "signals": [r"stream\.mux\.com", r"src\.litix\.io"]},
+
+    # ---- Maps ---- (Mapbox/Leaflet recategorized to maps above)
+    {"name": "Google Maps", "category": "maps", "signals": [r"maps\.googleapis\.com/maps/api", r"maps\.google\.com/maps"]},
+
+    # ---- Frameworks / libraries via DOM (structural, avoids name-in-prose) ----
+    {"name": "React", "category": "js_library", "signals": ["[data-reactroot]", "#react-root", "div[data-reactid]"], "scope": "dom"},
+    {"name": "Next.js", "category": "framework", "signals": ["script#__NEXT_DATA__"], "scope": "dom", "implies": ["React"]},
+    {"name": "Nuxt.js", "category": "framework", "signals": ["#__nuxt", "script#__NUXT_DATA__"], "scope": "dom", "implies": ["Vue.js"]},
+    {"name": "Gatsby", "category": "framework", "signals": ["#___gatsby"], "scope": "dom", "implies": ["React"]},
+    {"name": "Tailwind CSS", "category": "framework", "signals": [r"cdn\.tailwindcss\.com"]},
+    {"name": "Alpine.js", "category": "js_library", "signals": ["[x-data]", "[x-cloak]"], "scope": "dom"},
+
+    # ---- CDN / edge (additions, hostname-unique per the cdn/hosting rule) ----
+    {"name": "jsDelivr", "category": "cdn", "signals": [r"cdn\.jsdelivr\.net"]},
+    {"name": "unpkg", "category": "cdn", "signals": [r"unpkg\.com"]},
+    {"name": "Cloudflare cdnjs", "category": "cdn", "signals": [r"cdnjs\.cloudflare\.com"]},
 ]

@@ -298,3 +298,62 @@ class TestDepthProgramRegressions:
         # catalog previously had no Hugo entry at all.
         det = one('<meta name="generator" content="Hugo 0.119.0">', "Hugo")
         assert det.confidence == "high"
+
+
+class TestWave1Signatures:
+    """v2.3 Wave 1: high-prevalence pixels, tag managers, CRM, A/B, chat,
+    consent, maps, video — all via vendor-unique structural evidence."""
+
+    def test_meta_pixel(self):
+        html = '<script src="https://connect.facebook.net/en_US/fbevents.js"></script>'
+        assert "Meta Pixel" in names(html)
+
+    def test_gtm(self):
+        html = '<script src="https://www.googletagmanager.com/gtm.js?id=GTM-ABC"></script>'
+        assert "Google Tag Manager" in names(html)
+
+    def test_linkedin_insight_tag(self):
+        html = '<script src="https://snap.licdn.com/li.lms-analytics/insight.min.js"></script>'
+        assert "LinkedIn Insight Tag" in names(html)
+
+    def test_optimizely_ab_testing(self):
+        det = one('<script src="https://cdn.optimizely.com/js/123.js"></script>', "Optimizely")
+        assert det.category == "ab_testing"
+
+    def test_pardot_crm(self):
+        det = one('<script src="https://pi.pardot.com/pd.js"></script>', "Salesforce Pardot")
+        assert det.category == "crm"
+
+    def test_klaviyo(self):
+        assert "Klaviyo" in names('<script src="https://static.klaviyo.com/onsite/js/klaviyo.js"></script>')
+
+    def test_usercentrics_consent(self):
+        det = one('<script src="https://app.usercentrics.eu/browser-ui/latest/loader.js"></script>',
+                  "Usercentrics")
+        assert det.category == "cookie_compliance"
+
+    def test_mapbox(self):
+        det = one('<script src="https://api.mapbox.com/mapbox-gl-js/v2/mapbox-gl.js"></script>', "Mapbox")
+        assert det.category == "maps"
+
+    def test_jwplayer_video(self):
+        det = one('<script src="https://cdn.jwplayer.com/libraries/abc.js"></script>', "JW Player")
+        assert det.category == "video_player"
+
+    def test_react_via_dom_not_prose(self):
+        # "react" in body prose must NOT trigger; the DOM marker must.
+        assert "React" not in names("<html><body><p>We love react and vue</p></body></html>")
+        assert "React" in names('<html><body><div id="react-root"></div></body></html>')
+
+    def test_nextjs_dom_implies_react(self):
+        html = '<html><body><script id="__NEXT_DATA__" type="application/json">{}</script></body></html>'
+        found = names(html)
+        assert "Next.js" in found
+        assert "React" in found  # via implies
+
+    def test_advertising_pixel_lands_in_advertising_field(self):
+        from src.scraping.parser.tech_engine import detections_to_metadata
+        meta = detections_to_metadata(run(
+            '<script src="https://static.ads-twitter.com/uwt.js"></script>'
+        ))
+        assert "Twitter Pixel" in meta["advertising"]
