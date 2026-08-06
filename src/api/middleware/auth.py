@@ -55,6 +55,10 @@ async def resolve_token_context(token: str) -> dict | None:
             user = await get_or_create_by_clerk_id(
                 pool, ctx["clerk_user_id"], ctx["email"], ctx["is_admin"], ctx["role"],
                 link_by_email=settings.clerk_link_by_email,
+                clerk_org_id=ctx.get("clerk_org_id", ""),
+                clerk_org_name=ctx.get("clerk_org_slug", ""),
+                clerk_org_role=ctx.get("clerk_org_role", ""),
+                meta_org_id=ctx.get("meta_org_id", ""),
             )
             return {
                 "user_id": str(user.id),

@@ -116,7 +116,31 @@ class TestClaimsToContext:
             "email": "alice@example.com",
             "role": "member",
             "is_admin": False,
+            "clerk_org_id": "",
+            "clerk_org_role": "",
+            "clerk_org_slug": "",
+            "meta_org_id": "",
         }
+
+    def test_v2_compact_org_claim(self):
+        ctx = claims_to_context(
+            _base_claims(o={"id": "org_9", "rol": "admin", "slg": "acme"})
+        )
+        assert ctx["clerk_org_id"] == "org_9"
+        assert ctx["clerk_org_role"] == "admin"
+        assert ctx["clerk_org_slug"] == "acme"
+
+    def test_v1_org_claims_with_prefix_stripped(self):
+        ctx = claims_to_context(
+            _base_claims(org_id="org_9", org_role="org:admin", org_slug="acme")
+        )
+        assert ctx["clerk_org_id"] == "org_9"
+        assert ctx["clerk_org_role"] == "admin"
+
+    def test_meta_org_id_surfaces(self):
+        local_org = "11111111-1111-1111-1111-111111111111"
+        ctx = claims_to_context(_base_claims(public_metadata={"org_id": local_org}))
+        assert ctx["meta_org_id"] == local_org
 
     def test_super_admin_via_public_metadata(self):
         ctx = claims_to_context(_base_claims(public_metadata={"role": "super_admin"}))

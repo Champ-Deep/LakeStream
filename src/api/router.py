@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from src.api.routes import (
     api_keys,
     auth,
+    clerk_webhooks,
     discover,
     domains,
     enrich,
@@ -47,3 +48,4 @@ api_router.include_router(webhook.router)
 api_router.include_router(tracked.router)
 api_router.include_router(settings.router)
 api_router.include_router(signals.router)
+api_router.include_router(clerk_webhooks.router)

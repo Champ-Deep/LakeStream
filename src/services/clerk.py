@@ -54,11 +54,18 @@ def verify_clerk_token(token: str) -> dict:
 
 
 def claims_to_context(claims: dict) -> dict:
-    """Map Clerk claims to LakeStream's {clerk_user_id, email, is_admin, role}.
+    """Map Clerk claims to LakeStream's auth context.
 
     Super-admin is signalled by publicMetadata.role == "super_admin". Clerk
     templates may surface public metadata under different claim names, so a few
     common shapes are checked.
+
+    Organization context, in the order the caller should trust it:
+    - clerk_org_id / clerk_org_role / clerk_org_slug — the ACTIVE Clerk
+      Organization from the session token (v2 tokens carry it as the compact
+      `o` claim {id, rol, slg}; v1 templates as org_id/org_role/org_slug).
+    - meta_org_id — a local org UUID pinned in publicMetadata.org_id (set by
+      the import script for users predating Clerk Organizations).
     """
     clerk_user_id = claims.get("sub", "")
     email = (
@@ -72,14 +79,25 @@ def claims_to_context(claims: dict) -> dict:
         or claims.get("publicMetadata")
         or claims.get("metadata")
         or {}
-    )
-    role = (public_meta or {}).get("role", "member")
+    ) or {}
+    role = public_meta.get("role", "member")
     is_admin = role == "super_admin"
+
+    org_claim = claims.get("o") or {}
+    clerk_org_id = org_claim.get("id") or claims.get("org_id") or ""
+    clerk_org_role = (org_claim.get("rol") or claims.get("org_role") or "").removeprefix("org:")
+    clerk_org_slug = org_claim.get("slg") or claims.get("org_slug") or ""
+    meta_org_id = str(public_meta.get("org_id") or "")
+
     return {
         "clerk_user_id": clerk_user_id,
         "email": email,
         "role": role,
         "is_admin": is_admin,
+        "clerk_org_id": clerk_org_id,
+        "clerk_org_role": clerk_org_role,
+        "clerk_org_slug": clerk_org_slug,
+        "meta_org_id": meta_org_id,
     }
 
 

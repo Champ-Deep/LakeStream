@@ -325,6 +325,64 @@ async def list_organization_teams(pool: Pool, org_id: UUID) -> list[Team]:
     return [Team(**row) for row in rows]
 
 
+async def get_org_by_clerk_id(pool: Pool, clerk_org_id: str) -> Organization | None:
+    """Get the local organization linked to a Clerk Organization, if any."""
+    row = await pool.fetchrow(
+        "SELECT * FROM organizations WHERE clerk_org_id = $1", clerk_org_id
+    )
+    return Organization(**row) if row else None
+
+
+async def get_or_create_org_by_clerk_id(
+    pool: Pool, clerk_org_id: str, name: str = ""
+) -> Organization:
+    """Resolve a Clerk Organization to a local org row, provisioning on first sight.
+
+    Lazy creation covers the window where a session token carries an org the
+    webhook hasn't delivered yet (or webhooks are down entirely).
+    """
+    org = await get_org_by_clerk_id(pool, clerk_org_id)
+    if org:
+        return org
+    created = await create_organization(pool, name or f"Clerk org {clerk_org_id[-8:]}")
+    await pool.execute(
+        "UPDATE organizations SET clerk_org_id = $1, updated_at = NOW() WHERE id = $2",
+        clerk_org_id, created.id,
+    )
+    return await get_organization(pool, created.id)  # re-read with the link set
+
+
+async def _resolve_clerk_org_id(
+    pool: Pool,
+    clerk_org_id: str,
+    clerk_org_name: str,
+    meta_org_id: str,
+) -> UUID | None:
+    """Resolve token org context to a local org UUID (None = caller decides).
+
+    Order: active Clerk Organization (lazy-created) → publicMetadata.org_id
+    (must be an existing local org) → None.
+    """
+    if clerk_org_id:
+        org = await get_or_create_org_by_clerk_id(pool, clerk_org_id, clerk_org_name)
+        return org.id
+    if meta_org_id:
+        try:
+            candidate = UUID(meta_org_id)
+        except ValueError:
+            return None
+        exists = await pool.fetchval("SELECT 1 FROM organizations WHERE id = $1", candidate)
+        return candidate if exists else None
+    return None
+
+
+def _clerk_org_role_to_local(clerk_org_role: str) -> str | None:
+    """Map a Clerk org role to the local users.role CHECK values."""
+    if not clerk_org_role:
+        return None
+    return "org_owner" if clerk_org_role in ("admin", "org_owner") else "member"
+
+
 async def get_or_create_by_clerk_id(
     pool: Pool,
     clerk_user_id: str,
@@ -332,25 +390,53 @@ async def get_or_create_by_clerk_id(
     is_admin: bool = False,
     role: str = "member",
     link_by_email: bool = False,
+    clerk_org_id: str = "",
+    clerk_org_name: str = "",
+    clerk_org_role: str = "",
+    meta_org_id: str = "",
 ) -> User:
     """Resolve a Clerk identity to a local users row, provisioning on first sight.
 
-    - Existing Clerk-linked user: returned (is_admin kept in sync with Clerk).
+    - Existing Clerk-linked user: returned (is_admin and active-org membership
+      kept in sync with the Clerk session token).
     - Existing legacy user with the same email: linked to this Clerk id so their
       data survives the migration.
-    - Otherwise: a new user is created in the default organization.
+    - Otherwise: a new user is created in the org resolved from the token
+      (active Clerk Organization → publicMetadata.org_id → default org).
 
     Per-user data scoping (user_id) is preserved; role is stored as a value the
     users CHECK constraint allows (is_admin is the real privilege gate).
     """
-    local_role = "org_owner" if is_admin else "member"
+    resolved_org_id = await _resolve_clerk_org_id(
+        pool, clerk_org_id, clerk_org_name, meta_org_id
+    )
+    org_role = _clerk_org_role_to_local(clerk_org_role)
+    local_role = org_role or ("org_owner" if is_admin else "member")
 
     row = await pool.fetchrow("SELECT * FROM users WHERE clerk_user_id = $1", clerk_user_id)
     if row:
+        updates: list[str] = []
+        vals: list[object] = []
         if row["is_admin"] != is_admin:
+            updates.append("is_admin")
+            vals.append(is_admin)
+        # Follow the ACTIVE Clerk org only — meta_org_id is a static import-time
+        # pin, not a membership signal, so it never moves an existing user.
+        if clerk_org_id and resolved_org_id and row["org_id"] != resolved_org_id:
+            updates.append("org_id")
+            vals.append(resolved_org_id)
+            if org_role:
+                updates.append("role")
+                vals.append(org_role)
+        elif org_role and row["role"] != org_role and clerk_org_id:
+            updates.append("role")
+            vals.append(org_role)
+        if updates:
+            sets = ", ".join(f"{col} = ${i + 1}" for i, col in enumerate(updates))
+            vals.append(row["id"])
             await pool.execute(
-                "UPDATE users SET is_admin = $1, updated_at = NOW() WHERE id = $2",
-                is_admin, row["id"],
+                f"UPDATE users SET {sets}, updated_at = NOW() WHERE id = ${len(vals)}",
+                *vals,
             )
             row = await pool.fetchrow("SELECT * FROM users WHERE id = $1", row["id"])
         return User(**row)
@@ -366,7 +452,9 @@ async def get_or_create_by_clerk_id(
             row = await pool.fetchrow("SELECT * FROM users WHERE id = $1", existing["id"])
             return User(**row)
 
-    org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
+    org_id = resolved_org_id
+    if not org_id:
+        org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
     if not org_id:
         org_id = await pool.fetchval(
             "INSERT INTO organizations (name, slug, plan) "
