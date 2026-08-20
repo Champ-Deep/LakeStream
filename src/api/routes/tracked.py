@@ -1,5 +1,7 @@
 """API routes for domain tracking (add site, list, remove)."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, HTTPException, Request
 
 from src.models.tracked_domain import AddSiteInput, TrackedDomain
@@ -15,6 +17,14 @@ def _require_auth(request: Request) -> str:
     return user_id
 
 
+def _get_org_filter(request: Request) -> UUID | None:
+    """Return org_id for filtering, or None for a super-admin (sees all orgs)."""
+    if getattr(request.state, "is_admin", False):
+        return None
+    org_id_str = getattr(request.state, "org_id", None)
+    return UUID(org_id_str) if org_id_str else None
+
+
 @router.post("/add", response_model=TrackedDomain)
 async def add_site(request: Request, input_data: AddSiteInput):
     """Add a domain for automated tracking and scheduled scraping."""
@@ -22,6 +32,9 @@ async def add_site(request: Request, input_data: AddSiteInput):
 
     from src.db.pool import get_pool
     from src.db.queries.tracked_domains import add_tracked_domain
+
+    org_id_str = getattr(request.state, "org_id", None)
+    org_id = UUID(org_id_str) if org_id_str else None
 
     pool = await get_pool()
     return await add_tracked_domain(
@@ -31,6 +44,9 @@ async def add_site(request: Request, input_data: AddSiteInput):
         scrape_frequency=input_data.scrape_frequency,
         max_pages=input_data.max_pages,
         webhook_url=input_data.webhook_url,
+        tech_stack_wappalyzer=input_data.tech_stack_wappalyzer,
+        tech_stack_llm_fallback=input_data.tech_stack_llm_fallback,
+        org_id=org_id,
     )
 
 
@@ -43,7 +59,7 @@ async def list_sites(request: Request):
     from src.db.queries.tracked_domains import list_tracked_domains
 
     pool = await get_pool()
-    return await list_tracked_domains(pool)
+    return await list_tracked_domains(pool, org_id=_get_org_filter(request))
 
 
 @router.delete("/{domain}")
@@ -55,5 +71,7 @@ async def remove_site(request: Request, domain: str):
     from src.db.queries.tracked_domains import remove_tracked_domain
 
     pool = await get_pool()
-    await remove_tracked_domain(pool, domain)
+    removed = await remove_tracked_domain(pool, domain, org_id=_get_org_filter(request))
+    if not removed:
+        raise HTTPException(status_code=404, detail="Tracked domain not found")
     return {"success": True}

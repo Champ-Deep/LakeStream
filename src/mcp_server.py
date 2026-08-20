@@ -41,6 +41,8 @@ async def submit_scrape_job(
     max_pages: int = 100,
     template_id: str | None = None,
     region: str | None = None,
+    tech_stack_wappalyzer: bool = False,
+    tech_stack_llm_fallback: bool = False,
 ) -> str:
     """Submit a web scraping job for a B2B domain.
 
@@ -57,6 +59,12 @@ async def submit_scrape_job(
                      Leave empty for auto-detection (recommended).
         region: Geo-target region for proxy selection: us, eu, uk, de, asia, in, au.
                 Leave empty for default routing.
+        tech_stack_wappalyzer: When tech_stack is in data_types, also run the
+                                Wappalyzer library as an extra detection pass
+                                (broader coverage, slower). Homepage only.
+        tech_stack_llm_fallback: When tech_stack is in data_types, fall back to
+                                  an LLM guess if nothing else detected anything.
+                                  Homepage only.
     """
     from src.config.settings import get_settings
     from src.db.pool import get_pool
@@ -73,6 +81,8 @@ async def submit_scrape_job(
         max_pages=max_pages,
         template_id=template_id,
         region=region,
+        tech_stack_wappalyzer=tech_stack_wappalyzer,
+        tech_stack_llm_fallback=tech_stack_llm_fallback,
     )
 
     pool = await get_pool()
@@ -94,6 +104,8 @@ async def submit_scrape_job(
         tier=input_model.tier,
         raw_only=input_model.raw_only,
         region=input_model.region,
+        tech_stack_wappalyzer=input_model.tech_stack_wappalyzer,
+        tech_stack_llm_fallback=input_model.tech_stack_llm_fallback,
     )
     await redis.aclose()
 

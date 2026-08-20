@@ -56,6 +56,14 @@ def _get_user_filter(request: Request) -> UUID | None:
     return UUID(uid) if uid else None
 
 
+def _get_org_filter(request: Request) -> UUID | None:
+    """Return org_id for filtering tracked domains, or None for super-admin (sees all)."""
+    if _auth_is_admin(request):
+        return None  # Super-admin sees everything (god view)
+    org_id = _auth_org_id(request)
+    return UUID(org_id) if org_id else None
+
+
 # =============================================================================
 # AUTH PAGES
 # =============================================================================
@@ -329,7 +337,7 @@ async def dashboard(request: Request):
     try:
         from src.db.queries.tracked_domains import list_tracked_domains
 
-        tracked_domains = await list_tracked_domains(pool)
+        tracked_domains = await list_tracked_domains(pool, org_id=_get_org_filter(request))
         if tracked_domains:
             from src.db.queries.domains import get_domain_metadata
 
@@ -955,7 +963,7 @@ async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
     try:
         from src.db.queries.tracked_domains import list_tracked_domains
 
-        tracked_domains = await list_tracked_domains(pool)
+        tracked_domains = await list_tracked_domains(pool, org_id=_get_org_filter(request))
         tracked_set = {td.domain for td in tracked_domains}
     except Exception:
         pass  # tracked_domains table may not exist yet

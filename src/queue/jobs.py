@@ -37,6 +37,8 @@ async def process_scrape_job(
     extraction_mode: str = "css",
     force_refresh: bool = False,
     capture_screenshot: bool = False,
+    tech_stack_wappalyzer: bool = False,
+    tech_stack_llm_fallback: bool = False,
 ) -> dict:
     """Main scrape job processor. Orchestrates all workers for a domain.
 
@@ -144,6 +146,8 @@ async def process_scrape_job(
                     extraction_mode=extraction_mode,
                     force_refresh=force_refresh,
                     capture_screenshot=capture_screenshot,
+                    tech_stack_wappalyzer=tech_stack_wappalyzer,
+                    tech_stack_llm_fallback=tech_stack_llm_fallback,
                 )
                 results = await content_worker.execute(classified_urls, data_types)
                 total_data = len(results)

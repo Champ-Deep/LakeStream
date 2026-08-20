@@ -27,6 +27,20 @@ def scrape(
     wait: Annotated[
         bool, typer.Option("--wait", "-w", help="Wait for job completion.")
     ] = False,
+    tech_wappalyzer: Annotated[
+        bool,
+        typer.Option(
+            "--tech-wappalyzer",
+            help="Run the Wappalyzer library as an extra tech-stack detection pass.",
+        ),
+    ] = False,
+    tech_llm_fallback: Annotated[
+        bool,
+        typer.Option(
+            "--tech-llm-fallback",
+            help="Fall back to an LLM guess for tech-stack if nothing else detected.",
+        ),
+    ] = False,
 ) -> None:
     """Submit a scrape job for a domain."""
     payload = {
@@ -35,6 +49,8 @@ def scrape(
         "tier": tier,
         "max_pages": max_pages,
         "data_types": [t.strip() for t in data_types.split(",")],
+        "tech_stack_wappalyzer": tech_wappalyzer,
+        "tech_stack_llm_fallback": tech_llm_fallback,
     }
 
     result = client.post("/scrape/execute", data=payload)

@@ -59,6 +59,16 @@ class ScrapeJobInput(BaseModel):
             "'only' = LLM only on every page (highest quality, highest cost)."
         ),
     )
+    tech_stack_wappalyzer: bool = Field(
+        default=False,
+        description="Run the Wappalyzer fingerprint library as an additional "
+        "tech-stack detection pass (broader coverage, slower).",
+    )
+    tech_stack_llm_fallback: bool = Field(
+        default=False,
+        description="If the curated detector (+ Wappalyzer, if enabled) finds "
+        "zero recommended detections, fall back to an LLM guess for tech stack.",
+    )
 
 
 class ScrapeJob(BaseModel):

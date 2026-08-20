@@ -26,7 +26,7 @@ from src.scraping.parser.markdown import html_to_markdown
 log = structlog.get_logger()
 
 # Cheap reliable fallback model when the configured model fails
-_FALLBACK_MODEL = "google/gemini-2.0-flash-001"
+_FALLBACK_MODEL = "google/gemini-2.5-flash-lite"
 
 # Max content length sent to LLM (characters)
 _MAX_CONTENT_CHARS = 30000

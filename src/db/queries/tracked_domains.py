@@ -2,6 +2,7 @@
 
 import random
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import asyncpg
 
@@ -24,8 +25,13 @@ async def add_tracked_domain(
     max_pages: int = 100,
     template_id: str = "auto",
     webhook_url: str | None = None,
+    tech_stack_wappalyzer: bool = False,
+    tech_stack_llm_fallback: bool = False,
+    org_id: UUID | None = None,
 ) -> TrackedDomain:
     """Insert or update a tracked domain."""
+    if org_id is None:
+        org_id = await pool.fetchval("SELECT id FROM organizations WHERE slug = 'default'")
     if data_types is None:
         data_types = [
             "blog_url",
@@ -42,16 +48,20 @@ async def add_tracked_domain(
         """
         INSERT INTO tracked_domains
             (domain, data_types, scrape_frequency, max_pages,
-             template_id, webhook_url, next_scrape_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+             template_id, webhook_url, tech_stack_wappalyzer,
+             tech_stack_llm_fallback, org_id, next_scrape_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (domain) DO UPDATE SET
             data_types = $2,
             scrape_frequency = $3,
             max_pages = $4,
             template_id = $5,
             webhook_url = $6,
+            tech_stack_wappalyzer = $7,
+            tech_stack_llm_fallback = $8,
+            org_id = $9,
             is_active = true,
-            next_scrape_at = $7,
+            next_scrape_at = $10,
             updated_at = NOW()
         RETURNING *
         """,
@@ -61,17 +71,27 @@ async def add_tracked_domain(
         max_pages,
         template_id,
         webhook_url,
+        tech_stack_wappalyzer,
+        tech_stack_llm_fallback,
+        org_id,
         next_scrape,
     )
     return TrackedDomain(**dict(row))
 
 
 async def list_tracked_domains(
-    pool: asyncpg.Pool, *, active_only: bool = True
+    pool: asyncpg.Pool, *, active_only: bool = True, org_id: UUID | None = None
 ) -> list[TrackedDomain]:
-    """List tracked domains."""
-    condition = "WHERE is_active = true" if active_only else ""
-    rows = await pool.fetch(f"SELECT * FROM tracked_domains {condition} ORDER BY domain ASC")
+    """List tracked domains, optionally scoped to a single org."""
+    conditions = []
+    vals: list[object] = []
+    if active_only:
+        conditions.append("is_active = true")
+    if org_id is not None:
+        vals.append(org_id)
+        conditions.append(f"org_id = ${len(vals)}")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = await pool.fetch(f"SELECT * FROM tracked_domains {where} ORDER BY domain ASC", *vals)
     return [TrackedDomain(**dict(row)) for row in rows]
 
 
@@ -81,12 +101,26 @@ async def get_tracked_domain(pool: asyncpg.Pool, domain: str) -> TrackedDomain |
     return TrackedDomain(**dict(row)) if row else None
 
 
-async def remove_tracked_domain(pool: asyncpg.Pool, domain: str) -> None:
-    """Soft-delete a tracked domain."""
-    await pool.execute(
-        "UPDATE tracked_domains SET is_active = false, updated_at = NOW() WHERE domain = $1",
-        domain,
-    )
+async def remove_tracked_domain(
+    pool: asyncpg.Pool, domain: str, *, org_id: UUID | None = None
+) -> bool:
+    """Soft-delete a tracked domain, optionally scoped to a single org.
+
+    Returns False if no matching row was found (wrong domain or wrong org).
+    """
+    if org_id is not None:
+        result = await pool.execute(
+            "UPDATE tracked_domains SET is_active = false, updated_at = NOW() "
+            "WHERE domain = $1 AND org_id = $2",
+            domain,
+            org_id,
+        )
+    else:
+        result = await pool.execute(
+            "UPDATE tracked_domains SET is_active = false, updated_at = NOW() WHERE domain = $1",
+            domain,
+        )
+    return result != "UPDATE 0"
 
 
 async def get_due_domains(pool: asyncpg.Pool) -> list[TrackedDomain]:

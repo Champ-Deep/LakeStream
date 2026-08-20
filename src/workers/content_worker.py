@@ -7,6 +7,7 @@ TechDetector, ResourceFinder, PricingFinder) with a single pass that:
 3. Runs specialized extractors based on URL classification
 """
 
+import asyncio
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import UUID
@@ -261,11 +262,9 @@ class ContentWorker(BaseWorker):
 
             # Tech stack: scan every page, merge signals across the site
             if "tech_stack" in data_types:
-                tech_rec = self._extract_tech_stack(
+                records.extend(await self._extract_tech_stack(
                     url, html, fetch_result.headers, rich_meta,
-                )
-                if tech_rec:
-                    records.append(tech_rec)
+                ))
 
         # --- LLM extraction: runs on every page for every requested type ---
         if run_llm:
@@ -498,18 +497,40 @@ class ContentWorker(BaseWorker):
             })
         return records
 
-    def _extract_tech_stack(
+    async def _extract_tech_stack(
         self,
         url: str,
         html: str,
         headers: dict[str, str],
         rich_meta: dict,
-    ) -> dict | None:
+    ) -> list[dict]:
         """Detect tech stack from raw HTML source code + HTTP headers.
-        Returns a record with flat lists (backward compat) and an enriched
-        detections list carrying confidence + evidence per match."""
+
+        The curated TechParser runs on every page. Two opt-in add-ons run
+        homepage-only (they're the expensive layers): the Wappalyzer
+        fingerprint library (self.tech_stack_wappalyzer) merges extra
+        detections into the same result, and the LLM fallback
+        (self.tech_stack_llm_fallback) only fires when the detectors above
+        found zero recommended (high/medium confidence) matches.
+
+        Returns a list of records: the curated/merged detection record,
+        plus an extra LLM-fallback record when that add-on fires.
+        """
         tp = TechParser(html, headers)
         detected = tp.detect()
+
+        path = urlparse(url).path.rstrip("/")
+        is_homepage = path in ("", "/index.html")
+
+        if self.tech_stack_wappalyzer and is_homepage:
+            from src.scraping.parser.wappalyzer_runner import detect_wappalyzer_full
+
+            try:
+                wapp_full = await asyncio.to_thread(detect_wappalyzer_full, url, html, headers)
+                self._merge_wappalyzer_detections(detected, wapp_full)
+            except Exception as e:
+                self.log.warning("tech_stack_wappalyzer_failed", url=url, error=str(e))
+
         metadata = TechStackMetadata(
             platform=detected.get("platform"),
             frameworks=detected.get("frameworks", []),
@@ -528,14 +549,57 @@ class ContentWorker(BaseWorker):
             ecommerce=detected.get("ecommerce", []),
             detections=[DetectedTech(**d) for d in detected.get("detections", [])],
         )
-        return {
+        records = [{
             "job_id": UUID(self.job_id),
             "domain": self.domain,
             "data_type": DataType.TECH_STACK,
             "url": url,
             "title": f"Tech Stack: {self.domain}",
             "metadata": {**rich_meta, **metadata.model_dump()},
-        }
+        }]
+
+        recommended_count = sum(1 for d in detected["detections"] if d.get("recommended"))
+        if self.tech_stack_llm_fallback and is_homepage and recommended_count == 0:
+            from src.services.llm_extractor import LLMExtractor
+
+            llm = LLMExtractor(org_id=self.org_id)
+            try:
+                llm_data = await llm.extract_by_type(html, "tech_stack")
+            except Exception as e:
+                self.log.warning("tech_stack_llm_fallback_failed", url=url, error=str(e))
+                llm_data = None
+            if llm_data and "_extraction_errors" not in llm_data:
+                records.extend(self._convert_llm_results(url, "tech_stack", llm_data))
+
+        return records
+
+    @staticmethod
+    def _merge_wappalyzer_detections(detected: dict, wapp_full: dict[str, list[str]]) -> None:
+        """Merge Wappalyzer-library-only findings into a TechParser detect()
+        result dict, in place. Names TechParser already found are skipped."""
+        from src.scraping.parser.wappalyzer_runner import wapp_by_column
+
+        existing_names = {d["name"].lower() for d in detected["detections"]}
+
+        wapp_cols = wapp_by_column(wapp_full)
+        for col, names in wapp_cols.items():
+            if col in detected and isinstance(detected[col], list):
+                for name in names:
+                    if name.lower() not in existing_names and name not in detected[col]:
+                        detected[col].append(name)
+
+        for name, categories in wapp_full.items():
+            if name.lower() in existing_names:
+                continue
+            existing_names.add(name.lower())
+            detected["detections"].append({
+                "name": name,
+                "category": categories[0] if categories else "other",
+                "confidence": "medium",
+                "evidence": "wappalyzer library match",
+                "evidence_type": "wappalyzer",
+                "recommended": True,
+            })
 
     def _extract_resources(
         self, url: str, html: str, rich_meta: dict,

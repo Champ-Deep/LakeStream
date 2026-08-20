@@ -42,6 +42,8 @@ class BaseWorker(ABC):
         extraction_mode: str = "css",
         force_refresh: bool = False,
         capture_screenshot: bool = False,
+        tech_stack_wappalyzer: bool = False,
+        tech_stack_llm_fallback: bool = False,
     ):
         self.domain = domain
         self.job_id = job_id
@@ -58,6 +60,8 @@ class BaseWorker(ABC):
         self.extraction_mode = extraction_mode  # "css" | "ai" | "auto"
         self.force_refresh = force_refresh  # bypass content cache (Phase 2)
         self.capture_screenshot = capture_screenshot  # per-page screenshot (Phase 3)
+        self.tech_stack_wappalyzer = tech_stack_wappalyzer  # add-on: Wappalyzer library pass
+        self.tech_stack_llm_fallback = tech_stack_llm_fallback  # add-on: LLM guess when nothing detected
         self.log = structlog.get_logger().bind(
             worker=self.__class__.__name__, domain=domain, job_id=job_id
         )

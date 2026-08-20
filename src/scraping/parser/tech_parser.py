@@ -18,6 +18,7 @@ import re
 from collections import defaultdict
 
 from src.data.tech_signatures import TECH_SIGNATURES
+from src.data.wapp_converted_signatures import WAPP_CONVERTED_SIGNATURES
 
 # Pre-compiled regex for extracting URLs and tags from raw HTML
 _RE_SCRIPT_SRC = re.compile(r'<script[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
@@ -62,11 +63,25 @@ _CATEGORY_FIELD = {
     "ecommerce": "ecommerce",
     "a11y": "accessibility",
     "database": "databases",
+    "crm": "crm",
+    "seo": "seo",
+    "os": "os",
+    "security": "security",
+    "widgets": "widgets",
 }
 
 
 class TechParser:
     """Detects technology stack from HTML source and HTTP headers."""
+
+    # ponytail: merged once at class level — same for all instances
+    _ALL_SIGNATURES: list[dict] | None = None
+
+    @classmethod
+    def _get_all_signatures(cls) -> list[dict]:
+        if cls._ALL_SIGNATURES is None:
+            cls._ALL_SIGNATURES = list(TECH_SIGNATURES) + list(WAPP_CONVERTED_SIGNATURES)
+        return cls._ALL_SIGNATURES
 
     def __init__(self, html: str, headers: dict[str, str] | None = None):
         self._raw_html = html
@@ -116,10 +131,15 @@ class TechParser:
             "ecommerce": [],
             "accessibility": [],
             "databases": [],
+            "crm": [],
+            "seo": [],
+            "os": [],
+            "security": [],
+            "widgets": [],
             "detections": [],
         }
 
-        for sig in TECH_SIGNATURES:
+        for sig in self._get_all_signatures():
             match_result = self._match_with_evidence(sig)
             if not match_result:
                 continue

@@ -86,7 +86,7 @@ class Settings(BaseSettings):
 
     # OpenRouter LLM extraction (AI-powered structured extraction)
     openrouter_api_key: str = ""  # Empty = AI extraction disabled
-    llm_extraction_model: str = "anthropic/claude-3.5-haiku"
+    llm_extraction_model: str = "anthropic/claude-haiku-4.5"
     llm_extraction_max_tokens: int = 4096
 
     # Playwright session-based scraping

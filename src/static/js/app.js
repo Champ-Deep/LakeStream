@@ -218,6 +218,8 @@ document.addEventListener('alpine:init', () => {
     rawOnly: false,
     llmMode: 'off',      // 'off' | 'fallback' | 'only'
     llmAvailable: false,
+    techWappalyzer: false,
+    techLlmFallback: false,
     priority: 5,
     showPanel: false,
     showAdvanced: false,
@@ -295,6 +297,10 @@ document.addEventListener('alpine:init', () => {
       if (this.rawOnly) payload.raw_only = true;
       if (this.llmMode && this.llmMode !== 'off' && !this.rawOnly) {
         payload.llm_mode = this.llmMode;
+      }
+      if (this.dataTypes.includes('tech_stack')) {
+        if (this.techWappalyzer) payload.tech_stack_wappalyzer = true;
+        if (this.techLlmFallback) payload.tech_stack_llm_fallback = true;
       }
 
       // Only include tier if not 'auto' (null triggers adaptive escalation)
@@ -530,6 +536,9 @@ document.addEventListener('alpine:init', () => {
     maxPages: 100,
     webhookUrl: '',
     loading: false,
+    techWappalyzer: false,
+    techLlmFallback: false,
+    llmAvailable: false,
     allDataTypes: [
       { value: 'blog_url', label: 'Blog Posts' },
       { value: 'article', label: 'Articles' },
@@ -538,6 +547,17 @@ document.addEventListener('alpine:init', () => {
       { value: 'resource', label: 'Resources' },
       { value: 'pricing', label: 'Pricing' },
     ],
+
+    init() {
+      fetch('/api/settings/', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && data.openrouter_api_key_set) {
+            this.llmAvailable = true;
+          }
+        })
+        .catch(() => {});
+    },
 
     async submit() {
       if (!this.domain) {
@@ -556,6 +576,8 @@ document.addEventListener('alpine:init', () => {
         max_pages: parseInt(this.maxPages),
       };
       if (this.webhookUrl) payload.webhook_url = this.webhookUrl;
+      if (this.techWappalyzer) payload.tech_stack_wappalyzer = true;
+      if (this.techLlmFallback) payload.tech_stack_llm_fallback = true;
 
       try {
         const response = await fetch('/api/tracked/add', {

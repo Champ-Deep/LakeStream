@@ -56,6 +56,8 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             extraction_mode=input.extraction_mode,
             force_refresh=input.force_refresh,
             capture_screenshot=input.capture_screenshot,
+            tech_stack_wappalyzer=input.tech_stack_wappalyzer,
+            tech_stack_llm_fallback=input.tech_stack_llm_fallback,
         )
         await redis.aclose()
     except Exception as e:
