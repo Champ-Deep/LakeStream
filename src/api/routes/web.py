@@ -945,6 +945,26 @@ async def results_browse(
 # =============================================================================
 
 
+@router.get("/tech-detect", response_class=HTMLResponse)
+async def tech_detect_page(request: Request, run: str | None = None):
+    """Tech Detect: single-URL lookup, CSV batch, and category filtering."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    from src.services.tech_categories import CANONICAL_CATEGORIES
+
+    return get_templates().TemplateResponse(
+        "pages/tech_detect/index.html",
+        {
+            "request": request,
+            "active_page": "tech_detect",
+            "categories": CANONICAL_CATEGORIES,
+            "resume_run": run,
+        },
+    )
+
+
 @router.get("/domains", response_class=HTMLResponse)
 async def domains_list(request: Request, sort_by: str = "last_scraped_at"):
     redirect = _require_login(request)

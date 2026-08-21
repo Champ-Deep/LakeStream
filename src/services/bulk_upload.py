@@ -156,6 +156,122 @@ def parse_bulk_csv(file_content: bytes, filename: str = "") -> BulkParseResult:
     return result
 
 
+def _normalize_url(raw: str) -> str:
+    """Clean user input into a fetchable URL, preserving any path or query.
+
+    Unlike `_normalize_domain` this keeps the path, because Tech Detect can
+    legitimately be pointed at a specific page rather than a site root.
+    """
+    value = raw.strip().strip('"').strip("'")
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://")):
+        return value
+    if "://" in value:
+        return ""
+    return f"https://{value}"
+
+
+def _url_dedup_key(url: str) -> str:
+    value = url.lower()
+    for scheme in ("https://", "http://"):
+        value = value.removeprefix(scheme)
+    value = value.removeprefix("www.")
+    return value.rstrip("/")
+
+
+def _url_host(url: str) -> str:
+    host = url
+    for scheme in ("https://", "http://"):
+        host = host.removeprefix(scheme)
+    return host.split("/")[0].split("?")[0].split(":")[0]
+
+
+def parse_url_csv(file_content: bytes, filename: str = "") -> BulkParseResult:
+    """Parse a CSV of URLs for Tech Detect, preserving full paths.
+
+    Same size/limit/column-sniffing behaviour as `parse_bulk_csv`, but keeps
+    `example.com/pricing` intact instead of collapsing it to `example.com`, and
+    dedupes on the whole URL so several pages of one host all survive.
+    `ParsedURL.domain` carries the fetchable URL.
+    """
+    result = BulkParseResult()
+
+    if len(file_content) > MAX_FILE_SIZE_BYTES:
+        result.error = (
+            f"File too large ({len(file_content) // 1024}KB). "
+            f"Maximum is {MAX_FILE_SIZE_BYTES // 1024}KB."
+        )
+        return result
+
+    try:
+        text = file_content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = file_content.decode("latin-1")
+        except Exception:
+            result.error = "Could not decode file. Please use UTF-8 encoding."
+            return result
+
+    if not text.strip():
+        result.error = "File is empty."
+        return result
+
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        result.error = "No rows found in CSV."
+        return result
+
+    url_col_idx = 0
+    header = rows[0]
+    has_header = False
+    url_header_names = {"url", "domain", "website", "site", "link", "urls", "domains"}
+    for i, cell in enumerate(header):
+        if cell.strip().lower() in url_header_names:
+            url_col_idx = i
+            has_header = True
+            break
+
+    if not has_header and header:
+        probe = header[url_col_idx] if url_col_idx < len(header) else ""
+        if not _is_valid_domain(_normalize_domain(probe)):
+            has_header = True
+
+    data_rows = rows[1:] if has_header else rows
+    seen: set[str] = set()
+
+    for row in data_rows:
+        if not row or url_col_idx >= len(row):
+            continue
+        raw = row[url_col_idx].strip()
+        if not raw:
+            continue
+
+        url = _normalize_url(raw)
+        if not url or not _is_valid_domain(_normalize_domain(_url_host(url))):
+            result.invalid.append(
+                ParsedURL(raw=raw, domain="", valid=False, skip_reason="Invalid URL")
+            )
+            continue
+
+        key = _url_dedup_key(url)
+        if key in seen:
+            result.duplicates_in_file += 1
+            continue
+        seen.add(key)
+        result.valid.append(ParsedURL(raw=raw, domain=url, valid=True))
+
+    if len(result.valid) > MAX_URLS_PER_UPLOAD:
+        total_found = len(result.valid)
+        result.valid = result.valid[:MAX_URLS_PER_UPLOAD]
+        result.error = (
+            f"CSV contained {total_found} valid URLs. "
+            f"Trimmed to {MAX_URLS_PER_UPLOAD} (max per upload)."
+        )
+
+    return result
+
+
 async def check_already_queued(pool, domains: list[str]) -> set[str]:
     """Check which domains already have pending/running jobs in the last hour."""
     if not domains:

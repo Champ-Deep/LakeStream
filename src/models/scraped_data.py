@@ -84,6 +84,16 @@ class TechStackMetadata(BaseModel):
     monitoring: list[str] = []
     search: list[str] = []
     ecommerce: list[str] = []
+    ab_testing: list[str] = []
+    tag_managers: list[str] = []
+    video: list[str] = []
+    accessibility: list[str] = []
+    databases: list[str] = []
+    crm: list[str] = []
+    seo: list[str] = []
+    os: list[str] = []
+    security: list[str] = []
+    widgets: list[str] = []
     detections: list[DetectedTech] = []
 
 

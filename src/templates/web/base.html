@@ -85,7 +85,7 @@
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/static/css/app.css?v=3">
+  <link rel="stylesheet" href="/static/css/app.css?v=4">
 </head>
 
 <body class="bg-slate-50 dark:bg-gray-950 text-navy dark:text-gray-100 font-sans min-h-screen flex flex-col" x-data>
@@ -129,6 +129,14 @@
              class="px-4 py-2 text-sm font-medium rounded-xl transition-all
                {% if active_page == 'domains' %}bg-slate-100 dark:bg-gray-800 text-navy dark:text-gray-100{% else %}text-slate-500 dark:text-gray-400 hover:text-navy dark:hover:text-gray-100 hover:bg-slate-50 dark:hover:bg-gray-800{% endif %}">
             Domains
+          </a>
+          <a href="/tech-detect"
+             class="px-4 py-2 text-sm font-medium rounded-xl transition-all
+               {% if active_page == 'tech_detect' %}bg-slate-100 dark:bg-gray-800 text-navy dark:text-gray-100{% else %}text-slate-500 dark:text-gray-400 hover:text-navy dark:hover:text-gray-100 hover:bg-slate-50 dark:hover:bg-gray-800{% endif %}">
+            <span class="flex items-center gap-1">
+              <i data-lucide="scan-search" class="w-4 h-4"></i>
+              Tech Detect
+            </span>
           </a>
           <a href="/settings"
              class="px-4 py-2 text-sm font-medium rounded-xl transition-all
@@ -333,7 +341,7 @@
   </template>
 
   <!-- Custom JS -->
-  <script src="/static/js/app.js?v=3"></script>
+  <script src="/static/js/app.js?v=5"></script>
   <script>
     // Initialize Lucide icons
     lucide.createIcons();

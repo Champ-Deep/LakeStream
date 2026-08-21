@@ -17,6 +17,7 @@ from src.api.routes import (
     search,
     settings,
     signals,
+    tech_detect,
     templates,
     tracked,
     usage,
@@ -29,6 +30,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(api_keys.router, tags=["auth"])
 api_router.include_router(scrape.router, tags=["scrape"])
+api_router.include_router(tech_detect.router)
 api_router.include_router(jobs_alias.router, tags=["scrape"])
 api_router.include_router(parse.router, tags=["parse"])
 api_router.include_router(search.router, tags=["search"])

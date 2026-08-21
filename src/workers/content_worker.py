@@ -576,30 +576,14 @@ class ContentWorker(BaseWorker):
     @staticmethod
     def _merge_wappalyzer_detections(detected: dict, wapp_full: dict[str, list[str]]) -> None:
         """Merge Wappalyzer-library-only findings into a TechParser detect()
-        result dict, in place. Names TechParser already found are skipped."""
-        from src.scraping.parser.wappalyzer_runner import wapp_by_column
+        result dict, in place. Names TechParser already found are skipped.
 
-        existing_names = {d["name"].lower() for d in detected["detections"]}
+        Delegates to the shared implementation so Tech Detect and the crawler
+        can never drift apart.
+        """
+        from src.services.tech_detect import merge_wappalyzer_detections
 
-        wapp_cols = wapp_by_column(wapp_full)
-        for col, names in wapp_cols.items():
-            if col in detected and isinstance(detected[col], list):
-                for name in names:
-                    if name.lower() not in existing_names and name not in detected[col]:
-                        detected[col].append(name)
-
-        for name, categories in wapp_full.items():
-            if name.lower() in existing_names:
-                continue
-            existing_names.add(name.lower())
-            detected["detections"].append({
-                "name": name,
-                "category": categories[0] if categories else "other",
-                "confidence": "medium",
-                "evidence": "wappalyzer library match",
-                "evidence_type": "wappalyzer",
-                "recommended": True,
-            })
+        merge_wappalyzer_detections(detected, wapp_full)
 
     def _extract_resources(
         self, url: str, html: str, rich_meta: dict,
