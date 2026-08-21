@@ -12,13 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import csv
-import json
 import os
 import socket
-import sqlite3
 import ssl
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
@@ -27,15 +26,15 @@ import httpx
 from openpyxl import load_workbook
 
 from src.scraping.parser.tech_parser import TechParser
-from src.scraping.parser.wappalyzer_runner import wapp_by_column, wapp_init, wapp_worker
+from src.scraping.parser.wappalyzer_runner import detect_wappalyzer_full, wapp_by_column, wapp_init
 
 INPUT_XLSX = os.path.join(os.path.dirname(__file__), "..", "128k_companies.xlsx")
-OUTPUT_CSV = os.path.join(os.path.dirname(__file__), "..", "128k_companies_v1.csv")
-CACHE_DB = os.path.join(os.path.dirname(__file__), "..", "128k_cache.sqlite")
+OUTPUT_CSV = os.path.join(os.path.dirname(__file__), "..", "128k_companies_v2.csv")
+SEED_CSV = os.path.join(os.path.dirname(__file__), "..", "128k_companies_seed.csv")
 
 FETCH_CONCURRENCY = 250
 FETCH_TIMEOUT = 20
-CHECKPOINT_EVERY = 100
+CHECKPOINT_EVERY = 500
 WAPP_WORKERS = int(os.environ.get("WAPP_WORKERS", "7"))  # CPU-bound regex scan
 ENRICH_CONCURRENCY = 100  # MX/SSL lookups
 SMOKE_LIMIT = int(os.environ.get("SMOKE_LIMIT", "0"))  # 0 = full run
@@ -132,8 +131,7 @@ def clean_host(domain: str) -> str:
 
 def url_variants(domain: str) -> list[str]:
     host = clean_host(domain)
-    return [f"https://{host}", f"https://www.{host}",
-            f"http://{host}", f"http://www.{host}"]
+    return [f"https://{host}", f"https://www.{host}"]
 
 
 def mx_provider(host: str) -> str:
@@ -219,35 +217,45 @@ def build_row(src: dict[str, Any], status: str, html_size: int, error: str,
     return row
 
 
-def cache_init() -> sqlite3.Connection:
-    """Open cache db; one-time seed from existing output csv (OK rows only)."""
-    conn = sqlite3.connect(CACHE_DB)
-    conn.execute("CREATE TABLE IF NOT EXISTS done ("
-                 "host TEXT PRIMARY KEY, row_json TEXT NOT NULL)")
-    empty = conn.execute("SELECT NOT EXISTS(SELECT 1 FROM done)").fetchone()[0]
-    if empty and os.path.exists(OUTPUT_CSV):
-        seed = []
-        with open(OUTPUT_CSV, encoding="utf-8-sig") as f:
-            for r in csv.DictReader(f):
-                if r.get("status") == "OK" and r.get("WEB_ADDRESS"):
-                    seed.append((clean_host(r["WEB_ADDRESS"]), json.dumps(r)))
-        conn.executemany("INSERT OR IGNORE INTO done VALUES (?, ?)", seed)
-        conn.commit()
-        print(f"Seeded cache: {len(seed)} OK rows from existing csv")
-    return conn
-
-
-def cache_get_many(conn: sqlite3.Connection, hosts: list[str]) -> dict[str, dict]:
-    if not hosts:
+def load_seed() -> dict[str, dict[str, str]]:
+    """Load seed CSV (best row per host) as in-memory host→row map for clones."""
+    if not os.path.exists(SEED_CSV):
         return {}
-    q = f"SELECT host, row_json FROM done WHERE host IN ({','.join('?' * len(hosts))})"
-    return {h: json.loads(j) for h, j in conn.execute(q, hosts)}
+    host_map: dict[str, dict[str, str]] = {}
+    with open(SEED_CSV, encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            h = clean_host(r.get("WEB_ADDRESS", ""))
+            if h and h not in host_map:
+                host_map[h] = r
+    return host_map
 
 
-def cache_put_many(conn: sqlite3.Connection, rows: list[tuple[str, dict]]) -> None:
-    conn.executemany("INSERT OR IGNORE INTO done VALUES (?, ?)",
-                     [(h, json.dumps(r)) for h, r in rows])
-    conn.commit()
+def read_done(path: str) -> tuple[Counter, dict[str, dict[str, str]]]:
+    """Read existing output CSV → done-tuple counter + host→row map for resume."""
+    done: Counter = Counter()
+    host_map: dict[str, dict[str, str]] = {}
+    if not os.path.exists(path):
+        return done, host_map
+    with open(path, encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            h = clean_host(r.get("WEB_ADDRESS", ""))
+            if h:
+                w = (r.get("WEB_ADDRESS") or "").strip()
+                n = (r.get("PARTY_NAME") or "").strip()
+                c = (r.get("COUNTRY") or "").strip()
+                done[(h, n, c)] += 1
+                if h not in host_map or host_map[h].get("status") != "OK":
+                    host_map[h] = r
+    return done, host_map
+
+
+def build_clone(src: dict[str, Any], seed_row: dict[str, str]) -> dict[str, str]:
+    """Clone tech data from seed row with src's identity columns."""
+    row = dict(seed_row)
+    row["PARTY_NAME"] = sanitize(src.get("PARTY_NAME"))
+    row["WEB_ADDRESS"] = sanitize(src.get("WEB_ADDRESS"))
+    row["COUNTRY"] = sanitize(src.get("COUNTRY"))
+    return row
 
 
 class CsvWriter:
@@ -303,6 +311,22 @@ async def fetch_batch(domains: list[str]) -> list[tuple[str, dict[str, str], str
         )
 
 
+def combined_worker(task: tuple[str, str, dict]) -> tuple[str, dict, dict, int]:
+    """Pool worker: (host, html, headers) -> (host, tech_dict, wapp_full, html_size).
+
+    Runs TechParser + Wappalyzer sequentially on the same HTML blob in one
+    process call, eliminating the serial TechParser bottleneck in main and
+    avoiding double-pickling of HTML.
+    """
+    host, html, headers = task
+    try:
+        tech = TechParser(html, headers).detect()
+        wapp_full = detect_wappalyzer_full(host, html, headers)
+        return host, tech, wapp_full, len(html)
+    except Exception:
+        return host, {"detections": []}, {}, len(html)
+
+
 def load_rows() -> list[dict[str, Any]]:
     wb = load_workbook(INPUT_XLSX, read_only=True)
     ws = wb.active
@@ -319,101 +343,123 @@ def main() -> None:
     if SMOKE_LIMIT:
         rows = rows[:SMOKE_LIMIT]
         print(f"SMOKE MODE: first {SMOKE_LIMIT} rows")
-    print(f"Loaded {len(rows)} rows")
+    print(f"Loaded {len(rows)} rows from {INPUT_XLSX}")
 
-    conn = cache_init()
+    host_map = load_seed()
+    print(f"Seed hosts loaded: {len(host_map)}")
+
+    done_tuples, output_host_map = read_done(OUTPUT_CSV)
+    host_map.update(output_host_map)
+    num_done_rows = done_tuples.total() if hasattr(done_tuples, 'total') else sum(done_tuples.values())
+    print(f"Already in output: {num_done_rows} rows | "
+          f"Hosts with data: {len(host_map)}")
+
     writer = CsvWriter(OUTPUT_CSV)
     buffer: list[dict[str, str]] = []
     processed = 0
-    total_hits = 0
+    clones_used = 0
 
     try:
         with ProcessPoolExecutor(max_workers=WAPP_WORKERS, initializer=wapp_init) as pool:
             for start in range(0, len(rows), CHECKPOINT_EVERY):
                 chunk = rows[start:start + CHECKPOINT_EVERY]
 
-                # partition: cache hits vs misses (deduped by host)
-                hosts = [clean_host(str(r.get("WEB_ADDRESS", ""))) for r in chunk]
-                cached = cache_get_many(conn, sorted(set(hosts)))
-                miss_by_host: dict[str, list[dict[str, Any]]] = {}
-                for src, host in zip(chunk, hosts):
-                    hit = cached.get(host)
-                    if hit:
-                        dup = dict(hit)
-                        dup["PARTY_NAME"] = sanitize(src.get("PARTY_NAME"))
-                        dup["WEB_ADDRESS"] = sanitize(src.get("WEB_ADDRESS"))
-                        dup["COUNTRY"] = sanitize(src.get("COUNTRY"))
-                        buffer.append(dup)
-                    else:
-                        miss_by_host.setdefault(host, []).append(src)
-                total_hits += len(chunk) - sum(len(v) for v in miss_by_host.values())
+                needs_clone: list[dict[str, Any]] = []
+                needs_fetch: dict[str, list[dict[str, Any]]] = {}  # host -> [src rows]
 
-                uniq_hosts = list(miss_by_host)
+                for src in chunk:
+                    h = clean_host(str(src.get("WEB_ADDRESS", "")))
+                    if not h:
+                        buffer.append(build_row(src, "FETCH_ERROR", 0, "No WEB_ADDRESS", {}))
+                        continue
+                    w = str(src.get("WEB_ADDRESS", "")).strip()
+                    n = str(src.get("PARTY_NAME", "")).strip()
+                    co = str(src.get("COUNTRY", "")).strip()
+                    tup = (h, n, co)
+
+                    if done_tuples.get(tup, 0) > 0:
+                        done_tuples[tup] -= 1
+                        continue  # already in output, skip
+
+                    if h in host_map:
+                        needs_clone.append(src)
+                    else:
+                        needs_fetch.setdefault(h, []).append(src)
+
+                # Emit clones (same host, different company)
+                for src in needs_clone:
+                    h = clean_host(str(src.get("WEB_ADDRESS", "")))
+                    buffer.append(build_clone(src, host_map[h]))
+                clones_used += len(needs_clone)
+
+                # Fetch new hosts
+                uniq_hosts = list(needs_fetch)
                 results = asyncio.run(fetch_batch(uniq_hosts)) if uniq_hosts else []
-                pending = []  # (host, tech, html, headers)
+                pending: list[tuple[str, str, dict]] = []  # (host, html, headers)
                 for host, (html, headers, error) in zip(uniq_hosts, results):
                     if error:
-                        for src in miss_by_host[host]:
-                            buffer.append(build_row(src, "FETCH_ERROR", 0, error, {}))
+                        for srcrt in needs_fetch[host]:
+                            buffer.append(build_row(srcrt, "FETCH_ERROR", 0, error, {}))
                     elif not html or len(html) < 200:
-                        for src in miss_by_host[host]:
-                            buffer.append(build_row(src, "EMPTY", len(html or ""), "", {}))
+                        for srcrt in needs_fetch[host]:
+                            buffer.append(build_row(srcrt, "EMPTY", len(html or ""), "", {}))
                     else:
-                        tech = TechParser(html, headers).detect()
-                        pending.append((host, tech, html, headers))
+                        pending.append((host, html, headers))
 
-                # Wappalyzer (CPU) in process pool
-                tasks = [(p[0], p[2], p[3]) for p in pending]
-                wapp_results = list(pool.map(wapp_worker, tasks))
+                # Combined TechParser + Wappalyzer (CPU) in process pool
+                results_by_host: dict[str, tuple[dict, dict, int]] = {}
+                if pending:
+                    combined_results = list(pool.map(combined_worker, pending))
+                    results_by_host = {h: (t, w, s) for h, t, w, s in combined_results}
 
                 # MX + SSL (I/O) async
                 async def run_enrich():
                     sem = asyncio.Semaphore(ENRICH_CONCURRENCY)
                     return await asyncio.gather(
-                        *[enrich_domain(sem, p[0]) for p in pending])
+                        *[enrich_domain(sem, h) for h, _, _ in pending])
                 enrich = asyncio.run(run_enrich()) if pending else []
 
-                new_ok: list[tuple[str, dict]] = []
-                for (host, tech, html, _), full, (email, issuer, expiry) in \
-                        zip(pending, wapp_results, enrich):
-                    tech["_wapp_cols"] = wapp_by_column(full)
-                    tech["_wapp_flat"] = sorted(full)
+                for (host, _, _), (email, issuer, expiry) in zip(pending, enrich):
+                    tech, wapp_full, html_size = results_by_host[host]
+                    tech["_wapp_cols"] = wapp_by_column(wapp_full)
+                    tech["_wapp_flat"] = sorted(wapp_full)
                     tech["_email"] = email
                     tech["_ssl_issuer"] = issuer
                     tech["_ssl_expiry"] = expiry
-                    for src in miss_by_host[host]:
-                        row = build_row(src, "OK", len(html), "", tech)
+                    for srcrt in needs_fetch[host]:
+                        status = "OK" if tech.get("detections") else "OK_NODETECT"
+                        row = build_row(srcrt, status, html_size, "", tech)
                         buffer.append(row)
-                        new_ok.append((host, row))
+                    # remember for future clones
+                    host_map[host] = row
 
                 writer.append(buffer)
-                cache_put_many(conn, new_ok)
                 buffer.clear()
                 processed += len(chunk)
-                rate = processed / (time.time() - t0)
+                rate = processed / (time.time() - t0) if time.time() > t0 else 0
                 print(f"[checkpoint] {processed}/{len(rows)} done "
-                      f"({rate:.0f}/s, cache hits {total_hits}, "
+                      f"({rate:.0f}/s, {clones_used} clones, "
                       f"elapsed {time.time()-t0:.0f}s)")
     except KeyboardInterrupt:
         writer.append(buffer)
         writer.close()
-        conn.close()
         print(f"\nInterrupted. {processed} rows saved. Rerun to resume.")
         sys.exit(1)
     writer.close()
-    conn.close()
 
     # Summary
-    total = ok = ferr = empty = 0
+    total = ok = nodetect = ferr = empty = 0
     with open(OUTPUT_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             total += 1
             ok += r["status"] == "OK"
+            nodetect += r["status"] == "OK_NODETECT"
             ferr += r["status"] == "FETCH_ERROR"
             empty += r["status"] == "EMPTY"
     print("\n" + "=" * 60)
-    print(f"Total: {total} | OK: {ok} | FETCH_ERROR: {ferr} | EMPTY: {empty}")
-    print(f"Time: {time.time()-t0:.0f}s | Output: {OUTPUT_CSV}")
+    print(f"Total: {total} | OK: {ok} | OK_NODETECT: {nodetect} | FETCH_ERROR: {ferr} | EMPTY: {empty}")
+    print(f"Clones emitted: {clones_used} | "
+          f"Time: {time.time()-t0:.0f}s | Output: {OUTPUT_CSV}")
 
 
 if __name__ == "__main__":
