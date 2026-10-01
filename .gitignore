@@ -1,57 +1,19 @@
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-dist/
-build/
 *.egg-info/
-*.egg
-.eggs/
-
-.env
-.env.local
-
-.firecrawl/
-
-# Playwright CLI debugging artifacts
-playwright-state.json
-trace.zip
-*.har
-
 .venv/
 venv/
-env/
-
+.env
+.pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.pytest_cache/
-htmlcov/
 .coverage
-coverage.xml
-
+htmlcov/
+dist/
+build/
 *.log
-*.pid
-
+*.err
 .DS_Store
-Thumbs.db
-
-# === Internal Docs & Planning (not for repo) ===
-CLAUDE.md
-LakeStream_Scrapling_Integration_PRD.md
-scrapling_integration_plan.md.resolved
-PRD-Scraper-Integration.md
-PRODUCT_ROADMAP.md
-ChampionInternalScraperPRD.md
-LakeB2B_Intent_Data_Platform_PRD_v3.docx
-LakeB2B_Scraper_PRD_v2_Mobile_WebApp.docx
-
-# === Agent Files ===
-.agents/
-.gemini/
-
-# === Benchmark Results ===
-benchmarks/results.json
-
-# Third-party fingerprint reference data (GPL-3.0 — never committed; see
-# docs/TECH_CATALOG.md and scripts/tech_gap_analysis.py)
-.tech-reference/
+node_modules/
+playwright-report/
+test-results/

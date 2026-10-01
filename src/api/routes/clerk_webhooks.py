@@ -9,6 +9,8 @@ Svix retries deliveries, and lazy provisioning in resolve_token_context()
 may have already created the rows a webhook describes.
 """
 
+import json
+
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 
@@ -25,7 +27,12 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
 def _verify_signature(payload: bytes, headers) -> dict:
-    """Verify the Svix signature and return the parsed event."""
+    """Verify the Svix signature and return the parsed event.
+
+    svix 1.x returned the decoded event from Webhook.verify(); svix 2.x returns
+    None and only verifies. Handle both so an unbounded "svix>=1.45" requirement
+    does not silently break the handler.
+    """
     settings = get_settings()
     if not settings.clerk_webhook_signing_secret:
         raise HTTPException(status_code=503, detail="Clerk webhook secret is not configured")
@@ -33,7 +40,7 @@ def _verify_signature(payload: bytes, headers) -> dict:
     from svix.webhooks import Webhook, WebhookVerificationError
 
     try:
-        return Webhook(settings.clerk_webhook_signing_secret).verify(
+        event = Webhook(settings.clerk_webhook_signing_secret).verify(
             payload,
             {
                 "svix-id": headers.get("svix-id", ""),
@@ -43,6 +50,8 @@ def _verify_signature(payload: bytes, headers) -> dict:
         )
     except WebhookVerificationError as e:
         raise HTTPException(status_code=400, detail="Invalid webhook signature") from e
+
+    return event if event is not None else json.loads(payload)
 
 
 def _primary_email(data: dict) -> str:
