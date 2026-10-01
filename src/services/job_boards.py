@@ -28,9 +28,10 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -158,7 +159,7 @@ def _iso(value: Any) -> str | None:
     # Lever uses epoch milliseconds; the others use ISO strings already.
     if isinstance(value, (int, float)):
         try:
-            return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat()
+            return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat()
         except (ValueError, OSError, OverflowError):
             return None
     return str(value)

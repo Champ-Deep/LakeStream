@@ -15,11 +15,11 @@ positives from the regex output — it never adds technologies.
 """
 
 import asyncio
+from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from uuid import UUID
 
 from src.api.middleware.auth import get_current_user
 from src.config.settings import get_settings

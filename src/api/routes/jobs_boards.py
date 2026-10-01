@@ -11,9 +11,9 @@ services/job_boards.persist_postings for why that mattered.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-
 from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Request
 
 from src.services.job_boards import (
     ATS_PROVIDERS,

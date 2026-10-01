@@ -15,7 +15,6 @@ Every detection carries:
 """
 
 import re
-from collections import defaultdict
 
 from src.data.tech_signatures import TECH_SIGNATURES
 from src.data.wapp_converted_signatures import WAPP_CONVERTED_SIGNATURES
