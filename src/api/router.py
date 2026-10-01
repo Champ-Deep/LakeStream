@@ -12,6 +12,7 @@ from src.api.routes import (
     health,
     ingest,
     jobs_alias,
+    jobs_boards,
     parse,
     scrape,
     screenshots,
@@ -41,6 +42,7 @@ api_router.include_router(tech.router, tags=["tech"])
 api_router.include_router(usage.router, tags=["usage"])
 api_router.include_router(screenshots.router, tags=["screenshots"])
 api_router.include_router(ingest.router, tags=["ingest"])
+api_router.include_router(jobs_boards.router, tags=["jobs"])
 api_router.include_router(discover.router)
 api_router.include_router(domains.router, tags=["domains"])
 api_router.include_router(graph.router, tags=["graph"])

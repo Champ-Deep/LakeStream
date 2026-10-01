@@ -200,9 +200,19 @@ railway variables set LAKECURRENT_ENABLED=true
 - Restart worker service
 
 **Issue: Playwright crashes**
-- Worker needs sufficient memory (at least 1GB)
-- In Railway, increase worker service memory limit
 - Check logs for: `playwright._impl._api_types.Error`
+- **First check shared memory, not RAM.** Chromium writes shared-memory
+  segments to `/dev/shm`, which Docker defaults to 64MB. That is too small for
+  more than a page or two and kills the renderer with an error that looks
+  exactly like OOM. `docker-compose.yml` now sets `shm_size: "2gb"` — on
+  Railway or any other host that doesn't read compose, verify in-container
+  with `df -h /dev/shm` and raise it there.
+  (Avoid the common `--disable-dev-shm-usage` workaround: it moves those
+  writes to disk-backed `/tmp` and trades the crash for slow page loads.)
+- **Then memory.** 1GB is not enough for concurrent browser work: budget
+  ~300-500MB per concurrently open page, i.e. roughly 2-3 pages per GB.
+  A 1GB worker supports a concurrency of about 2; 4GB supports about 8.
+  In Railway, increase the worker service memory limit accordingly.
 
 **Issue: False success (COMPLETED with 0 data)**
 - This should be fixed! Check code version deployed

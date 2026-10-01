@@ -17,6 +17,12 @@ class DataType(StrEnum):
     DOCUMENT = "document"  # PDF/DOCX documents
     EXTRACTED = "extracted"  # Schema-based extraction results
     WEBHOOK_CALLBACK = "webhook_callback"  # Inbound n8n / external callback payloads
+    # * ATS job posting (Greenhouse / Lever / Ashby). This member was MISSING
+    # * while signal_evaluator.check_hiring_spike_signal already queried
+    # * `data_type = 'job_posting'` — a value nothing could ever write, so the
+    # * hiring signal could never fire. The string appeared in exactly one place
+    # * in the codebase: that read query. See services/job_boards.persist_postings.
+    JOB_POSTING = "job_posting"
 
 
 

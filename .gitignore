@@ -27,6 +27,13 @@ test-results/
 # this entry, and that nothing is tracked under the directory.
 .tech-reference/
 
+# === Agent Files ===
+.agents/
+.gemini/
+
+# === Benchmark Results ===
+benchmarks/results.json
+
 # Scrape output and local caches. Scoped to the repo-root data/ dir rather than
 # a blanket *.csv: the tech_corpus fixtures live under tests/, and src/data/
 # holds tracked source (signature catalogs) that must stay trackable.

@@ -35,6 +35,7 @@ from src.services.signals.matchers import (
 )
 from src.services.signals.notifications import (
     NOTIFICATION_CHANNELS,
+    publish_signal_to_champiq,
     send_email_notification,
     send_slack_notification,
     send_webhook_notification,
@@ -54,6 +55,7 @@ __all__ = [
     "send_webhook_notification",
     "send_email_notification",
     "publish_signal_event",
+    "publish_signal_to_champiq",
 ]
 
 

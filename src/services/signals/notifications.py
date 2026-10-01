@@ -5,6 +5,9 @@ interface (`NotificationChannel.send`), extracted verbatim from
 `signal_evaluator.py` with behavior preserved exactly.
 """
 
+import hashlib
+import hmac
+import json
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
@@ -174,8 +177,100 @@ async def send_email_notification(
     )
 
 
+class ChampIQNotificationChannel(NotificationChannel):
+    """Publish `signal.matched` onto ChampIQ's event bus.
+
+    Ported from the monolithic signal_evaluator.py on PR #16 into the channel
+    registry, so it dispatches through the same path as Slack/webhook/email.
+    """
+
+    async def send(
+        self, signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        return await publish_signal_to_champiq(signal, matched_data, action_config)
+
+
 NOTIFICATION_CHANNELS: dict[str, NotificationChannel] = {
     "slack": SlackNotificationChannel(),
     "webhook": WebhookNotificationChannel(),
     "email": EmailNotificationChannel(),
+    "champiq": ChampIQNotificationChannel(),
 }
+
+
+async def publish_signal_to_champiq(
+    signal: Signal, matched_data: dict[str, Any], action_config: dict[str, Any]
+) -> dict[str, Any]:
+    """Publish `signal.matched` onto ChampIQ's event bus.
+
+    This is what makes signal-triggered outreach event-driven rather than
+    polled. Detection happens here, in LakeStream, against raw scraped
+    observations; qualification and action happen downstream in Harbinger and
+    ChampMail. Those are different layers of one pipeline, not two competing
+    signal engines: LakeStream never needs to know about campaigns, and
+    Harbinger never needs to scrape.
+
+    The payload deliberately carries `company_domain` per match. ChampIQ's
+    lead-correlation layer derives its key from that field when no contact
+    email is known yet (a `co:`-prefixed company key), so a pre-contact hiring
+    signal joins the same lead journey that later email events land on.
+
+    Fire-and-forget by contract: a down or unconfigured ChampIQ must never fail
+    signal evaluation, because the signal itself is still true and will be
+    re-detected on the next pass.
+    """
+    base_url = (action_config.get("champiq_url") or "").rstrip("/")
+    if not base_url:
+        raise ValueError("champiq_url not configured for this signal action")
+
+    matches = matched_data.get("matches") or []
+    events = []
+    for match in matches:
+        domain = match.get("domain") or match.get("company_domain")
+        if not domain:
+            continue
+        events.append(
+            {
+                "type": "signal.matched",
+                "signal_id": str(signal.id),
+                "signal_name": signal.name,
+                "signal_type": matched_data.get("signal_type"),
+                "company_domain": domain,
+                "account_name": action_config.get("account_name"),
+                "evidence": {k: v for k, v in match.items() if k != "domain"},
+                "detected_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    if not events:
+        return {"published": 0, "reason": "no match carried a company domain"}
+
+    url = f"{base_url}/api/webhooks/tools/lakestream"
+    headers = {"Content-Type": "application/json"}
+    secret = action_config.get("champiq_webhook_secret")
+    if secret:
+        headers["X-ChampIQ-Signature"] = hmac.new(
+            secret.encode(),
+            json.dumps(events, default=str).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    published = 0
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for event in events:
+            try:
+                resp = await client.post(url, json=event, headers=headers)
+                if resp.status_code < 400:
+                    published += 1
+                else:
+                    log.warning(
+                        "champiq_publish_rejected",
+                        status=resp.status_code, domain=event["company_domain"],
+                    )
+            except Exception:
+                # ! One company failing must not drop the rest of the batch.
+                log.exception(
+                    "champiq_publish_failed", domain=event["company_domain"]
+                )
+
+    return {"published": published, "attempted": len(events)}
