@@ -14,6 +14,7 @@ from src.api.routes.web import (
     jobs,
     results,
     tech,
+    tech_detect,
     users,
 )
 
@@ -24,5 +25,6 @@ router.include_router(dashboard.router)
 router.include_router(jobs.router)
 router.include_router(results.router)
 router.include_router(tech.router)
+router.include_router(tech_detect.router)
 router.include_router(users.router)
 router.include_router(account.router)

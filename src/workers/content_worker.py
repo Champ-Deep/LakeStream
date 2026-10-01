@@ -14,6 +14,7 @@ data-type extraction strategies live in ``src/workers/extractors.py`` and
 ``src/workers/dto.py``.
 """
 
+import asyncio
 from typing import get_origin
 from urllib.parse import urlparse
 from uuid import UUID
@@ -310,8 +311,11 @@ class ContentWorker(BaseWorker):
                     url, html, fetch_result.headers, rich_meta,
                     dns=dns_records, cert_issuer=cert_issuer,
                 )
-                if tech_rec:
-                    records.append(tech_rec)
+                tech_recs = [tech_rec] if tech_rec else []
+                tech_recs.extend(await self._tech_stack_addons(
+                    url, html, fetch_result.headers, tech_recs,
+                ))
+                records.extend(tech_recs)
 
         # --- LLM extraction: runs on every page for every requested type ---
         if run_llm:
@@ -494,6 +498,90 @@ class ContentWorker(BaseWorker):
             self.job_id, self.domain, url, html, headers, rich_meta,
             dns=dns, cert_issuer=cert_issuer,
         )
+
+    async def _tech_stack_addons(
+        self,
+        url: str,
+        html: str,
+        headers: dict[str, str],
+        records: list[dict],
+    ) -> list[dict]:
+        """Opt-in tech-detection layers from tech-detect-new, layered on the
+        catalog engine rather than replacing it.
+
+        Both are per-domain opt-ins (tracked_domains.tech_stack_wappalyzer /
+        tech_stack_llm_fallback) and both run homepage-only because they are
+        the expensive layers:
+
+        - Wappalyzer runs the real fingerprint library and folds any extra
+          finds into the record the catalog engine already produced.
+        - The LLM fallback fires only when nothing recommended was detected.
+
+        Returns extra records (currently only the LLM fallback contributes
+        one); the Wappalyzer pass mutates `records` in place.
+        """
+        extra: list[dict] = []
+
+        is_homepage = urlparse(url).path.rstrip("/") in ("", "/index.html")
+        if not is_homepage:
+            return extra
+
+        if self.tech_stack_wappalyzer:
+            from src.scraping.parser.wappalyzer_runner import detect_wappalyzer_full
+
+            try:
+                wapp_full = await asyncio.to_thread(
+                    detect_wappalyzer_full, url, html, headers
+                )
+                self._merge_wappalyzer_detections(records, wapp_full)
+            except Exception as e:
+                self.log.warning("tech_stack_wappalyzer_failed", url=url, error=str(e))
+
+        if self.tech_stack_llm_fallback:
+            recommended = sum(
+                1 for rec in records
+                for d in (rec.get("metadata", {}) or {}).get("detections", []) or []
+                if d.get("recommended")
+            )
+            if recommended == 0:
+                extra.extend(await self._llm_tech_stack_fallback(url, html))
+
+        return extra
+
+    async def _llm_tech_stack_fallback(self, url: str, html: str) -> list[dict]:
+        """LLM tech-stack guess, used only when the detectors found nothing."""
+        from src.services.llm_extractor import LLMExtractor
+
+        try:
+            llm = LLMExtractor(org_id=self.org_id)
+            llm_data = await llm.extract_by_type(html, "tech_stack")
+        except Exception as e:
+            self.log.warning("tech_stack_llm_fallback_failed", url=url, error=str(e))
+            return []
+
+        if not llm_data or "_extraction_errors" in llm_data:
+            return []
+        return self._convert_llm_results(url, "tech_stack", llm_data)
+
+    @staticmethod
+    def _merge_wappalyzer_detections(
+        records: list[dict], wapp_full: dict[str, list[str]]
+    ) -> None:
+        """Fold Wappalyzer-library-only findings into catalog-engine records.
+
+        The shared merge in src/services/tech_detect.py works on a TechParser
+        result dict, so build that shape from the record's metadata, merge, and
+        write the enriched lists back. Delegates to the shared implementation so
+        Tech Detect and the crawler can never drift apart.
+        """
+        from src.services.tech_detect import merge_wappalyzer_detections
+
+        for rec in records:
+            metadata = rec.get("metadata")
+            if isinstance(metadata, dict):
+                # The record metadata is already the {category: [...], "detections":
+                # [...]} shape the shared merge expects.
+                merge_wappalyzer_detections(metadata, wapp_full)
 
     async def _get_domain_intel(self) -> tuple[dict[str, str], str]:
         """DNS records + TLS cert issuer for this job's domain, resolved once.

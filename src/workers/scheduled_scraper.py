@@ -27,6 +27,8 @@ async def check_scheduled_scrapes(ctx: dict) -> None:
                 data_types=tracked.data_types,
                 max_pages=tracked.max_pages,
                 template_id=tracked.template_id if tracked.template_id != "auto" else None,
+                tech_stack_wappalyzer=tracked.tech_stack_wappalyzer,
+                tech_stack_llm_fallback=tracked.tech_stack_llm_fallback,
             )
             job = await create_job(pool, job_input)
 
@@ -40,6 +42,8 @@ async def check_scheduled_scrapes(ctx: dict) -> None:
                     template_id=tracked.template_id or "auto",
                     max_pages=tracked.max_pages,
                     data_types=tracked.data_types,
+                    tech_stack_wappalyzer=tracked.tech_stack_wappalyzer,
+                    tech_stack_llm_fallback=tracked.tech_stack_llm_fallback,
                 )
 
             await mark_scraped(pool, tracked.domain)

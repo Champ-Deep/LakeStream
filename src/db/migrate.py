@@ -41,6 +41,16 @@ _RENAMED_MIGRATIONS = {
     # subset of this file. The subset was deleted; this file now occupies the
     # canonical "017_disable_rls.sql" slot.
     "017_disable_rls_for_workers.sql": "017_disable_rls.sql",
+    # Both arrived from tech-detect-new, which had its own 031/032 numbering
+    # that collided with the canonical slots above. Both statements are
+    # idempotent (ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS) and
+    # independent of any other migration, so moving them to free slots 033/034
+    # is safe. Databases that already ran them under the old names must not
+    # re-apply them.
+    "031_add_tech_stack_toggles_to_tracked_domains.sql": (
+        "033_add_tech_stack_toggles_to_tracked_domains.sql"
+    ),
+    "032_create_tech_detect_runs.sql": "034_create_tech_detect_runs.sql",
 }
 # Old filenames whose effects are entirely subsumed by another migration the
 # DB has already applied (or will apply). We never re-run these.

@@ -2,9 +2,13 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+.venv-*/
 venv/
 .env
+.env-*
+.env.local
 .pytest_cache/
+env/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -17,3 +21,15 @@ build/
 node_modules/
 playwright-report/
 test-results/
+
+# External Wappalyzer-style reference catalogs are fetched at runtime, never
+# committed. tests/unit/test_no_third_party_catalog.py enforces both halves:
+# this entry, and that nothing is tracked under the directory.
+.tech-reference/
+
+# Scrape output and local caches. Scoped to the repo-root data/ dir rather than
+# a blanket *.csv: the tech_corpus fixtures live under tests/, and src/data/
+# holds tracked source (signature catalogs) that must stay trackable.
+/data/
+*.sqlite
+*.sqlite3

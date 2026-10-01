@@ -308,23 +308,40 @@
             <label class="block text-sm font-medium text-navy mb-2">What to Extract</label>
             <div class="grid grid-cols-2 gap-2">
               <template x-for="dt in allDataTypes" :key="dt.value">
-                <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:border-brand-red/30 cursor-pointer transition-colors"
-                  :class="{ 'border-brand-red/50 bg-red-50/50': dataTypes.includes(dt.value) }">
-                  <input
-                    type="checkbox"
-                    :value="dt.value"
-                    :checked="dataTypes.includes(dt.value)"
-                    @change="
-                      if ($event.target.checked) {
-                        if (!dataTypes.includes(dt.value)) dataTypes.push(dt.value);
-                      } else {
-                        dataTypes = dataTypes.filter(t => t !== dt.value);
-                      }
-                    "
-                    class="w-4 h-4 rounded text-brand-red focus:ring-brand-red/30"
-                  />
-                  <span class="text-sm text-navy" x-text="dt.label"></span>
-                </label>
+                <div>
+                  <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:border-brand-red/30 cursor-pointer transition-colors"
+                    :class="{ 'border-brand-red/50 bg-red-50/50': dataTypes.includes(dt.value) }">
+                    <input
+                      type="checkbox"
+                      :value="dt.value"
+                      :checked="dataTypes.includes(dt.value)"
+                      @change="
+                        if ($event.target.checked) {
+                          if (!dataTypes.includes(dt.value)) dataTypes.push(dt.value);
+                        } else {
+                          dataTypes = dataTypes.filter(t => t !== dt.value);
+                        }
+                      "
+                      class="w-4 h-4 rounded text-brand-red focus:ring-brand-red/30"
+                    />
+                    <span class="text-sm text-navy" x-text="dt.label"></span>
+                  </label>
+                  <template x-if="dt.value === 'tech_stack' && dataTypes.includes('tech_stack')">
+                    <div class="ml-7 mt-1.5 space-y-1">
+                      <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+                        <input type="checkbox" x-model="techWappalyzer" class="w-3.5 h-3.5 rounded accent-brand-red">
+                        Use Wappalyzer library (broader coverage, slower)
+                      </label>
+                      <label
+                        class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer"
+                        :class="!llmAvailable ? 'opacity-50 cursor-not-allowed' : ''"
+                      >
+                        <input type="checkbox" x-model="techLlmFallback" :disabled="!llmAvailable" class="w-3.5 h-3.5 rounded accent-brand-red">
+                        AI fallback if nothing detected
+                      </label>
+                    </div>
+                  </template>
+                </div>
               </template>
             </div>
           </div>

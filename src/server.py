@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -86,6 +87,9 @@ app.add_middleware(
 )
 # Rate limiting: outside session/auth so 429s are served cheaply, inside CORS.
 app.add_middleware(RateLimitMiddleware)
+# Gzip: sits just inside CORS so every route response is compressed. Batch
+# poll payloads are highly repetitive JSON and shrink roughly 8-12x.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 # CORS: outermost middleware (added last in Starlette LIFO) — handles preflight
 # before auth. Allows Chrome extensions + local dev + Railway domains + Clerk.
 _cors_regex = r"(chrome-extension://.*|http://localhost:\d+|https://.*\.up\.railway\.app"

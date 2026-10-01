@@ -25,8 +25,16 @@ async def add_tracked_domain(
     max_pages: int = 100,
     template_id: str = "auto",
     webhook_url: str | None = None,
+    tech_stack_wappalyzer: bool = False,
+    tech_stack_llm_fallback: bool = False,
+    org_id: UUID | None = None,
 ) -> TrackedDomain:
-    """Insert or update a tracked domain."""
+    """Insert or update a tracked domain.
+
+    org_id must be supplied by the caller: defaulting to the "default" org
+    slug here would silently cross tenant boundaries for any caller that
+    forgot to scope.
+    """
     if data_types is None:
         data_types = [
             "blog_url",
@@ -43,16 +51,20 @@ async def add_tracked_domain(
         """
         INSERT INTO tracked_domains
             (domain, data_types, scrape_frequency, max_pages,
-             template_id, webhook_url, next_scrape_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+             template_id, webhook_url, tech_stack_wappalyzer,
+             tech_stack_llm_fallback, org_id, next_scrape_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (domain) DO UPDATE SET
             data_types = $2,
             scrape_frequency = $3,
             max_pages = $4,
             template_id = $5,
             webhook_url = $6,
+            tech_stack_wappalyzer = $7,
+            tech_stack_llm_fallback = $8,
+            org_id = $9,
             is_active = true,
-            next_scrape_at = $7,
+            next_scrape_at = $10,
             updated_at = NOW()
         RETURNING *
         """,
@@ -62,17 +74,31 @@ async def add_tracked_domain(
         max_pages,
         template_id,
         webhook_url,
+        tech_stack_wappalyzer,
+        tech_stack_llm_fallback,
+        org_id,
         next_scrape,
     )
     return TrackedDomain(**dict(row))
 
 
 async def list_tracked_domains(
-    pool: asyncpg.Pool, *, active_only: bool = True
+    pool: asyncpg.Pool, *, active_only: bool = True, org_id: UUID | None = None
 ) -> list[TrackedDomain]:
-    """List tracked domains."""
-    condition = "WHERE is_active = true" if active_only else ""
-    rows = await pool.fetch(f"SELECT * FROM tracked_domains {condition} ORDER BY domain ASC")
+    """List tracked domains, optionally scoped to a single org.
+
+    org_id=None returns every org's rows: only callers with super-admin scope
+    (dashboard, results) should rely on that. Tenant-facing routes must pass it.
+    """
+    conditions = []
+    vals: list[object] = []
+    if active_only:
+        conditions.append("is_active = true")
+    if org_id is not None:
+        vals.append(org_id)
+        conditions.append(f"org_id = ${len(vals)}")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = await pool.fetch(f"SELECT * FROM tracked_domains {where} ORDER BY domain ASC", *vals)
     return [TrackedDomain(**dict(row)) for row in rows]
 
 

@@ -13,7 +13,7 @@ router = APIRouter(prefix="/tracked", tags=["tracked"])
 @router.post("/add", response_model=TrackedDomain)
 async def add_site(request: Request, input_data: AddSiteInput):
     """Add a domain for automated tracking and scheduled scraping."""
-    require_org(request)
+    org_id_str, _, is_admin = require_org(request)
 
     from src.db.pool import get_pool
     from src.db.queries.tracked_domains import add_tracked_domain
@@ -26,19 +26,24 @@ async def add_site(request: Request, input_data: AddSiteInput):
         scrape_frequency=input_data.scrape_frequency,
         max_pages=input_data.max_pages,
         webhook_url=input_data.webhook_url,
+        tech_stack_wappalyzer=input_data.tech_stack_wappalyzer,
+        tech_stack_llm_fallback=input_data.tech_stack_llm_fallback,
+        org_id=None if is_admin else UUID(org_id_str),
     )
 
 
 @router.get("/", response_model=list[TrackedDomain])
 async def list_sites(request: Request):
     """List all actively tracked domains."""
-    require_org(request)
+    org_id_str, _, is_admin = require_org(request)
 
     from src.db.pool import get_pool
     from src.db.queries.tracked_domains import list_tracked_domains
 
     pool = await get_pool()
-    return await list_tracked_domains(pool)
+    return await list_tracked_domains(
+        pool, org_id=None if is_admin else UUID(org_id_str)
+    )
 
 
 @router.delete("/{domain}")

@@ -123,21 +123,38 @@
           </label>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
             <template x-for="dt in allDataTypes" :key="dt.value">
-              <label
-                class="flex items-center gap-2.5 cursor-pointer p-2.5 rounded-xl border-2
-                  transition-all text-sm"
-                :class="dataTypes.includes(dt.value)
-                  ? 'border-brand-red bg-red-50/30 text-navy font-medium'
-                  : 'border-slate-200 text-slate-500 hover:border-slate-300'"
-              >
-                <input
-                  type="checkbox"
-                  :value="dt.value"
-                  x-model="dataTypes"
-                  class="w-4 h-4 rounded border-slate-300 text-brand-red focus:ring-brand-red/20"
+              <div>
+                <label
+                  class="flex items-center gap-2.5 cursor-pointer p-2.5 rounded-xl border-2
+                    transition-all text-sm"
+                  :class="dataTypes.includes(dt.value)
+                    ? 'border-brand-red bg-red-50/30 text-navy font-medium'
+                    : 'border-slate-200 text-slate-500 hover:border-slate-300'"
                 >
-                <span x-text="dt.label"></span>
-              </label>
+                  <input
+                    type="checkbox"
+                    :value="dt.value"
+                    x-model="dataTypes"
+                    class="w-4 h-4 rounded border-slate-300 text-brand-red focus:ring-brand-red/20"
+                  >
+                  <span x-text="dt.label"></span>
+                </label>
+                <template x-if="dt.value === 'tech_stack' && dataTypes.includes('tech_stack')">
+                  <div class="ml-7 mt-1.5 space-y-1">
+                    <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+                      <input type="checkbox" x-model="techWappalyzer" class="w-3.5 h-3.5 rounded accent-brand-red">
+                      Use Wappalyzer library (broader coverage, slower)
+                    </label>
+                    <label
+                      class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer"
+                      :class="!llmAvailable ? 'opacity-50 cursor-not-allowed' : ''"
+                    >
+                      <input type="checkbox" x-model="techLlmFallback" :disabled="!llmAvailable" class="w-3.5 h-3.5 rounded accent-brand-red">
+                      AI fallback if nothing detected
+                    </label>
+                  </div>
+                </template>
+              </div>
             </template>
           </div>
         </div>

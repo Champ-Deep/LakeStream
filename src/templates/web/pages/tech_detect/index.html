@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Tech Detect - LakeStream{% endblock %}
+
+{% block content %}
+<script>
+  window.TECH_CATEGORIES = [
+    {% for slug, label in categories %}{ id: "{{ slug }}", label: "{{ label }}" }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
+</script>
+<div class="space-y-6" x-data="techDetect()" x-init="init('{{ resume_run or '' }}')">
+
+  <div>
+    <h1 class="text-2xl font-bold text-navy dark:text-gray-100">Tech Detect</h1>
+    <p class="text-sm text-slate-500 dark:text-gray-400 mt-1">
+      Identify the technology stack behind any site — one URL, or a whole CSV.
+    </p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <div class="card p-6">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">
+        Single URL
+      </label>
+      <div class="flex gap-3">
+        <input type="text" x-model="singleUrl" @keydown.enter.prevent="runSingle()"
+               placeholder="example.com or https://example.com/pricing"
+               class="input input-lg flex-1">
+        <button @click="runSingle()" :disabled="busy || !singleUrl.trim()"
+                class="brand-gradient text-white px-6 py-3.5 rounded-full font-bold shadow-lg
+                       btn-hover-effect transition-all disabled:opacity-50 flex items-center gap-2 flex-shrink-0">
+          <template x-if="!busy">
+            <span class="flex items-center gap-2">
+              <i data-lucide="scan-search" class="w-5 h-5"></i> Detect
+            </span>
+          </template>
+          <template x-if="busy">
+            <div class="spinner border-white border-t-transparent"></div>
+          </template>
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-slate-400">
+        Runs instantly and is saved to your Results.
+      </p>
+    </div>
+
+    <div class="card p-6">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">
+        Batch from CSV
+      </label>
+      <div class="border-2 border-dashed rounded-xl p-4 text-center transition-colors"
+           :class="dragging ? 'border-brand-red bg-red-50/30' : 'border-slate-300 dark:border-gray-600'"
+           @dragover.prevent="dragging = true"
+           @dragleave.prevent="dragging = false"
+           @drop.prevent="dragging = false; $refs.csv.files = $event.dataTransfer.files; onFile()">
+        <input type="file" x-ref="csv" accept=".csv,.txt" class="hidden" @change="onFile()">
+        <template x-if="!urls.length">
+          <div>
+            <i data-lucide="upload-cloud" class="w-7 h-7 mx-auto text-slate-400"></i>
+            <button @click="$refs.csv.click()" class="mt-2 text-sm font-medium text-brand-red hover:underline">
+              Choose a CSV
+            </button>
+            <span class="text-sm text-slate-400"> or drag it here</span>
+            <p class="text-xs text-slate-400 mt-1">One URL per row · max 100</p>
+          </div>
+        </template>
+        <template x-if="urls.length">
+          <div class="flex items-center justify-center gap-3">
+            <i data-lucide="file-check-2" class="w-6 h-6 text-success"></i>
+            <span class="text-sm font-medium text-navy dark:text-gray-100">
+              <span x-text="urls.length"></span> URLs ready
+            </span>
+            <button @click="reset()" class="text-xs text-slate-400 hover:underline">clear</button>
+          </div>
+        </template>
+      </div>
+
+      <div x-show="csvWarning" x-cloak class="mt-3 text-xs text-warning flex items-start gap-2">
+        <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0"></i>
+        <span x-text="csvWarning"></span>
+      </div>
+
+      <div class="mt-4 flex items-center justify-between gap-3">
+        <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+          <input type="checkbox" x-model="saveToResults" class="w-3.5 h-3.5 rounded accent-brand-red">
+          Save batch to Results
+        </label>
+        <button @click="runBatch()" :disabled="busy || !urls.length"
+                class="btn-primary disabled:opacity-50 flex items-center gap-2">
+          <i data-lucide="play" class="w-4 h-4"></i>
+          Detect All
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card p-6">
+    <div class="flex items-center justify-between mb-3">
+      <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide">
+        Technologies to show
+      </label>
+      <div class="flex gap-3 text-xs">
+        <button @click="selectAll()" class="text-brand-red hover:underline">All</button>
+        <button @click="selected = []" class="text-slate-400 hover:underline">None</button>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% for slug, label in categories %}
+      <label class="flex items-center gap-2 px-3 py-1.5 rounded-full border-2 cursor-pointer text-xs transition-all"
+             :class="selected.includes('{{ slug }}')
+               ? 'border-brand-red bg-red-50/30 text-navy font-medium'
+               : 'border-slate-200 dark:border-gray-700 text-slate-500'">
+        <input type="checkbox" value="{{ slug }}" x-model="selected" class="hidden">
+        <span>{{ label }}</span>
+        <span class="text-slate-400" x-text="countFor('{{ slug }}')"></span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card p-6" x-show="rows.length || running" x-cloak>
+    <div class="flex items-center justify-between mb-4">
+      <div class="text-sm font-bold text-navy dark:text-gray-100">
+        Results
+        <span class="text-slate-400 font-normal">
+          (<span x-text="visibleRows.length"></span> of <span x-text="rows.length"></span>)
+        </span>
+      </div>
+      <div class="flex gap-2">
+        <button @click="downloadCsv()" :disabled="!visibleRows.length"
+                title="One row per detected technology, with evidence"
+                class="btn-secondary text-xs disabled:opacity-50">
+          Download CSV
+        </button>
+        <button @click="downloadJson()" :disabled="!visibleRows.length" class="btn-secondary text-xs disabled:opacity-50">
+          Download JSON
+        </button>
+      </div>
+    </div>
+
+    <div x-show="running" x-cloak class="mb-4">
+      <div class="flex items-center justify-between text-xs text-slate-500 mb-1">
+        <span x-text="progressLabel"></span>
+        <span x-text="done + ' / ' + total"></span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-bar-fill" :style="'width:' + pct + '%'"></div>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase text-slate-400 border-b border-slate-200 dark:border-gray-700">
+            <th class="py-2 w-8"></th>
+            <th class="py-2 pr-3">URL</th>
+            <th class="py-2 pr-3">Status</th>
+            <th class="py-2 pr-3">Technologies</th>
+            <th class="py-2 text-right">#</th>
+          </tr>
+        </thead>
+        <!-- One tbody per row: an Alpine x-for template can only emit a single
+             root element, so the summary and detail rows are wrapped together. -->
+        <template x-for="row in visibleRows" :key="row.key">
+          <tbody>
+            <tr class="border-b border-slate-100 dark:border-gray-800 table-row-hover align-top cursor-pointer"
+                data-testid="td-row"
+                role="button" tabindex="0"
+                :aria-expanded="isExpanded(row)"
+                @click="toggle(row.key)"
+                @keydown.enter.prevent="toggle(row.key)"
+                @keydown.space.prevent="toggle(row.key)">
+              <td class="py-2 w-8 text-slate-400" data-testid="td-chevron">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                     stroke-linejoin="round" class="w-4 h-4 transition-transform"
+                     :class="isExpanded(row) ? 'rotate-90' : ''">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </td>
+              <td class="py-2 pr-3 max-w-xs truncate" :title="row.final_url || row.input_url">
+                <span x-text="row.domain || row.input_url"></span>
+              </td>
+              <td class="py-2 pr-3">
+                <span class="badge" :class="badgeClass(row.status)" x-text="row.status"></span>
+                <div x-show="row.error" x-cloak class="text-xs text-slate-400 mt-1 max-w-xs truncate"
+                     :title="row.error" x-text="row.error"></div>
+              </td>
+              <td class="py-2 pr-3">
+                <template x-if="!Object.keys(shown(row)).length">
+                  <span class="text-xs text-slate-400">—</span>
+                </template>
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="(names, cat) in shown(row)" :key="cat">
+                    <span class="badge badge-neutral text-xs"
+                          :title="labelFor(cat) + ': ' + names.join(', ')">
+                      <span x-text="labelFor(cat)"></span>:
+                      <span class="font-normal" x-text="names.join(', ')"></span>
+                    </span>
+                  </template>
+                </div>
+              </td>
+              <td class="py-2 text-right text-slate-400" x-text="countShown(row)"></td>
+            </tr>
+
+            <tr x-show="isExpanded(row)" x-collapse x-cloak>
+              <td colspan="5" class="px-4 py-4 bg-slate-50 dark:bg-gray-800/50 border-b border-slate-200 dark:border-gray-700">
+
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mb-3">
+                  <span class="font-bold text-navy dark:text-gray-100" x-text="row.domain || row.input_url"></span>
+                  <a :href="row.final_url || row.input_url" target="_blank" rel="noopener"
+                     class="text-brand-red hover:underline" @click.stop>Open site ↗</a>
+                  <span class="badge" :class="badgeClass(row.status)" x-text="row.status"></span>
+                  <span x-show="row.http_status" x-cloak>HTTP <span x-text="row.http_status"></span></span>
+                  <span x-show="row.duration_ms" x-cloak><span x-text="row.duration_ms"></span> ms</span>
+                </div>
+
+                <div x-show="row.escalated" x-cloak class="text-xs text-warning mb-2">
+                  Retried through a headless browser and still blocked.
+                </div>
+                <div x-show="row.truncated" x-cloak class="text-xs text-warning mb-2">
+                  Page HTML was larger than 3 MB and was truncated — this list may be incomplete.
+                </div>
+
+                <template x-if="row.status !== 'ok'">
+                  <div class="text-sm text-slate-500">
+                    <span x-text="row.error || 'No technologies could be read from this URL.'"></span>
+                  </div>
+                </template>
+
+                <template x-if="row.status === 'ok' && !row.detections.length">
+                  <div class="text-sm text-slate-500">
+                    Fetched successfully — no known technologies matched.
+                  </div>
+                </template>
+
+                <template x-if="row.status === 'ok' && row.detections.length">
+                  <div>
+                    <div class="text-xs text-slate-500 mb-2">
+                      <template x-if="matchedCount(row) === row.detections.length">
+                        <span><span x-text="row.detections.length"></span> detections</span>
+                      </template>
+                      <template x-if="matchedCount(row) !== row.detections.length">
+                        <span>
+                          All <span x-text="row.detections.length"></span> detections ·
+                          <span x-text="matchedCount(row)"></span> match your current filter
+                          <button @click.stop="selectAll()" class="text-brand-red hover:underline ml-1">Show all</button>
+                        </span>
+                      </template>
+                    </div>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-xs" data-testid="td-detail-table">
+                        <thead>
+                          <tr class="text-left uppercase text-slate-400 border-b border-slate-200 dark:border-gray-700">
+                            <th class="py-1.5 pr-3">Technology</th>
+                            <th class="py-1.5 pr-3">Category</th>
+                            <th class="py-1.5 pr-3">Confidence</th>
+                            <th class="py-1.5 pr-3">Source</th>
+                            <th class="py-1.5">Evidence</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="d in detailRows(row)" :key="d.name + '|' + d.category_id">
+                            <tr class="border-b border-slate-100 dark:border-gray-800"
+                                data-testid="td-detail-row"
+                                :class="d.inFilter ? '' : 'opacity-50'">
+                              <td class="py-1.5 pr-3 font-medium text-navy dark:text-gray-100" x-text="d.name"></td>
+                              <td class="py-1.5 pr-3 text-slate-500" :title="'detector category: ' + d.category_raw"
+                                  x-text="d.category_label"></td>
+                              <td class="py-1.5 pr-3">
+                                <span class="badge text-xs" :class="confidenceClass(d.confidence)" x-text="d.confidence"></span>
+                              </td>
+                              <td class="py-1.5 pr-3 text-slate-500" x-text="d.source_label"></td>
+                              <td class="py-1.5 font-mono text-slate-500 max-w-md truncate"
+                                  :title="d.evidence" x-text="d.evidence"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </template>
+
+              </td>
+            </tr>
+          </tbody>
+        </template>
+      </table>
+    </div>
+
+    <div x-show="rows.length && !visibleRows.length" x-cloak class="empty-state">
+      <p class="text-sm text-slate-500">
+        No rows match the selected technologies.
+      </p>
+      <button @click="selectAll()" class="mt-2 text-xs text-brand-red hover:underline">Clear filters</button>
+    </div>
+  </div>
+
+  <div x-show="!rows.length && !running" x-cloak class="empty-state">
+    <i data-lucide="scan-search" class="w-10 h-10 mx-auto text-slate-300"></i>
+    <p class="mt-2 text-sm text-slate-500">Enter a URL or upload a CSV to get started.</p>
+  </div>
+</div>
+{% endblock %}

@@ -33,3 +33,10 @@ mammoth>=1.8.0
 # or domain-level tech intelligence fails at runtime in the container.
 dnspython>=2.7.0
 cryptography>=43.0.0
+
+# Tech-detection pipeline (run_tech_detection.py, scripts/run_tech_detection_*.py)
+openpyxl>=3.1.0
+python-Wappalyzer>=0.3.1
+# python-Wappalyzer imports pkg_resources at module load time; setuptools>=81
+# dropped it, so pin below that to keep the import working.
+setuptools<81

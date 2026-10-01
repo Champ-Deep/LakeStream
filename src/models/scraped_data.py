@@ -109,6 +109,7 @@ class TechStackMetadata(BaseModel):
     monitoring: list[str] = []
     search: list[str] = []
     # v2.3 — depth-program categories
+    ecommerce: list[str] = []
     advertising: list[str] = []
     ab_testing: list[str] = []
     crm: list[str] = []

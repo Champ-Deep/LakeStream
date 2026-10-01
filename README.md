@@ -239,6 +239,31 @@ python benchmarks/scrapling_benchmark.py https://example.com https://python.org
 | `GET /jobs` | Job list |
 | `GET /results` | Browse extracted data |
 | `GET /domains` | Domain analytics |
+| `GET /tech` | Tech Lookup (catalog engine, paste domains) |
+| `GET /tech-detect` | Tech Detect (single URL, CSV batch, category filter) |
+
+### Technology detection: two engines
+
+Both are available and neither replaces the other:
+
+| Surface | Engine | How it works |
+|---------|--------|--------------|
+| `/tech`, `/api/tech/*` | Catalog engine (`src/scraping/parser/tech_engine.py`) | LakeStream's own curated fingerprint set, precompiled once per process and matched against targeted page fields (script URLs, one named header, a cookie, a meta tag). Measured ~2600x faster than matching every pattern over the whole document. |
+| `/tech-detect`, `tech_detect_jobs` | Wappalyzer (`src/scraping/parser/wappalyzer_runner.py`) | Runs the real Wappalyzer fingerprint library plus the `TechParser` signature set (`tech_parser.py`, `wapp_converted_signatures.py`). |
+
+Per tracked domain, two optional add-on layers run homepage-only and are off
+by default. Set them on the tracked-domain row:
+
+| Flag | Effect |
+|------|--------|
+| `tech_stack_wappalyzer` | Merges any extra Wappalyzer findings into the crawler record |
+| `tech_stack_llm_fallback` | Asks the LLM for a stack guess, only when nothing recommended was detected |
+
+The Wappalyzer catalog is deliberately **not** vendored as a fingerprint
+database; see `docs/TECH_CATALOG.md` and `docs/adding-tech-signatures.md`.
+Signatures live in `src/data/tech_signatures.py`, whose header documents the
+accuracy rules that keep `cdn` and `hosting` false positives at a measured
+~1.3%.
 
 ### REST API
 | Endpoint | Method | Description |
