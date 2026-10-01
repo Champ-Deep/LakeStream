@@ -115,7 +115,8 @@ class TechStackMetadata(BaseModel):
     monitoring: list[str] = []
     search: list[str] = []
     # v2.3 — depth-program categories
-    ecommerce: list[str] = []
+    # ecommerce is declared above under v2.2; tech-detect-new also added it, but
+    # a duplicate field silently shadows the first, so it is declared once only.
     advertising: list[str] = []
     ab_testing: list[str] = []
     crm: list[str] = []

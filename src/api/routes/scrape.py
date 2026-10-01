@@ -399,6 +399,11 @@ async def extract_structured(request: Request):
         if not fetch_result.blocked and not fetch_result.captcha_detected:
             break
 
+    if fetch_result is None:
+        # Unreachable: tier_chain always holds at least one tier. Guarded so the
+        # type checker sees the None case and a future edit can't slip past it.
+        return {"success": False, "error": "No fetch tier was attempted"}
+
     if fetch_result.blocked:
         return {
             "success": False,
