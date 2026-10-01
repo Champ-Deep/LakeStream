@@ -26,6 +26,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          # python-Wappalyzer is declared in requirements.txt but not in the
+          # pyproject extras, and tests/unit/services/test_tech_detect_service.py
+          # imports it. Installing the project alone left the runner without it
+          # while a developer venv built from requirements.txt had it, so the
+          # suite passed locally and failed in CI.
+          pip install -r requirements.txt
 
       - name: Ruff lint (advisory)
         # Codebase has pre-existing lint violations; run advisory for now so
