@@ -10,6 +10,9 @@ class ScrapingTier(StrEnum):
     PLAYWRIGHT_PROXY = "playwright_proxy"
     GO_HTTP = "go_http"  # Go sidecar: fast HTTP fetch (experimental, flag-gated)
     GO_BROWSER = "go_browser"  # Go sidecar: headless Chrome via chromedp (experimental)
+    # Screenshot-guided fetch with cited facts (v2 probe, flag: enable_visual_fetcher).
+    # Explicit tier_override only; never part of escalation.
+    VISUAL = "visual"
 
 
 class FetchResult(BaseModel):
@@ -27,6 +30,9 @@ class FetchResult(BaseModel):
     screenshot_bytes: bytes | None = None  # PNG when capture_screenshot requested
     content_hash: str | None = None  # sha256 of normalized markdown (cache/change)
     fetched_at: datetime | None = None
+    # Structured output from the visual tier: {"status": success|partial|blocked|failed,
+    # "reason", "facts": {...cited...}, ...}. None for every other tier.
+    facts: dict | None = None
 
 
 class FetchOptions(BaseModel):

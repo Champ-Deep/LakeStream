@@ -6,6 +6,8 @@ TIER_COSTS: dict[str, float] = {
     # Experimental Go sidecar tiers (self-hosted; near-zero marginal cost)
     "go_http": 0.0005,
     "go_browser": 0.002,
+    # Visual tier base (browser time); vision/Jev model cost is added per run
+    "visual": 0.005,
 }
 
 QUEUE_NAMES: dict[str, str] = {

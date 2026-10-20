@@ -628,7 +628,7 @@ async def scrape_url_sync(request: Request):
     if max_chars and markdown:
         markdown = markdown[: int(max_chars)]
 
-    return {
+    response = {
         "success": result.get("success", False),
         "url": url,
         "markdown": markdown,
@@ -638,6 +638,9 @@ async def scrape_url_sync(request: Request):
         "content_hash": content_hash(markdown) if markdown else None,
         "error": result.get("error"),
     }
+    if result.get("facts"):  # visual tier: cited facts + explicit status
+        response["facts"] = result["facts"]
+    return response
 
 
 @router.post("/youtube-transcript")

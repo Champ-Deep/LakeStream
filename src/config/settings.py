@@ -121,6 +121,15 @@ class Settings(BaseSettings):
     enable_go_fetchers: bool = False
     go_http_fetcher_url: str = ""  # e.g. http://go-http-fetcher:8080
     go_browser_fetcher_url: str = ""  # e.g. http://go-browser-fetcher:8080
+    # Visual tier (v2 probe): screenshot -> vision -> Jev -> cited facts. Off by
+    # default; only an explicit tier override "visual" reaches it. Needs
+    # openrouter_api_key (vision) and typesafe_api_key (Jev).
+    enable_visual_fetcher: bool = False
+    typesafe_api_key: str = ""
+    visual_vision_model: str = "google/gemini-2.5-flash-lite"
+    visual_max_steps: int = 8
+    visual_budget_s: float = 180.0
+    visual_max_model_calls: int = 16
     # Capture + serve the sitemap link graph (Phase 5)
     enable_knowledge_graph: bool = True
 

@@ -37,7 +37,13 @@ class ScraperService:
             result = await fetcher.fetch(url, FetchOptions())
 
         if not result.html:
-            return {"markdown": "", "metadata": {}, "success": False, "error": "No content found"}
+            out: dict[str, Any] = {
+                "markdown": "", "metadata": {}, "success": False, "error": "No content found",
+            }
+            if result.facts:  # visual tier: a wall/failure is an explicit status, not silence
+                out.update(facts=result.facts, tier_used=result.tier_used.value,
+                           status_code=result.status_code, error=result.facts.get("reason"))
+            return out
 
         # 4. Extract Main Content & Metadata
         parser = HTMLParser(result.html)
@@ -50,13 +56,16 @@ class ScraperService:
         # 5. Convert to Markdown
         markdown = self._html_to_markdown(content_node.html) if content_node else ""
 
-        return {
+        out = {
             "markdown": markdown,
             "metadata": metadata,
             "success": True,
             "tier_used": result.tier_used.value,
             "status_code": result.status_code,
         }
+        if result.facts:  # visual tier: cited facts travel with the markdown
+            out["facts"] = result.facts
+        return out
 
     def _find_main_content(self, parser: HTMLParser) -> Any:
         """Find the main content area, stripping noise."""

@@ -5,6 +5,7 @@ from src.scraping.fetcher.lake_go_http_fetcher import LakeGoHttpFetcher
 from src.scraping.fetcher.lake_lightpanda_fetcher import LakeLightPandaFetcher
 from src.scraping.fetcher.lake_playwright_fetcher import LakePlaywrightFetcher
 from src.scraping.fetcher.lake_playwright_proxy_fetcher import LakePlaywrightProxyFetcher
+from src.scraping.fetcher.lake_visual_fetcher import LakeVisualFetcher
 
 _FETCHERS: dict[ScrapingTier, type[BaseFetcher]] = {
     ScrapingTier.LIGHTPANDA: LakeLightPandaFetcher,
@@ -14,6 +15,9 @@ _FETCHERS: dict[ScrapingTier, type[BaseFetcher]] = {
     # via explicit tier_override unless the flag routes escalation to them.
     ScrapingTier.GO_HTTP: LakeGoHttpFetcher,
     ScrapingTier.GO_BROWSER: LakeGoBrowserFetcher,
+    # Visual tier (flag: enable_visual_fetcher). Explicit tier_override only; the
+    # fetcher itself returns a failed result when the flag is off.
+    ScrapingTier.VISUAL: LakeVisualFetcher,
 }
 
 

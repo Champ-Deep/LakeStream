@@ -217,8 +217,15 @@ class ContentWorker(BaseWorker):
     ) -> list[ScrapedData]:
         """Fetch a single URL and run all applicable extractors."""
         fetch_result = await self.fetch_page(url)
+        # Visual tier output (a real dict only; mocks and other tiers give None).
+        visual_facts = getattr(fetch_result, "facts", None)
+        if not isinstance(visual_facts, dict):
+            visual_facts = None
         if fetch_result.blocked:
             self.log.warning("blocked", url=url, status=fetch_result.status_code)
+            # The visual tier reports a wall as an explicit record, never as silence.
+            if visual_facts:
+                return await self._store_visual_only(url, visual_facts)
             return []
 
         # --- PDF handling ---
@@ -227,6 +234,8 @@ class ContentWorker(BaseWorker):
 
         html = fetch_result.html
         if not html or len(html) < 100:
+            if visual_facts:
+                return await self._store_visual_only(url, visual_facts)
             return []
 
         parser = HtmlParser(html, url)
@@ -243,6 +252,11 @@ class ContentWorker(BaseWorker):
 
         # --- ALWAYS: full page content ---
         records.append(self._extract_page_record(url, parser, rich_meta))
+
+        # Visual tier (v2 probe): its cited facts ride along as one EXTRACTED
+        # record so they are exported with the page in every path below.
+        if visual_facts:
+            records.append(self._visual_record(url, visual_facts))
 
         # Save a screenshot to storage if one was captured (Phase 3).
         screenshot_path = None
@@ -352,6 +366,30 @@ class ContentWorker(BaseWorker):
         self, url: str, parser: HtmlParser, rich_meta: dict,
     ) -> dict:
         return extractors.extract_page_record(self.job_id, self.domain, url, parser, rich_meta)
+
+    def _visual_record(self, url: str, facts: dict) -> dict:
+        """Wrap the visual tier's output as one EXTRACTED record.
+
+        Same shape as ``extractors.extract_page_record`` (``job_id``/``domain``
+        are required by ``batch_insert_scraped_data``). ``facts["status"]``
+        (success/partial/blocked/failed) travels in the metadata so a consumer
+        can tell a wall from data.
+        """
+        name = (((facts.get("facts") or {}).get("name")) or {}).get("value")
+        return {
+            "job_id": UUID(self.job_id),
+            "domain": self.domain,
+            "data_type": DataType.EXTRACTED,
+            "url": url,
+            "title": name,
+            "metadata": {**facts, "source": "visual"},
+        }
+
+    async def _store_visual_only(self, url: str, facts: dict) -> list[ScrapedData]:
+        """Export just the visual record (no usable HTML: wall, failure, partial)."""
+        rec = self._visual_record(url, facts)
+        await self.export_results([rec])
+        return build_scraped_data_list([rec], self.job_id, self.domain, url)
 
     async def _handle_page_content(
         self, url: str, html: str, parser: HtmlParser, screenshot_path: str | None = None,
