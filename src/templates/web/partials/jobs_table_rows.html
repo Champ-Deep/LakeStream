@@ -34,11 +34,9 @@
         <i data-lucide="download" class="w-4 h-4"></i>
       </a>
       {% elif job.status in ('running', 'pending') %}
-      <form method="POST" action="/jobs/{{ job.id }}/cancel" class="inline">
-        <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-slate-400 hover:text-red-500" title="Cancel job">
-          <i data-lucide="square" class="w-4 h-4"></i>
-        </button>
-      </form>
+      <button hx-post="/jobs/{{ job.id }}/cancel" hx-swap="none" class="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-slate-400 hover:text-red-500" title="Cancel job">
+        <i data-lucide="square" class="w-4 h-4"></i>
+      </button>
       {% elif job.status in ('failed', 'cancelled') %}
       <form method="POST" action="/jobs/{{ job.id }}/retry" class="inline">
         <button type="submit" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors text-slate-400 hover:text-accent" title="Retry job">

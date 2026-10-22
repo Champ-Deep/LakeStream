@@ -9,7 +9,10 @@
 
 ## Quick Deploy (Railway)
 
-Railway auto-detects `nixpacks.toml`. Just connect the repo and set env vars.
+Railway builds the repo from the `Dockerfile` (which installs Chromium for
+Playwright). The previous `nixpacks.toml` was removed because it skipped
+the `playwright install chromium` step, so every Playwright fetch failed
+on Railway. Connect the repo and set env vars:
 
 ```bash
 # Required env vars

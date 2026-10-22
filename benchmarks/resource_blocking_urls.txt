@@ -1,0 +1,22 @@
+# 20 public B2B pages for the resource-blocking bytes benchmark (sprint 21-22 Oct, Track B).
+# Pricing pages exercise pricing_parser; leadership / about pages exercise contact_parser.
+https://www.hubspot.com/pricing/marketing
+https://www.atlassian.com/software/jira/pricing
+https://slack.com/pricing
+https://www.notion.com/pricing
+https://www.zendesk.com/pricing/
+https://mailchimp.com/pricing/marketing/
+https://www.dropbox.com/plans
+https://zoom.us/pricing
+https://asana.com/pricing
+https://monday.com/pricing
+https://www.intercom.com/pricing
+https://www.shopify.com/pricing
+https://about.gitlab.com/pricing/
+https://www.cloudflare.com/plans/
+https://www.freshworks.com/crm/pricing/
+https://www.semrush.com/prices/
+https://www.hubspot.com/company/management
+https://www.salesforce.com/company/leadership/
+https://www.lakeb2b.com/
+https://www.zoominfo.com/about

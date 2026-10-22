@@ -12,6 +12,8 @@ class TrackedDomain(BaseModel):
     max_pages: int = 100
     template_id: str = "auto"
     webhook_url: str | None = None
+    tech_stack_wappalyzer: bool = False
+    tech_stack_llm_fallback: bool = False
     is_active: bool = True
     consecutive_failures: int = 0
     last_auto_scraped_at: datetime | None = None
@@ -28,3 +30,5 @@ class AddSiteInput(BaseModel):
     scrape_frequency: str = Field(default="weekly")
     max_pages: int = Field(default=100, gt=0, le=500)
     webhook_url: str | None = None
+    tech_stack_wappalyzer: bool = False
+    tech_stack_llm_fallback: bool = False

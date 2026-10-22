@@ -7,6 +7,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from src.api.middleware.auth import authorize_resource, require_org
 from src.config.settings import get_settings
 from src.db.pool import get_pool
 from src.db.queries import jobs as job_queries
@@ -21,12 +22,10 @@ router = APIRouter(prefix="/scrape")
 
 @router.post("/execute", status_code=202, response_model=ExecuteScrapeResponse)
 async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScrapeResponse:
+    org_id_str, user_id_str, _ = require_org(request)
     pool = await get_pool()
 
-    # Get org_id and user_id from authenticated user (set by auth middleware)
-    org_id_str = getattr(request.state, "org_id", None)
-    org_id = UUID(org_id_str) if org_id_str else None
-    user_id_str = getattr(request.state, "user_id", None)
+    org_id = UUID(org_id_str)
     user_id = UUID(user_id_str) if user_id_str else None
 
     # Create job record
@@ -50,6 +49,14 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
             data_types=input.data_types,
             tier=input.tier,
             region=input.region,
+            llm_mode=input.llm_mode,
+            raw_only=input.raw_only,
+            extraction_schema=input.extraction_schema,
+            extraction_mode=input.extraction_mode,
+            force_refresh=input.force_refresh,
+            capture_screenshot=input.capture_screenshot,
+            tech_stack_wappalyzer=input.tech_stack_wappalyzer,
+            tech_stack_llm_fallback=input.tech_stack_llm_fallback,
         )
         await redis.aclose()
     except Exception as e:
@@ -65,12 +72,22 @@ async def execute_scrape(input: ScrapeJobInput, request: Request) -> ExecuteScra
 @router.post("/cancel/{job_id}")
 async def cancel_scrape_job(job_id: UUID, request: Request):
     """Cancel a pending or running scrape job."""
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
+
+    job = await job_queries.get_job(pool, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=getattr(job, "org_id", None),
+        resource_user_id=getattr(job, "user_id", None),
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
+
     cancelled = await job_queries.cancel_job(pool, job_id)
     if not cancelled:
-        job = await job_queries.get_job(pool, job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel job in '{job.status}' state",
@@ -79,12 +96,20 @@ async def cancel_scrape_job(job_id: UUID, request: Request):
 
 
 @router.get("/status/{job_id}", response_model=ScrapeStatusResponse)
-async def get_status(job_id: UUID) -> ScrapeStatusResponse:
+async def get_status(job_id: UUID, request: Request) -> ScrapeStatusResponse:
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
     job = await job_queries.get_job(pool, job_id)
 
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=getattr(job, "org_id", None),
+        resource_user_id=getattr(job, "user_id", None),
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
 
     data_count = await data_queries.count_scraped_data_by_job(pool, job_id)
 
@@ -105,7 +130,7 @@ async def get_status(job_id: UUID) -> ScrapeStatusResponse:
 
 
 @router.get("/stream/{job_id}")
-async def stream_job_status(job_id: UUID) -> StreamingResponse:
+async def stream_job_status(job_id: UUID, request: Request) -> StreamingResponse:
     """Server-Sent Events stream for real-time job status updates.
 
     Listens to the Postgres 'job_status_changed' channel (fired by a DB trigger
@@ -120,13 +145,21 @@ async def stream_job_status(job_id: UUID) -> StreamingResponse:
         - 'heartbeat': keep-alive ping every 20 s
         - 'done': terminal state reached — caller should close the EventSource
     """
+    org_id, user_id, is_admin = require_org(request)
     pool = await get_pool()
     settings = get_settings()
 
-    # Confirm the job exists before opening the stream
+    # Confirm the job exists and the caller can see it before opening the stream
     job = await job_queries.get_job(pool, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=getattr(job, "org_id", None),
+        resource_user_id=getattr(job, "user_id", None),
+        caller_org_id=org_id,
+        caller_user_id=user_id,
+        caller_is_admin=is_admin,
+    )
 
     async def event_generator():
         # Send the current state immediately so the client isn't waiting blind
@@ -207,9 +240,8 @@ async def scrape_linkedin(request: Request) -> ExecuteScrapeResponse:
     if not search_url:
         raise HTTPException(status_code=400, detail="search_url is required")
 
-    org_id_str = getattr(request.state, "org_id", None)
-    org_id = UUID(org_id_str) if org_id_str else None
-    user_id_str = getattr(request.state, "user_id", None)
+    org_id_str, user_id_str, _ = require_org(request)
+    org_id = UUID(org_id_str)
     user_id = UUID(user_id_str) if user_id_str else None
 
     from src.models.job import ScrapeJobInput
@@ -262,9 +294,8 @@ async def scrape_apollo(request: Request) -> ExecuteScrapeResponse:
     if not search_url:
         raise HTTPException(status_code=400, detail="search_url is required")
 
-    org_id_str = getattr(request.state, "org_id", None)
-    org_id = UUID(org_id_str) if org_id_str else None
-    user_id_str = getattr(request.state, "user_id", None)
+    org_id_str, user_id_str, _ = require_org(request)
+    org_id = UUID(org_id_str)
     user_id = UUID(user_id_str) if user_id_str else None
 
     from src.models.job import ScrapeJobInput
@@ -321,6 +352,7 @@ async def extract_structured(request: Request):
     - ai: LLM-powered via OpenRouter (requires schema)
     - auto: try CSS first, fallback to AI if <50% fields found (requires schema)
     """
+    require_org(request)
     body = await request.json()
     url = body.get("url", "").strip()
     schema_data = body.get("schema")
@@ -334,16 +366,57 @@ async def extract_structured(request: Request):
     if not schema_data and not prompt:
         return {"success": False, "error": "Either 'schema' or 'prompt' is required"}
 
-    # Fetch the page
+    # Fetch the page.
+    # * Previously hard-wired to ScrapingTier.PLAYWRIGHT with no escalation, so
+    # * /extract could never use the residential-proxy tier no matter how the
+    # * proxies were configured — any anti-bot site just returned "blocked".
+    # * Now: honour an explicit `tier`, else start on PLAYWRIGHT and escalate to
+    # * PLAYWRIGHT_PROXY once if the page comes back blocked or captcha'd.
     from src.models.scraping import FetchOptions, ScrapingTier
     from src.scraping.fetcher.factory import create_fetcher
 
     options = FetchOptions(region=region)
-    fetcher = create_fetcher(ScrapingTier.PLAYWRIGHT)
-    fetch_result = await fetcher.fetch(url, options)
+    requested_tier = (body.get("tier") or "").strip().lower()
+
+    if requested_tier:
+        try:
+            start_tier = ScrapingTier(requested_tier)
+        except ValueError:
+            return {
+                "success": False,
+                "error": f"Invalid tier '{requested_tier}'. "
+                f"Valid: {', '.join(t.value for t in ScrapingTier)}",
+            }
+        tier_chain = [start_tier]
+    else:
+        tier_chain = [ScrapingTier.PLAYWRIGHT, ScrapingTier.PLAYWRIGHT_PROXY]
+
+    fetch_result = None
+    tier_used = None
+    for tier in tier_chain:
+        fetch_result = await create_fetcher(tier).fetch(url, options)
+        tier_used = tier
+        if not fetch_result.blocked and not fetch_result.captcha_detected:
+            break
+
+    if fetch_result is None:
+        # Unreachable: tier_chain always holds at least one tier. Guarded so the
+        # type checker sees the None case and a future edit can't slip past it.
+        return {"success": False, "error": "No fetch tier was attempted"}
 
     if fetch_result.blocked:
-        return {"success": False, "error": f"Page blocked (HTTP {fetch_result.status_code})"}
+        return {
+            "success": False,
+            "error": f"Page blocked (HTTP {fetch_result.status_code})",
+            "tier_used": tier_used.value if tier_used else None,
+            "captcha_detected": fetch_result.captcha_detected,
+            "hint": (
+                "Blocked even on the residential-proxy tier — check BRIGHTDATA/CUSTOM "
+                "proxy credentials, or the target may require login."
+                if tier_used == ScrapingTier.PLAYWRIGHT_PROXY
+                else "Retry with tier='playwright_proxy' once a residential proxy is configured."
+            ),
+        }
     if not fetch_result.html or len(fetch_result.html) < 100:
         return {"success": False, "error": "No content retrieved"}
 
@@ -360,47 +433,32 @@ async def extract_structured(request: Request):
         text = _strip_html_to_text(fetch_result.html)
         llm = LLMExtractor(org_id=org_id)
         data = await llm.extract_freeform(text, prompt or instructions)
-        return {"success": True, "data": data, "mode": "prompt", "url": url}
+        return {
+            "success": True,
+            "data": data,
+            "mode": "prompt",
+            "url": url,
+            "tier_used": tier_used.value if tier_used else None,
+            "cost_usd": fetch_result.cost_usd,
+        }
 
     # Schema-based extraction path (css / ai / auto)
     from src.models.extraction import ExtractionSchema
-    from src.scraping.parser.schema_extractor import SchemaExtractor
 
     try:
         schema = ExtractionSchema(**schema_data)
     except Exception as e:
         return {"success": False, "error": f"Invalid schema: {e}"}
 
-    result = None
-    mode_used = mode
+    from src.services.structured_extract import AIUnavailableError, extract_with_fallback
 
-    # CSS extraction
-    if mode in ("css", "auto"):
-        extractor = SchemaExtractor(fetch_result.html, url)
-        result = extractor.extract(schema)
-        mode_used = "css"
-
-        # Auto mode: fallback to AI if <50% fields found
-        if mode == "auto" and len(schema.fields) > 0:
-            coverage = result.fields_found / len(schema.fields)
-            if coverage < 0.5:
-                mode_used = "ai"
-                result = None
-
-    # AI extraction (mode=ai, or auto fallback)
-    if result is None and mode in ("ai", "auto"):
-        from src.services.llm_extractor import LLMExtractor, get_openrouter_config
-
-        org_id = getattr(request.state, "org_id", None)
-        try:
-            await get_openrouter_config(org_id)
-        except ValueError:
-            return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
-
-        llm = LLMExtractor(org_id=org_id)
-        result = await llm.extract_from_html(fetch_result.html, schema, instructions)
-        result.url = url
-        mode_used = "ai"
+    org_id = getattr(request.state, "org_id", None)
+    try:
+        result = await extract_with_fallback(
+            fetch_result.html, url, schema, mode, org_id=org_id, instructions=instructions
+        )
+    except AIUnavailableError:
+        return {"success": False, "error": "AI extraction disabled — configure an API key in Settings → AI Extraction"}
 
     if result is None:
         return {"success": False, "error": "No extraction result"}
@@ -411,8 +469,10 @@ async def extract_structured(request: Request):
         "schema_name": result.schema_name,
         "fields_found": result.fields_found,
         "fields_missing": result.fields_missing,
-        "mode": mode_used,
+        "mode": result.mode,
         "url": result.url,
+        "tier_used": tier_used.value if tier_used else None,
+        "cost_usd": fetch_result.cost_usd,
     }
 
 
@@ -426,6 +486,7 @@ async def browse_with_agent(request: Request):
     The agent can navigate, click buttons, fill forms, paginate, and extract data
     across multiple pages. Requires OPENROUTER_API_KEY to be set.
     """
+    require_org(request)
     from src.services.llm_extractor import get_openrouter_config
 
     body = await request.json()
@@ -454,6 +515,7 @@ async def browse_with_agent(request: Request):
 @router.post("/pdf")
 async def extract_pdf(request: Request):
     """Extract text, tables, and metadata from a PDF URL. Returns immediately (no job queue)."""
+    require_org(request)
     body = await request.json()
     url = body.get("url", "").strip()
 
@@ -501,6 +563,7 @@ async def store_session_cookies(request: Request):
 
     Body: {domain: str, cookies: list[dict]}
     """
+    require_org(request)
     body = await request.json()
     domain = body.get("domain", "").strip()
     cookies = body.get("cookies", [])
@@ -521,9 +584,66 @@ async def store_session_cookies(request: Request):
     }
 
 
+@router.post("/url")
+async def scrape_url_sync(request: Request):
+    """Scrape a single URL synchronously and return clean markdown.
+
+    Body: {url: str, tier?: str, only_main_content?: bool, max_chars?: int}
+
+    This is the hosted-API twin of the in-repo ScraperService used by the
+    enrichment pipeline: same tier escalation, same markdown conversion.
+    Use /scrape/execute for multi-page crawls; this is one page, right now.
+    """
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    if not url:
+        return {"success": False, "error": "url is required"}
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+
+    from src.models.scraping import ScrapingTier
+    from src.scraping.parser.markdown import content_hash
+    from src.services.scraper import ScraperService
+
+    tier = None
+    tier_raw = (body.get("tier") or "").strip().lower()
+    if tier_raw:
+        try:
+            tier = ScrapingTier(tier_raw)
+        except ValueError:
+            return {
+                "success": False,
+                "error": f"Unknown tier '{tier_raw}' (valid: {', '.join(t.value for t in ScrapingTier)})",
+            }
+    only_main = bool(body.get("only_main_content", True))
+    max_chars = body.get("max_chars")
+
+    try:
+        result = await ScraperService().scrape(url, tier=tier, only_main_content=only_main)
+    except Exception as e:
+        logger.error("scrape_url_failed", url=url, error=str(e))
+        return {"success": False, "error": f"Scrape failed: {e}"}
+
+    markdown = result.get("markdown", "")
+    if max_chars and markdown:
+        markdown = markdown[: int(max_chars)]
+
+    return {
+        "success": result.get("success", False),
+        "url": url,
+        "markdown": markdown,
+        "metadata": result.get("metadata", {}),
+        "tier_used": result.get("tier_used"),
+        "status_code": result.get("status_code"),
+        "content_hash": content_hash(markdown) if markdown else None,
+        "error": result.get("error"),
+    }
+
+
 @router.post("/youtube-transcript")
 async def youtube_transcript(request: Request):
     """Extract transcript from a YouTube video URL. Returns immediately (no job queue)."""
+    require_org(request)
     from src.db.pool import get_pool
     from src.services.youtube import (
         NoTranscriptFound,

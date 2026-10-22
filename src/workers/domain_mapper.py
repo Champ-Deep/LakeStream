@@ -4,33 +4,47 @@ from src.scraping.parser.url_classifier import classify_urls
 from src.scraping.validator.url_validator import validate_and_deduplicate
 from src.services.crawler import CrawlerService
 from src.utils.url import ensure_scheme
+from src.workers.job_lifecycle import JobLifecycle
 
 log = structlog.get_logger()
 
 
 class DomainMapperWorker:
-    """Discovers all URLs for a domain using CrawlerService, then classifies them."""
+    """Discovers all URLs for a domain using CrawlerService, then classifies them.
 
-    def __init__(self, domain: str, job_id: str, org_id: str | None = None, pool=None):
+    This is intentionally **not** a ``BaseWorker`` subclass. ``BaseWorker``'s
+    contract (tier-escalating ``fetch_page``, per-record ``export_results``,
+    ``list[ScrapedData]`` output) describes a content-extraction worker that
+    fetches pages and persists extracted records. ``DomainMapperWorker`` does
+    neither: it delegates all fetching to ``CrawlerService`` (its own
+    concurrency/politeness model, not the escalation/rate-limiter stack) and
+    returns plain classified-URL dicts that are handed directly to
+    ``ContentWorker`` — nothing here is ever persisted on its own. Forcing it
+    to inherit ``BaseWorker`` would mean accepting and ignoring most of that
+    constructor (template, tier_override, proxy_url, region, raw_only) and
+    exposing an ``execute()``/``export_results()`` shape it doesn't use.
+
+    What *is* shared with ``BaseWorker`` — and must behave identically — is
+    heartbeat throttling during long-running work, so that emitting one
+    heartbeat per discovered URL doesn't hammer the DB. That behavior is
+    factored out into ``JobLifecycle`` (see ``src/workers/job_lifecycle.py``),
+    which both this worker and ``ContentWorker`` use.
+    """
+
+    def __init__(
+        self, domain: str, job_id: str, org_id: str | None = None, pool=None,
+        user_id: str | None = None,
+    ):
         self.domain = domain
         self.job_id = job_id
         self.org_id = org_id
+        self.user_id = user_id
         self.pool = pool
         self.crawler = CrawlerService(
-            max_concurrent=15, max_per_domain=6, pool=pool, job_id=job_id,
+            max_concurrent=15, max_per_domain=6, pool=pool, job_id=job_id, user_id=user_id,
         )
         self.log = log.bind(worker="DomainMapper", domain=domain, job_id=job_id)
-
-    async def _heartbeat(self) -> None:
-        """Update heartbeat so stale-job recovery doesn't kill us during crawl."""
-        if self.pool is None:
-            return
-        try:
-            from uuid import UUID
-            from src.db.queries.jobs import update_heartbeat
-            await update_heartbeat(self.pool, UUID(self.job_id))
-        except Exception as e:
-            self.log.warning("heartbeat_failed", error=str(e))
+        self._lifecycle = JobLifecycle(pool, job_id, logger=self.log)
 
     async def execute(self, max_pages: int | None = None) -> list[dict]:
         """Map a domain and return classified URLs.
@@ -43,15 +57,18 @@ class DomainMapperWorker:
         """
         self.log.info("mapping_domain", max_pages=max_pages or "unlimited")
 
-        # Signal the job is still alive before starting the potentially long crawl
-        await self._heartbeat()
+        # Signal the job is still alive before starting the potentially long
+        # crawl. Time-throttled (same 30s-min-interval semantics as
+        # BaseWorker.heartbeat) so repeated calls across a long crawl don't
+        # hammer the DB.
+        await self._lifecycle.heartbeat()
 
         # 1. Discover URLs via CrawlerService (unlimited by default)
         url = ensure_scheme(self.domain)
         raw_urls = await self.crawler.map_domain(url, limit=max_pages)
 
         # Heartbeat after crawl completes (may have taken minutes)
-        await self._heartbeat()
+        await self._lifecycle.heartbeat()
         self.log.info("urls_discovered", count=len(raw_urls))
 
         # Fallback: always include the homepage.

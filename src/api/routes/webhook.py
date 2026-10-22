@@ -1,17 +1,25 @@
 """Webhook routes for n8n integration and external triggers."""
 
 import ipaddress
+import json
 import socket
 from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from src.api.middleware.auth import get_current_user
+from src.api.middleware.auth import authorize_resource, get_current_user
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
+
+log = structlog.get_logger()
+
+# Cap callback payload size — n8n workflows can produce large dicts and we
+# don't want a single misbehaving workflow to fill the DB.
+_MAX_CALLBACK_PAYLOAD_BYTES = 256 * 1024  # 256 KiB
 
 
 def _validate_webhook_url(url: str) -> None:
@@ -190,21 +198,91 @@ async def test_webhook(request: WebhookTestRequest, user: dict = Depends(get_cur
 
 
 @router.post("/callback/{job_id}")
-async def webhook_callback(job_id: UUID, data: dict, user: dict = Depends(get_current_user)):
-    """
-    Receive callback data from external services.
+async def webhook_callback(
+    job_id: UUID,
+    data: dict,
+    user: dict = Depends(get_current_user),
+):
+    """Receive callback data from external services (n8n workflows, etc.).
 
-    This endpoint can be used by n8n or other services to send data back
-    to the scraper after processing.
+    Persists the payload as a scraped_data row with data_type='webhook_callback',
+    scoped to the job's org. This makes enrichment results, validation outcomes,
+    and manual review decisions queryable from the dashboard alongside the
+    scraper's own output.
+
+    Authorization: caller must own the job, or be admin (404 otherwise).
+
+    Body: any JSON dict. Stored verbatim under metadata.payload. Optional
+    well-known top-level keys are extracted for indexing:
+      - source (str): "n8n", "manual_review", etc. — stored as metadata.source
+      - url (str): becomes the row's url column
+      - title (str): becomes the row's title column
+
+    Returns: {success, job_id, record_id}.
     """
-    # This is a placeholder for receiving processed data back
-    # Could be used for:
-    # - Receiving enriched data from n8n workflows
-    # - Receiving validation results
-    # - Receiving manual review decisions
+    from src.db.pool import get_pool
+    from src.db.queries.scraped_data import insert_scraped_data
+
+    # Reject oversized payloads early — protects the DB from one bad workflow.
+    payload_size = len(json.dumps(data, default=str).encode("utf-8"))
+    if payload_size > _MAX_CALLBACK_PAYLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Callback payload too large ({payload_size} bytes); "
+                f"max {_MAX_CALLBACK_PAYLOAD_BYTES} bytes"
+            ),
+        )
+
+    pool = await get_pool()
+
+    # Authorize the caller against the target job. We fetch a thin row rather
+    # than the full ScrapeJob model — we only need org_id, user_id, domain.
+    row = await pool.fetchrow(
+        "SELECT domain, org_id, user_id FROM scrape_jobs WHERE id = $1", job_id
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    authorize_resource(
+        resource_org_id=row["org_id"],
+        resource_user_id=row["user_id"],
+        caller_org_id=user["org_id"],
+        caller_user_id=user.get("user_id"),
+        caller_is_admin=user.get("is_admin", False),
+    )
+
+    # Pull a few well-known fields up so the dashboard's URL/title columns
+    # show something useful. Everything else stays in metadata.payload.
+    callback_url = data.get("url") if isinstance(data.get("url"), str) else None
+    callback_title = data.get("title") if isinstance(data.get("title"), str) else None
+    source = data.get("source") if isinstance(data.get("source"), str) else "webhook"
+
+    metadata = {
+        "source": source,
+        "payload": data,
+    }
+
+    record_id = await insert_scraped_data(
+        pool,
+        job_id=job_id,
+        domain=row["domain"],
+        data_type="webhook_callback",
+        url=callback_url,
+        title=callback_title,
+        metadata=metadata,
+        org_id=row["org_id"],
+    )
+
+    log.info(
+        "webhook_callback_received",
+        job_id=str(job_id),
+        record_id=str(record_id),
+        source=source,
+        bytes=payload_size,
+    )
 
     return {
         "success": True,
         "job_id": str(job_id),
-        "received_keys": list(data.keys()),
+        "record_id": str(record_id),
     }

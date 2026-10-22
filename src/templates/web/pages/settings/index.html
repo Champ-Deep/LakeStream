@@ -463,10 +463,29 @@
 
 </div>
 
+{% if auth_provider == 'clerk' %}
+<script async crossorigin="anonymous"
+  data-clerk-publishable-key="{{ clerk_publishable_key }}"
+  src="https://{{ clerk_frontend_api }}/npm/@clerk/clerk-js@5/dist/clerk.browser.js"></script>
+{% endif %}
 <script>
-  function getAuthHeaders(extra = {}) {
-    const token = document.cookie.split('; ').find(c => c.startsWith('access_token='))?.split('=')[1];
+  const AUTH_PROVIDER = '{{ auth_provider or "legacy" }}';
+
+  async function getAuthHeaders(extra = {}) {
     const headers = { ...extra };
+    if (AUTH_PROVIDER === 'clerk') {
+      // Fresh short-lived Clerk token; if Clerk.js hasn't loaded yet the
+      // same-origin __session cookie still authenticates the request.
+      try {
+        if (window.Clerk) {
+          if (!window.Clerk.loaded) await window.Clerk.load();
+          const token = await window.Clerk.session?.getToken();
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (e) { /* fall back to __session cookie */ }
+      return headers;
+    }
+    const token = document.cookie.split('; ').find(c => c.startsWith('access_token='))?.split('=')[1];
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return headers;
   }
@@ -484,7 +503,7 @@
 
       async init() {
         try {
-          const res = await fetch('/api/settings/', { headers: getAuthHeaders() });
+          const res = await fetch('/api/settings/', { headers: await getAuthHeaders() });
           if (res.ok) {
             const data = await res.json();
             this.keySet = data.openrouter_api_key_set;
@@ -504,7 +523,7 @@
         try {
           const res = await fetch('/api/settings/', {
             method: 'PATCH',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(body),
           });
           if (res.ok) {
@@ -543,7 +562,7 @@
         this.loading = true;
         try {
           const res = await fetch('/api/auth/api-keys', {
-            headers: getAuthHeaders(),
+            headers: await getAuthHeaders(),
           });
           if (res.ok) this.keys = await res.json();
         } catch (e) { /* ignore */ }
@@ -557,7 +576,7 @@
         try {
           const res = await fetch('/api/auth/api-keys', {
             method: 'POST',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ name: this.newKeyName.trim() })
           });
           if (res.ok) {
@@ -575,7 +594,7 @@
         try {
           await fetch(`/api/auth/api-keys/${id}`, {
             method: 'DELETE',
-            headers: getAuthHeaders(),
+            headers: await getAuthHeaders(),
           });
           await this.loadKeys();
           if (this.newRawKey) this.newRawKey = null;

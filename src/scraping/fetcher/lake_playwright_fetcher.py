@@ -1,21 +1,20 @@
-import json
 import time
-from typing import Any
 from urllib.parse import urlparse
 
-import redis.asyncio as redis
 import structlog
 from playwright.async_api import async_playwright
 
 from src.config.constants import TIER_COSTS
 from src.config.settings import get_settings
 from src.models.scraping import FetchOptions, FetchResult, ScrapingTier
-from src.scraping.fetcher.captcha_detector import detect_captcha
+from src.scraping.fetcher import stealth_fallback
+from src.scraping.fetcher.base import BaseFetcher
+from src.scraping.fetcher.resource_blocking import log_block_stats, maybe_install_resource_blocking
 
 log = structlog.get_logger()
 
 
-class LakePlaywrightFetcher:
+class LakePlaywrightFetcher(BaseFetcher):
     """Tier 2.5: Playwright-based fetcher with Redis-backed session persistence.
 
     This fetcher uses Playwright's Python API directly (not CLI) to enable:
@@ -28,9 +27,6 @@ class LakePlaywrightFetcher:
 
     Cost: $0.003 per request (between HEADLESS_BROWSER $0.002 and HEADLESS_PROXY $0.004)
     """
-
-    def __init__(self):
-        self._redis_client: redis.Redis | None = None
 
     async def fetch(self, url: str, options: FetchOptions | None = None) -> FetchResult:
         """Fetch URL with session persistence via Playwright browser context.
@@ -87,6 +83,7 @@ class LakePlaywrightFetcher:
 
                     # Navigate to URL
                     page = await context.new_page()
+                    block_stats = await maybe_install_resource_blocking(page, settings, options)
                     timeout = options.timeout if options.timeout is not None else settings.playwright_timeout_ms
                     response = await page.goto(url, timeout=timeout)
 
@@ -99,9 +96,21 @@ class LakePlaywrightFetcher:
                             url=url, domain=domain, error=str(e),
                         )
 
+                    # Scripted actions + optional screenshot (v2)
+                    from src.scraping.fetcher.actions import (
+                        apply_pre_capture,
+                        capture_screenshot,
+                        response_headers,
+                    )
+
+                    await apply_pre_capture(page, options, timeout)
+                    screenshot_bytes = await capture_screenshot(page, options.capture_screenshot)
+
                     # Extract content
                     html = await page.content()
                     status_code = response.status if response else 0
+                    resp_headers = await response_headers(response)
+                    log_block_stats(block_stats, url, domain)
 
                     # Save updated session (cookies may have changed)
                     updated_storage_state = await context.storage_state()
@@ -128,10 +137,7 @@ class LakePlaywrightFetcher:
                     await browser.close()
 
             # Block detection
-            http_error = status_code in (403, 429, 503)
-            tiny_html = len(html) < settings.min_html_bytes
-            captcha = detect_captcha(html) if html else False
-            blocked = http_error or tiny_html
+            blocked, captcha = self.is_blocked(status_code, html)
 
         except Exception as exc:
             log.warning(
@@ -145,6 +151,22 @@ class LakePlaywrightFetcher:
             status_code = 0
             blocked = True
             captcha = False  # no HTML to scan on error
+            screenshot_bytes = None
+            resp_headers = {}
+
+        # Refused? Give the page a second chance with stronger stealth browsers.
+        if stealth_fallback.should_rescue(status_code, html, blocked, captcha):
+            rescued = await stealth_fallback.rescue(
+                url, settings, screenshot=bool(options.capture_screenshot),
+            )
+            if rescued is not None:
+                html, status_code, resp_headers = rescued.html, rescued.status_code, rescued.headers
+                screenshot_bytes = rescued.screenshot_bytes or screenshot_bytes
+                blocked, captcha = False, False
+        elif blocked or captcha:
+            # Error status or a captcha widget, but the body is the real page (e.g. a
+            # 403 carrying the full content): keep it instead of escalating it away.
+            blocked, captcha = False, False
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -152,12 +174,13 @@ class LakePlaywrightFetcher:
             url=url,
             status_code=status_code,
             html=html,
-            headers={},
+            headers=resp_headers,
             tier_used=ScrapingTier.PLAYWRIGHT,
             cost_usd=TIER_COSTS["playwright"],
             duration_ms=duration_ms,
             blocked=blocked,
             captcha_detected=captcha,
+            screenshot_bytes=screenshot_bytes,
         )
 
     async def _fetch_pdf(self, url: str, start: float) -> FetchResult:
@@ -197,85 +220,4 @@ class LakePlaywrightFetcher:
                 duration_ms=duration_ms,
                 blocked=True,
                 captcha_detected=False,
-            )
-
-    async def _get_redis_client(self) -> redis.Redis:
-        """Lazy Redis client initialization.
-
-        Returns:
-            Redis client instance (cached after first call)
-        """
-        if self._redis_client is None:
-            settings = get_settings()
-            self._redis_client = redis.from_url(settings.redis_url)
-        return self._redis_client
-
-    async def _load_session(self, client: redis.Redis, domain: str) -> dict[str, Any] | None:
-        """Load session from Redis.
-
-        Args:
-            client: Redis client
-            domain: Domain to load session for (e.g., "linkedin.com")
-
-        Returns:
-            Session data dict with storage_state and metadata, or None if not found
-        """
-        key = f"playwright_session:{domain}"
-        try:
-            data = await client.get(key)
-            if data:
-                return json.loads(data)
-        except Exception as exc:
-            log.warning(
-                "playwright_session_load_error",
-                domain=domain,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-        return None
-
-    async def _save_session(
-        self,
-        client: redis.Redis,
-        domain: str,
-        storage_state: dict[str, Any],
-        metadata: dict[str, Any],
-    ) -> None:
-        """Save session to Redis with TTL.
-
-        Args:
-            client: Redis client
-            domain: Domain to save session for (e.g., "linkedin.com")
-            storage_state: Playwright storage state (cookies, localStorage, etc.)
-            metadata: Additional metadata (created_at, last_used_at, request_count, authenticated)
-        """
-        settings = get_settings()
-        key = f"playwright_session:{domain}"
-
-        session_data = {
-            "storage_state": storage_state,
-            "created_at": metadata.get("created_at", time.time()),
-            "last_used_at": metadata.get("last_used_at", time.time()),
-            "request_count": metadata.get("request_count", 1),
-            "authenticated": metadata.get("authenticated", False),
-        }
-
-        try:
-            await client.set(
-                key,
-                json.dumps(session_data),
-                ex=settings.playwright_session_ttl_seconds,
-            )
-            log.debug(
-                "playwright_session_saved",
-                domain=domain,
-                ttl=settings.playwright_session_ttl_seconds,
-                request_count=session_data["request_count"],
-            )
-        except Exception as exc:
-            log.warning(
-                "playwright_session_save_error",
-                domain=domain,
-                error=str(exc),
-                error_type=type(exc).__name__,
             )

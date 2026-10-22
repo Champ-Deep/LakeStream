@@ -27,10 +27,37 @@ class ContactParser:
         "legal@",
     }
 
+    # Tags whose text a visitor never sees. Emails/URLs inside them are config
+    # values, tracking pixels or error-reporting keys, not contact details.
+    NON_VISIBLE_TAGS = ["script", "style", "noscript", "template", "svg"]
+
     def __init__(self, html: str, base_url: str):
-        self.tree = HTMLParser(html)
+        self.tree = HTMLParser(html)  # full tree: JSON-LD lives in <script>
         self.base_url = base_url
-        self.text = self.tree.body.text() if self.tree.body else ""
+        self.text = self._visible_text(html)
+
+    @classmethod
+    def _visible_text(cls, html: str) -> str:
+        """Body text a visitor can read, plus targets of visible contact links.
+
+        Link targets are not part of the text, so addresses from ``mailto:``
+        links and LinkedIn profile links (``linkedin.com/in/...``) are appended.
+        """
+        tree = HTMLParser(html)
+        if tree.body is None:
+            return ""
+        tree.strip_tags(cls.NON_VISIBLE_TAGS)
+        text = tree.body.text(separator=" ")
+        extras: list[str] = []
+        for a in tree.css("a[href]"):
+            href = (a.attributes.get("href") or "").strip()
+            if href.lower().startswith("mailto:"):
+                addr = href[len("mailto:") :].split("?", 1)[0]
+                if addr:
+                    extras.append(addr)
+            elif "linkedin.com/in/" in href:
+                extras.append(href)
+        return " ".join([text, *extras]) if extras else text
 
     def extract_people(self) -> list[dict]:
         """Extract people from the page using multiple strategies."""

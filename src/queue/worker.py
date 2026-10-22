@@ -9,6 +9,10 @@ from src.queue.jobs import (
     process_linkedin_scrape_job,
     process_scrape_job,
 )
+from src.queue.tech_detect_jobs import (
+    process_tech_detect_run,
+    recover_tech_detect_runs_cron,
+)
 from src.workers.scheduled_scraper import check_scheduled_scrapes
 from src.workers.signal_processor import process_signals
 
@@ -64,6 +68,7 @@ class WorkerSettings:
         process_discovery_job,
         process_linkedin_scrape_job,
         process_apollo_scrape_job,
+        process_tech_detect_run,
     ]
     on_startup = startup
     on_shutdown = shutdown
@@ -77,6 +82,7 @@ class WorkerSettings:
         cron(process_signals, hour=None, minute={0, 15, 30, 45}),
         cron(check_tracked_searches, hour=None, minute={10, 25, 40, 55}),
         cron(recover_stale_jobs_cron, hour=None, minute={5, 20, 35, 50}),
+        cron(recover_tech_detect_runs_cron, hour=None, minute={7, 22, 37, 52}),
         cron(cleanup_stale_data_cron, hour=3, minute=0),
     ]
 

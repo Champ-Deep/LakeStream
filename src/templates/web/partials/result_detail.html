@@ -122,46 +122,40 @@
         <span class="badge badge-info">{{ result.metadata.platform }}</span>
       </div>
     {% endif %}
-    {% if result.metadata.get('js_libraries') %}
+    {% if result.metadata.get('server_os') %}
       <div>
-        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">JS Libraries</p>
-        <div class="flex flex-wrap gap-1">
-          {% for item in result.metadata.js_libraries %}
-            <span class="badge badge-neutral">{{ item }}</span>
-          {% endfor %}
-        </div>
+        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Server OS</p>
+        <span class="badge badge-info">{{ result.metadata.server_os }}</span>
       </div>
     {% endif %}
-    {% if result.metadata.get('analytics') %}
-      <div>
-        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Analytics</p>
-        <div class="flex flex-wrap gap-1">
-          {% for item in result.metadata.analytics %}
-            <span class="badge badge-neutral">{{ item }}</span>
-          {% endfor %}
+    {# Data-driven: one block per list-valued category, so a new catalog
+       category renders as soon as it has a TechStackMetadata field. #}
+    {% set tech_groups = [
+      ('frameworks', 'Frameworks'), ('js_libraries', 'JS Libraries'),
+      ('analytics', 'Analytics'), ('tag managers', 'Tag Managers'),
+      ('marketing_tools', 'Marketing'), ('advertising', 'Advertising'),
+      ('ab_testing', 'A/B Testing'), ('crm', 'CRM'),
+      ('ecommerce', 'E-commerce'), ('payment_processors', 'Payments'),
+      ('widgets', 'Widgets'), ('cdn', 'CDN'), ('web_servers', 'Web Servers'),
+      ('programming_languages', 'Languages'), ('databases', 'Databases'),
+      ('security', 'Security'), ('video', 'Video'), ('maps', 'Maps'),
+      ('fonts', 'Fonts'), ('search', 'Search'), ('seo_tools', 'SEO'),
+      ('monitoring', 'Monitoring'), ('auth', 'Auth'),
+      ('translation', 'Translation'), ('accessibility', 'Accessibility'),
+      ('build_tools', 'Build Tools'), ('other_technologies', 'Other'),
+    ] %}
+    {% for field, label in tech_groups %}
+      {% if result.metadata.get(field) %}
+        <div>
+          <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">{{ label }}</p>
+          <div class="flex flex-wrap gap-1">
+            {% for item in result.metadata.get(field) %}
+              <span class="badge badge-neutral">{{ item }}</span>
+            {% endfor %}
+          </div>
         </div>
-      </div>
-    {% endif %}
-    {% if result.metadata.get('marketing_tools') %}
-      <div>
-        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Marketing</p>
-        <div class="flex flex-wrap gap-1">
-          {% for item in result.metadata.marketing_tools %}
-            <span class="badge badge-neutral">{{ item }}</span>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
-    {% if result.metadata.get('frameworks') %}
-      <div>
-        <p class="text-xs text-slate-400 uppercase tracking-wide mb-1">Frameworks</p>
-        <div class="flex flex-wrap gap-1">
-          {% for item in result.metadata.frameworks %}
-            <span class="badge badge-neutral">{{ item }}</span>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
+      {% endif %}
+    {% endfor %}
   </div>
 
   {% elif result.data_type == 'blog_url' %}

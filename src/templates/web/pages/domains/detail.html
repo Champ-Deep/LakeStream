@@ -100,6 +100,67 @@
   </div>
   {% endif %}
 
+  <!-- Site Knowledge Graph (v2) -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 mb-6">
+    <div class="px-6 py-4 border-b border-stone-100 dark:border-gray-700 flex items-center justify-between">
+      <h2 class="text-sm font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Site Knowledge Graph</h2>
+      <span id="graph-stats" class="text-xs text-stone-400"></span>
+    </div>
+    <div id="cy" style="height: 460px; width: 100%;"></div>
+    <div id="graph-empty" class="p-8 text-center hidden">
+      <p class="text-stone-500">No link graph yet — run a crawl for this domain.</p>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+  <script>
+    (function () {
+      // Brand-neutral, colorblind-safe palette keyed by data_type.
+      const TYPE_COLORS = {
+        page: "#64748b", article: "#2563eb", blog_url: "#7c3aed",
+        contact: "#059669", pricing: "#d97706", tech_stack: "#0891b2",
+        resource: "#db2777", document: "#4b5563", extracted: "#16a34a",
+      };
+      const domain = {{ domain | tojson }};
+      const cyEl = document.getElementById("cy");
+      const statsEl = document.getElementById("graph-stats");
+      const emptyEl = document.getElementById("graph-empty");
+
+      fetch(`/api/graph/${encodeURIComponent(domain)}`, { credentials: "same-origin" })
+        .then((r) => r.json())
+        .then((data) => {
+          const nodes = data.nodes || [];
+          const edges = data.edges || [];
+          if (!nodes.length) {
+            cyEl.classList.add("hidden");
+            emptyEl.classList.remove("hidden");
+            return;
+          }
+          statsEl.textContent =
+            `${nodes.length} pages · ${edges.length} links` + (data.truncated ? " (truncated)" : "");
+          cytoscape({
+            container: cyEl,
+            elements: [
+              ...nodes.map((n) => ({ data: { id: n.id, label: n.label, type: n.type } })),
+              ...edges.map((e) => ({ data: { source: e.source, target: e.target } })),
+            ],
+            style: [
+              { selector: "node", style: {
+                  "background-color": (n) => TYPE_COLORS[n.data("type")] || "#64748b",
+                  "label": "data(label)", "font-size": "8px", "color": "#94a3b8",
+                  "width": 14, "height": 14, "text-max-width": "120px",
+                  "text-wrap": "ellipsis", "text-valign": "bottom" } },
+              { selector: "edge", style: {
+                  "width": 1, "line-color": "#cbd5e1", "opacity": 0.5,
+                  "curve-style": "haystack", "target-arrow-shape": "none" } },
+            ],
+            layout: { name: "cose", animate: false, nodeRepulsion: 6000, idealEdgeLength: 60 },
+          });
+        })
+        .catch(() => { cyEl.classList.add("hidden"); emptyEl.classList.remove("hidden"); });
+    })();
+  </script>
+
   <!-- Recent Jobs -->
   <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700">
     <div class="px-6 py-4 border-b border-stone-100 dark:border-gray-700">
@@ -138,6 +199,33 @@
     {% else %}
     <div class="p-8 text-center">
       <p class="text-stone-500">No jobs found for this domain</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent Content Changes (v2 change monitoring) -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-stone-200 dark:border-gray-700 mt-6">
+    <div class="px-6 py-4 border-b border-stone-100 dark:border-gray-700">
+      <h2 class="text-sm font-medium text-slate dark:text-gray-400 uppercase tracking-wide">Recent Content Changes</h2>
+    </div>
+
+    {% if recent_changes %}
+    <div class="divide-y divide-stone-100 dark:divide-gray-700">
+      {% for change in recent_changes %}
+      <div class="px-6 py-4 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="font-medium text-charcoal dark:text-gray-100 truncate">{{ change.url }}</p>
+          <p class="text-sm text-stone-400 font-mono">
+            {{ change.old_hash[:8] if change.old_hash else '—' }} → {{ change.new_hash[:8] }}
+          </p>
+        </div>
+        <span class="text-sm text-stone-400 whitespace-nowrap">{{ change.changed_at | timeago }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-8 text-center">
+      <p class="text-stone-500">No content changes detected yet</p>
     </div>
     {% endif %}
   </div>

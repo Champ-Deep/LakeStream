@@ -1,49 +1,31 @@
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-dist/
-build/
 *.egg-info/
-*.egg
-.eggs/
-
-.env
-.env.local
-
-.firecrawl/
-
-# Playwright CLI debugging artifacts
-playwright-state.json
-trace.zip
-*.har
-
 .venv/
+.venv-*/
 venv/
+.env
+.env-*
+.env.local
+.pytest_cache/
 env/
-
 .mypy_cache/
 .ruff_cache/
-.pytest_cache/
-htmlcov/
 .coverage
-coverage.xml
-
+htmlcov/
+dist/
+build/
 *.log
-*.pid
-
+*.err
 .DS_Store
-Thumbs.db
+node_modules/
+playwright-report/
+test-results/
 
-# === Internal Docs & Planning (not for repo) ===
-CLAUDE.md
-LakeStream_Scrapling_Integration_PRD.md
-scrapling_integration_plan.md.resolved
-PRD-Scraper-Integration.md
-PRODUCT_ROADMAP.md
-ChampionInternalScraperPRD.md
-LakeB2B_Intent_Data_Platform_PRD_v3.docx
-LakeB2B_Scraper_PRD_v2_Mobile_WebApp.docx
+# External Wappalyzer-style reference catalogs are fetched at runtime, never
+# committed. tests/unit/test_no_third_party_catalog.py enforces both halves:
+# this entry, and that nothing is tracked under the directory.
+.tech-reference/
 
 # === Agent Files ===
 .agents/
@@ -51,3 +33,10 @@ LakeB2B_Scraper_PRD_v2_Mobile_WebApp.docx
 
 # === Benchmark Results ===
 benchmarks/results.json
+
+# Scrape output and local caches. Scoped to the repo-root data/ dir rather than
+# a blanket *.csv: the tech_corpus fixtures live under tests/, and src/data/
+# holds tracked source (signature catalogs) that must stay trackable.
+/data/
+*.sqlite
+*.sqlite3

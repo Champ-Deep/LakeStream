@@ -70,6 +70,18 @@ def _mock_openrouter_config():
     )
 
 
+def _inject_client(extractor, mock_client):
+    """Force the extractor to use `mock_client` for every call.
+
+    Setting `extractor._client` is not enough: `_get_client` builds a fresh
+    AsyncOpenAI whenever it is handed a resolved per-org api_key, so a test that
+    only sets the attribute reaches the real OpenRouter endpoint. Patch the
+    accessor instead, which is the seam every call site goes through.
+    """
+    extractor._client = mock_client
+    return patch.object(extractor, "_get_client", return_value=mock_client)
+
+
 class TestLLMExtractor:
     async def test_extract_returns_result(self):
         extractor = LLMExtractor()
@@ -86,7 +98,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create = AsyncMock(
             return_value=mock_response,
         )
-        extractor._client = mock_client
+        client_patch = _inject_client(extractor, mock_client)
 
         schema = ExtractionSchema(
             name="test",
@@ -96,7 +108,7 @@ class TestLLMExtractor:
             ],
         )
 
-        with _mock_openrouter_config():
+        with _mock_openrouter_config(), client_patch:
             result = await extractor.extract("Acme Inc has 500 employees", schema)
 
         assert result.mode == "ai"
@@ -117,14 +129,14 @@ class TestLLMExtractor:
         mock_client.chat.completions.create = AsyncMock(
             return_value=mock_response,
         )
-        extractor._client = mock_client
+        client_patch = _inject_client(extractor, mock_client)
 
         schema = ExtractionSchema(
             name="test",
             fields=[ExtractionField(name="name", selector="h1")],
         )
 
-        with _mock_openrouter_config():
+        with _mock_openrouter_config(), client_patch:
             result = await extractor.extract("Test content", schema)
         assert result.data["name"] == "Test"
 
@@ -144,14 +156,14 @@ class TestLLMExtractor:
         mock_client.chat.completions.create = AsyncMock(
             side_effect=[bad_response, good_response],
         )
-        extractor._client = mock_client
+        client_patch = _inject_client(extractor, mock_client)
 
         schema = ExtractionSchema(
             name="test",
             fields=[ExtractionField(name="name", selector="h1")],
         )
 
-        with _mock_openrouter_config():
+        with _mock_openrouter_config(), client_patch:
             result = await extractor.extract("Content", schema)
         assert result.data["name"] == "Fixed"
         assert mock_client.chat.completions.create.call_count == 2
@@ -167,7 +179,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create = AsyncMock(
             return_value=mock_response,
         )
-        extractor._client = mock_client
+        client_patch = _inject_client(extractor, mock_client)
 
         schema = ExtractionSchema(
             name="test",
@@ -177,7 +189,7 @@ class TestLLMExtractor:
             ],
         )
 
-        with _mock_openrouter_config():
+        with _mock_openrouter_config(), client_patch:
             result = await extractor.extract("Content", schema)
         assert "email" in result.fields_missing
 

@@ -9,11 +9,19 @@ from src.cli.config import get_config
 console = Console(stderr=True)
 
 
+def _auth_headers(api_key: str) -> dict[str, str]:
+    # ls_ keys travel as X-API-Key; anything else (a legacy stored JWT) keeps
+    # the Bearer form so old configs fail loudly at the API instead of here.
+    if api_key.startswith("ls_"):
+        return {"X-API-Key": api_key}
+    return {"Authorization": f"Bearer {api_key}"}
+
+
 def _get_client() -> httpx.Client:
     cfg = get_config()
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if cfg.api_key:
-        headers["Authorization"] = f"Bearer {cfg.api_key}"
+        headers.update(_auth_headers(cfg.api_key))
     return httpx.Client(base_url=cfg.api_url, headers=headers, timeout=30.0)
 
 
@@ -55,7 +63,7 @@ def download(path: str, **params) -> bytes:
     cfg = get_config()
     headers: dict[str, str] = {}
     if cfg.api_key:
-        headers["Authorization"] = f"Bearer {cfg.api_key}"
+        headers.update(_auth_headers(cfg.api_key))
     try:
         with httpx.Client(base_url=cfg.api_url, headers=headers, timeout=60.0) as client:
             response = client.get(f"/api{path}", params=params)

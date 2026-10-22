@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://scraper:scraper_dev@localhost:5433/lakeb2b_scraper"
     redis_url: str = "redis://localhost:6379"
 
-    brightdata_proxy_url: str = ""
+    brightdata_proxy_url: str = ""       # Residential proxy (general sites)
+    brightdata_isp_proxy_url: str = ""   # ISP proxy (LinkedIn)
     smartproxy_url: str = ""
     custom_proxy_url: str = ""
     custom_proxy_username: str = ""
@@ -59,6 +60,34 @@ class Settings(BaseSettings):
     admin_email: str = "admin@lakeb2b.internal"
     admin_password: str = "LakeB2B_admin!"
 
+    # --- Auth provider (v2) ---
+    # "legacy" = bcrypt + local HS256 JWT (default; app runs with no Clerk keys).
+    # "clerk"  = verify Clerk session JWTs (set the CLERK_* vars below).
+    auth_provider: str = "legacy"
+    # Keep the legacy HS256 path reachable as a fallback while migrating.
+    enable_legacy_jwt: bool = True
+    # Distinct secret for Starlette session cookies (decoupled from jwt_secret).
+    session_secret: str = ""
+    # Clerk configuration (only needed when auth_provider="clerk").
+    clerk_secret_key: str = ""
+    clerk_publishable_key: str = ""
+    clerk_jwks_url: str = ""  # e.g. https://<subdomain>.clerk.accounts.dev/.well-known/jwks.json
+    clerk_issuer: str = ""  # e.g. https://<subdomain>.clerk.accounts.dev
+    clerk_domain: str = ""  # e.g. <subdomain>.clerk.accounts.dev (for CORS)
+    # Link a new Clerk identity to an existing local user with the same email.
+    # OFF by default: only enable for a one-time migration of existing users,
+    # and only if Clerk email verification is enforced (else it risks takeover).
+    clerk_link_by_email: bool = False
+    # Svix signing secret for the Clerk webhook endpoint (/api/webhooks/clerk).
+    # Empty = webhook endpoint refuses all deliveries (503).
+    clerk_webhook_signing_secret: str = ""
+
+    # MCP server over HTTP transport requires an X-API-Key by default; stdio
+    # transport (Claude Desktop) is unaffected. Only disable on a loopback-only
+    # deployment you fully trust.
+    mcp_require_api_key: bool = True
+    mcp_http_host: str = "127.0.0.1"
+
     # Email notifications (ChampMail engine)
     mail_engine_url: str = "http://localhost:8025"
     mail_engine_api_key: str = ""
@@ -67,16 +96,78 @@ class Settings(BaseSettings):
 
     # OpenRouter LLM extraction (AI-powered structured extraction)
     openrouter_api_key: str = ""  # Empty = AI extraction disabled
-    llm_extraction_model: str = "anthropic/claude-3.5-haiku"
+    llm_extraction_model: str = "anthropic/claude-haiku-4.5"
     llm_extraction_max_tokens: int = 4096
 
     # Playwright session-based scraping
     playwright_session_ttl_seconds: int = 3600  # Session expiration (1 hour)
     playwright_headless: bool = True  # False for debugging
     playwright_timeout_ms: int = 30000  # Page load timeout (30 seconds)
+    # Drop images, media, fonts, beacons and ad/analytics/tracker requests in the
+    # Playwright fetchers. Scripts, XHR and stylesheets still load, so the DOM the
+    # parsers read is unchanged. Visuals are kept when a screenshot is requested.
+    playwright_block_resources: bool = True
+    # When a page refuses the normal browser (403/429/503, "Access Denied",
+    # "Just a moment...", captcha), retry it with stronger stealth browsers before
+    # giving up. Engines, in order: invisible_firefox, scrapling. See
+    # src/scraping/fetcher/stealth_fallback.py.
+    playwright_stealth_fallback: bool = True
+    playwright_stealth_engines: str = "invisible_firefox,scrapling"
+    playwright_challenge_wait_s: int = 30  # how long to let a bot-check page clear
     linkedin_session_cookies: str = ""  # Pre-authenticated cookies as JSON
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # --- LakeStream v2 feature flags (additive; safe defaults) ---
+    lakestream_version: str = "v2"
+    # Persist clean markdown + raw HTML + content_hash per page (Phase 1)
+    enable_content_persistence: bool = True
+    # Skip re-extraction when a page's content_hash is unchanged (Phase 2).
+    # Off by default: every fetch re-runs extraction so results always come from
+    # the latest parsers. The hash is still stored and changes still recorded.
+    enable_scrape_cache: bool = False
+    # Record content changes and fire change webhooks (Phase 2)
+    enable_change_monitoring: bool = True
+    # Capture page screenshots when requested (Phase 3; heavier, opt-in)
+    enable_screenshots: bool = False
+    # Local directory for screenshot storage (filesystem StorageBackend)
+    screenshot_dir: str = "./data/screenshots"
+    # Go fetcher sidecars (Phase 4); Python fetchers remain default
+    enable_go_fetchers: bool = False
+    go_http_fetcher_url: str = ""  # e.g. http://go-http-fetcher:8080
+    go_browser_fetcher_url: str = ""  # e.g. http://go-browser-fetcher:8080
+    # Capture + serve the sitemap link graph (Phase 5)
+    enable_knowledge_graph: bool = True
+
+    # --- Technology detection (v2.2) ---
+    # Optional path to an external Wappalyzer-format fingerprint catalog
+    # (a .json file or a directory of them). Loaded at runtime and merged on
+    # top of the built-in curated set, so the catalog can be updated without a
+    # code release — and is deliberately NOT vendored into this repo (see
+    # docs/TECH_CATALOG.md for the licensing reason).
+    tech_catalog_path: str = ""
+    # LLM judge reviews low-confidence/outlier detections after regex matching.
+    # It never performs primary extraction.
+    enable_tech_judge: bool = False
+    # Only detections at or below this confidence are sent to the judge.
+    tech_judge_max_detections: int = 40
+
+    # --- v2.1 "Enrichment Edition" flags ---
+    # Parse Bytes: POST /api/parse (PDF/DOCX/HTML/text → markdown)
+    enable_document_parsing: bool = True
+    # First-class search endpoint (needs LakeCurrent): POST /api/search
+    enable_search_api: bool = True
+    # Company/brand enrichment: POST /api/enrich
+    enable_enrichment: bool = True
+    # Inbound API protection (public exposure)
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 60
+    # Usage metering records always; enforcement (402 past the allowance) is opt-in
+    enable_credit_enforcement: bool = False
+    free_monthly_credits: int = 5000
+
+    # extra="ignore": a .env shared across branches may hold keys another branch
+    # declares (e.g. TYPESAFE_API_KEY from the visual-probe branch). Unknown keys are
+    # skipped instead of failing validation and crashing every import of settings.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @model_validator(mode="after")
     def fix_postgres_scheme(self) -> "Settings":

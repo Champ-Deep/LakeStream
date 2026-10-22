@@ -1,11 +1,24 @@
--- Migration 017: Disable Row-Level Security
--- RLS org-based isolation is replaced by application-level user-based filtering.
--- The set_config('app.current_org_id') approach doesn't work reliably with
--- connection pooling (config is transaction-local but connections are reused),
--- causing all queries to return 0 rows from the web UI.
+-- Migration 017: Disable Row-Level Security for Worker Access
+-- Reason: Workers are background processes without user context
+-- Data isolation is enforced at application layer via org_id filtering
 
+-- Drop all existing RLS policies
+DROP POLICY IF EXISTS org_isolation_policy ON tracked_domains;
+DROP POLICY IF EXISTS org_insert_policy ON tracked_domains;
+DROP POLICY IF EXISTS org_update_policy ON tracked_domains;
+DROP POLICY IF EXISTS org_delete_policy ON tracked_domains;
+
+DROP POLICY IF EXISTS org_isolation_policy ON scrape_jobs;
+DROP POLICY IF EXISTS org_insert_policy ON scrape_jobs;
+DROP POLICY IF EXISTS org_update_policy ON scrape_jobs;
+DROP POLICY IF EXISTS org_delete_policy ON scrape_jobs;
+
+DROP POLICY IF EXISTS org_isolation_policy ON scraped_data;
+DROP POLICY IF EXISTS org_insert_policy ON scraped_data;
+DROP POLICY IF EXISTS org_update_policy ON scraped_data;
+DROP POLICY IF EXISTS org_delete_policy ON scraped_data;
+
+-- Disable RLS on all tables
 ALTER TABLE tracked_domains DISABLE ROW LEVEL SECURITY;
 ALTER TABLE scrape_jobs DISABLE ROW LEVEL SECURITY;
 ALTER TABLE scraped_data DISABLE ROW LEVEL SECURITY;
-ALTER TABLE signals DISABLE ROW LEVEL SECURITY;
-ALTER TABLE signal_executions DISABLE ROW LEVEL SECURITY;

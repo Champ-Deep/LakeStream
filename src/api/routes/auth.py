@@ -58,6 +58,14 @@ async def login(request: LoginRequest):
             "user": {...}
         }
     """
+    from src.config.settings import get_settings
+
+    if get_settings().auth_provider == "clerk":
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Password login is disabled; sign in with Clerk.",
+        )
+
     pool = await get_pool()
 
     # Get user by email

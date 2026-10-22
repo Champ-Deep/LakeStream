@@ -71,6 +71,7 @@ class Organization(BaseModel):
     max_domains: int
     max_signals_per_month: int
     billing_email: str | None
+    clerk_org_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -96,6 +97,7 @@ class User(BaseModel):
     role: str  # org_owner, team_admin, member
     is_active: bool
     is_admin: bool = False
+    clerk_user_id: str | None = None
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime

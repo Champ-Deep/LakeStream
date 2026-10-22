@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install "scrapling[fetchers]" \
     && python -m playwright install --with-deps chromium \
+    && python -m playwright install-deps firefox \
+    && python -c "from invisible_playwright import ensure_binary, ensure_geoip_mmdb; ensure_binary(); ensure_geoip_mmdb()" \
     && scrapling install
 
 COPY src/ ./src/

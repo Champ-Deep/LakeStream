@@ -1,0 +1,17 @@
+# 15 public pages behind common bot protection (Akamai, Cloudflare, PerimeterX, DataDome),
+# for benchmarks/refusal_bench.py. Mostly B2B research sources LakeStream targets.
+https://www.salesforce.com/company/leadership/
+https://www.g2.com/products/hubspot-marketing-hub/reviews
+https://www.crunchbase.com/organization/hubspot
+https://www.glassdoor.com/Overview/Working-at-HubSpot-EI_IE227605.11,18.htm
+https://www.indeed.com/cmp/Hubspot
+https://www.similarweb.com/website/hubspot.com/
+https://www.capterra.com/p/152373/HubSpot-CRM/
+https://www.trustpilot.com/review/hubspot.com
+https://www.oracle.com/corporate/executives/
+https://www.ibm.com/about
+https://www.adobe.com/about-adobe/leadership.html
+https://www.zillow.com/
+https://www.walmart.com/
+https://www.nike.com/
+https://www.homedepot.com/

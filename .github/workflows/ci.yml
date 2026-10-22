@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, v2-consolidation]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project (dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          # python-Wappalyzer is declared in requirements.txt but not in the
+          # pyproject extras, and tests/unit/services/test_tech_detect_service.py
+          # imports it. Installing the project alone left the runner without it
+          # while a developer venv built from requirements.txt had it, so the
+          # suite passed locally and failed in CI.
+          pip install -r requirements.txt
+
+      - name: Ruff lint (advisory)
+        # Codebase has pre-existing lint violations; run advisory for now so
+        # regressions are visible without blocking merges. Flip
+        # continue-on-error off once the backlog is cleaned up.
+        continue-on-error: true
+        run: ruff check src tests
+
+      - name: Ruff format (advisory)
+        continue-on-error: true
+        run: ruff format --check src tests
+
+      - name: Pytest (unit only)
+        # Integration tests need a live Postgres/Redis and are skipped in CI.
+        # This step IS blocking — unit tests must pass before merge.
+        run: pytest tests/unit -x --tb=short -m "not integration"
+
+      - name: Mypy (advisory)
+        continue-on-error: true
+        run: mypy src

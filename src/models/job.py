@@ -41,7 +41,34 @@ class ScrapeJobInput(BaseModel):
         default="css",
         description="Extraction mode: css, ai, auto. Only used with extraction_schema.",
     )
+    force_refresh: bool = Field(
+        default=False,
+        description="Bypass the content cache and re-extract even if unchanged.",
+    )
+    capture_screenshot: bool = Field(
+        default=False,
+        description="Capture a full-page screenshot per page (Playwright tier).",
+    )
     priority: int = Field(default=5, ge=1, le=10)
+    llm_mode: str = Field(
+        default="off",
+        description=(
+            "AI extraction mode: "
+            "'off' = CSS only (default, free), "
+            "'fallback' = CSS + LLM on every page (hybrid, higher quality), "
+            "'only' = LLM only on every page (highest quality, highest cost)."
+        ),
+    )
+    tech_stack_wappalyzer: bool = Field(
+        default=False,
+        description="Run the Wappalyzer fingerprint library as an additional "
+        "tech-stack detection pass (broader coverage, slower).",
+    )
+    tech_stack_llm_fallback: bool = Field(
+        default=False,
+        description="If the curated detector (+ Wappalyzer, if enabled) finds "
+        "zero recommended detections, fall back to an LLM guess for tech stack.",
+    )
 
 
 class ScrapeJob(BaseModel):
