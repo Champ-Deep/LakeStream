@@ -155,7 +155,16 @@ LAKECURRENT_BASE_URL=http://localhost:8001
 
 # 🔑 Authentication
 JWT_SECRET=your-secret-key
+
+# Admin account created by migrations.
+# Set this to activate the account (openssl rand -base64 24).
+# If it is unset, that account cannot log in.
+# Changing it and restarting rotates the password.
+ADMIN_EMAIL=admin@lakeb2b.internal
+ADMIN_PASSWORD=
 ```
+
+`ADMIN_PASSWORD` is read from the environment (or `.env`) when migrations run. Leave it unset and the seeded admin stays unable to log in. Set it and startup stores a bcrypt hash of that value. Signup for a new organization uses its own account.
 
 ---
 

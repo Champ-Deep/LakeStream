@@ -55,9 +55,11 @@ class Settings(BaseSettings):
     default_max_users_per_org: int = 5
     default_max_domains_per_org: int = 10
 
-    # Default admin credentials (used on first boot to seed admin user)
+    # Seeded admin account. The email is inserted by migration; the password
+    # comes only from ADMIN_PASSWORD. Empty means unset: startup will not
+    # invent a password or activate a new admin account.
     admin_email: str = "admin@lakeb2b.internal"
-    admin_password: str = "LakeB2B_admin!"
+    admin_password: str = ""
 
     # Email notifications (ChampMail engine)
     mail_engine_url: str = "http://localhost:8025"
